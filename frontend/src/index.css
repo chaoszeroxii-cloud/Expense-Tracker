@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { -webkit-tap-highlight-color: transparent; }
+  body { overscroll-behavior-y: none; }
+
+  /* ── Light theme (default) ───────────────────────────── */
+  :root {
+    --bg-app:      #f8fafc;
+    --bg-card:     #ffffff;
+    --bg-input:    #ffffff;
+    --border:      #f1f5f9;
+    --text-base:   #1e293b;
+    --text-muted:  #94a3b8;
+    --text-sub:    #64748b;
+    --nav-bg:      rgba(255,255,255,0.92);
+  }
+
+  /* ── Dark theme ──────────────────────────────────────── */
+  .dark {
+    --bg-app:      #0f172a;
+    --bg-card:     #1e293b;
+    --bg-input:    #1e293b;
+    --border:      #334155;
+    --text-base:   #f1f5f9;
+    --text-muted:  #64748b;
+    --text-sub:    #94a3b8;
+    --nav-bg:      rgba(15,23,42,0.92);
+  }
+
+  body {
+    background-color: var(--bg-app);
+    color: var(--text-base);
+    transition: background-color 0.2s, color 0.2s;
+  }
+
+  .scroll-area {
+    -webkit-overflow-scrolling: touch;
+    overflow-y: auto;
+  }
+}
+
+@layer utilities {
+  .delay-75  { animation-delay: 75ms; }
+  .delay-150 { animation-delay: 150ms; }
+  .delay-225 { animation-delay: 225ms; }
+  .pb-safe   { padding-bottom: env(safe-area-inset-bottom); }
+  .pt-safe   { padding-top: env(safe-area-inset-top); }
+
+  /* Hide scrollbar but keep scrolling functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Semantic shorthand classes */
+  .bg-app    { background-color: var(--bg-app); }
+  .bg-card   { background-color: var(--bg-card); }
+  .bg-input  { background-color: var(--bg-input); }
+  .text-base-theme  { color: var(--text-base); }
+  .text-muted-theme { color: var(--text-muted); }
+  .border-theme     { border-color: var(--border); }
+}

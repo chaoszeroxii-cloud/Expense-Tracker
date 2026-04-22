@@ -1,0 +1,33 @@
+version: '3.9'
+
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Before running:
+#   1. Create .env from .env.example and fill in real secrets
+#   2. Build frontend with VITE_API_URL pointing to your domain:
+#      VITE_API_URL=https://api.yourdomain.com
+
+services:
+  db:
+    ports: []                          # don't expose DB port publicly
+
+  backend:
+    build:
+      target: production
+    command: node dist/main
+    volumes: []                        # no src mount in production
+    environment:
+      NODE_ENV: production
+
+  frontend:
+    build:
+      target: production
+      args:
+        VITE_API_URL: ${FRONTEND_URL:-https://yourdomain.com}
+    command: ""                        # nginx handles serving
+    volumes: []
+    ports:
+      - "3000:80"
+
+  pgadmin:
+    profiles: ["debug"]               # only starts with: --profile debug

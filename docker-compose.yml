@@ -1,0 +1,96 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL ─────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: expense_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-expense_tracker}
+      POSTGRES_USER:     ${DB_USER:-expense_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"      # bind to localhost only in production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-expense_user} -d ${DB_NAME:-expense_tracker}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app-network
+
+  # ── NestJS Backend ─────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development               # switch to `production` for prod
+    container_name: expense_backend
+    restart: unless-stopped
+    command: npm run start:dev
+    environment:
+      NODE_ENV:     development
+      DB_HOST:      db
+      DB_PORT:      5432
+      DB_NAME:      ${DB_NAME:-expense_tracker}
+      DB_USER:      ${DB_USER:-expense_user}
+      DB_PASSWORD:  ${DB_PASSWORD:?DB_PASSWORD is required}
+      JWT_SECRET:   ${JWT_SECRET:?JWT_SECRET is required}
+      CORS_ORIGIN:  ${FRONTEND_URL:-http://localhost:3000}
+    volumes:
+      - ./backend:/app            # hot reload in dev
+      - /app/node_modules         # hot reload in dev
+    ports:
+      - "3001:3001"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  # ── React Frontend ─────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development               # switch to `production` for prod
+    container_name: expense_frontend
+    restart: unless-stopped
+    command: npm run dev
+    environment:
+      VITE_API_URL: http://localhost:3001
+    volumes:
+      - ./frontend:/app          # hot reload in dev
+      - /app/node_modules        # hot reload in dev
+    ports:
+      - "3000:5173"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+
+  # ── pgAdmin (dev only — remove in production) ─────────────
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: expense_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL:    admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge

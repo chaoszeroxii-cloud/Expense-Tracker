@@ -1,23 +1,23 @@
 services:
-  # ── Backend (NestJS) ─────────────────────────────────────────
+  # ── Backend (NestJS) — Node runtime (free tier) ──────────────
   - type: web
     name: expense-tracker-api
-    runtime: docker
+    runtime: node
     rootDir: backend
-    dockerfilePath: ./Dockerfile
-    dockerContext: .
+    buildCommand: npm install && npm run build
+    startCommand: node dist/main
     plan: free
     envVars:
       - key: NODE_ENV
         value: production
       - key: JWT_SECRET
-        generateValue: true          # Render auto-generates a random secret
+        generateValue: true
       - key: DATABASE_URL
         fromDatabase:
           name: expense-tracker-db
           property: connectionString
       - key: CORS_ORIGIN
-        sync: false                  # Set manually: https://expense-tracker-web.onrender.com
+        sync: false                  # Set manually after frontend deploys
 
   # ── Frontend (React / Vite → Static Site) ───────────────────
   - type: web
@@ -30,10 +30,10 @@ services:
     routes:
       - type: rewrite
         source: /*
-        destination: /index.html    # SPA fallback (React Router)
+        destination: /index.html
     envVars:
       - key: VITE_API_URL
-        sync: false                  # Set manually: https://expense-tracker-api.onrender.com
+        sync: false                  # Set manually after backend deploys
 
 databases:
   # ── PostgreSQL ───────────────────────────────────────────────

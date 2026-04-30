@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { User } from '../users/user.entity'
 import { AllocationsService } from './allocations.service'
-import { CreateAllocationDto, UpdateAllocationDto } from './allocation.dto'
+import { CreateAllocationDto, UpdateAllocationDto, MoveMoneyDto } from './allocation.dto'
 
 @Controller('allocations')
 @UseGuards(JwtAuthGuard)
@@ -35,5 +35,16 @@ export class AllocationsController {
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     return this.service.remove(id, user.id)
+  }
+
+  // ── Move unallocated funds → specific wallet ─────────────────
+  // POST /api/allocations/:id/move  { amount: number }
+  @Post(':id/move')
+  moveToAllocation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: MoveMoneyDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.service.moveToAllocation(id, user.id, dto.amount)
   }
 }

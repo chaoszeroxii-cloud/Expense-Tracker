@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common'
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, In, DataSource, EntityManager } from 'typeorm'
 import { Allocation } from './allocation.entity'
 import { Category } from '../categories/category.entity'
+import { User } from '../users/user.entity'
 import { CreateAllocationDto, UpdateAllocationDto } from './allocation.dto'
 
 @Injectable()
@@ -21,25 +22,27 @@ export class AllocationsService {
   findAll(userId: string): Promise<Allocation[]> {
     return this.repo.find({
       where: { userId },
-      relations: ['categories'],
+      relations: ['categories', 'incomeCategories'],
       order: { name: 'ASC' },
     })
   }
 
   async findOne(id: string, userId: string): Promise<Allocation> {
-    const a = await this.repo.findOne({ where: { id, userId }, relations: ['categories'] })
+    const a = await this.repo.findOne({ where: { id, userId }, relations: ['categories', 'incomeCategories'] })
     if (!a) throw new NotFoundException(`Allocation ${id} not found`)
     return a
   }
 
   async create(dto: CreateAllocationDto, userId: string): Promise<Allocation> {
     const categories = await this.resolveCategories(dto.categoryIds ?? [], userId)
+    const incomeCategories = await this.resolveCategories(dto.incomeCategoryIds ?? [], userId)
     const allocation = this.repo.create({
       name: dto.name,
       icon: dto.icon,
       color: dto.color,
       userId,
       categories,
+      incomeCategories,
     })
     return this.repo.save(allocation)
   }
@@ -52,6 +55,9 @@ export class AllocationsService {
     if (dto.categoryIds !== undefined) {
       allocation.categories = await this.resolveCategories(dto.categoryIds, userId)
     }
+    if (dto.incomeCategoryIds !== undefined) {
+      allocation.incomeCategories = await this.resolveCategories(dto.incomeCategoryIds, userId)
+    }
     return this.repo.save(allocation)
   }
 
@@ -60,12 +66,40 @@ export class AllocationsService {
     await this.repo.remove(allocation)
   }
 
+  // ── Move unallocated funds into a wallet ──────────────────────
+  // Unallocated = user.totalBalance - SUM(all allocation.balance)
+  // Moving only increments the allocation; totalBalance stays the same
+  // so unallocated shrinks automatically.
+  async moveToAllocation(allocationId: string, userId: string, amount: number): Promise<{ unallocatedBalance: number }> {
+    if (amount <= 0) throw new BadRequestException('Amount must be positive')
+
+    const userRepo = this.dataSource.getRepository(User)
+    const [user, allAllocations] = await Promise.all([
+      userRepo.findOne({ where: { id: userId } }),
+      this.repo.find({ where: { userId } }),
+    ])
+
+    if (!user) throw new NotFoundException('User not found')
+
+    const totalAllocated = allAllocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
+    const unallocated = Number(user.totalBalance) - totalAllocated
+
+    if (amount > unallocated) {
+      throw new BadRequestException(
+        `Insufficient unallocated balance. Available: ฿${unallocated.toFixed(2)}`,
+      )
+    }
+
+    // Credit the wallet — no totalBalance change needed
+    await this.credit(allocationId, userId, amount)
+
+    const newUnallocated = unallocated - amount
+    return { unallocatedBalance: newUnallocated }
+  }
+
   // ── Balance mutations (called from ExpensesService) ───────────
 
-  /**
-   * Add `amount` to a specific allocation (income flow).
-   * Runs inside an existing EntityManager transaction if provided.
-   */
+  /** Add `amount` to a specific allocation (income flow). */
   async credit(allocationId: string, userId: string, amount: number, em?: EntityManager) {
     const repo = em ? em.getRepository(Allocation) : this.repo
     const result = await repo
@@ -77,10 +111,7 @@ export class AllocationsService {
     if (result.affected === 0) throw new NotFoundException(`Allocation ${allocationId} not found`)
   }
 
-  /**
-   * Subtract `amount` from the allocation linked to `categoryId` (expense flow).
-   * Returns the allocation that was debited (or null if no allocation is linked).
-   */
+  /** Subtract `amount` from the allocation linked to `categoryId` (expense flow). */
   async debitByCategory(categoryId: string, userId: string, amount: number, em?: EntityManager) {
     const repo = em ? em.getRepository(Allocation) : this.repo
 
@@ -91,12 +122,35 @@ export class AllocationsService {
       .where('a.user_id = :userId', { userId })
       .getOne()
 
-    if (!allocation) return null   // no allocation bound — silently skip
+    if (!allocation) return null
 
     await repo
       .createQueryBuilder()
       .update(Allocation)
       .set({ balance: () => `balance - ${amount}` })
+      .where('id = :id', { id: allocation.id })
+      .execute()
+
+    return allocation
+  }
+
+  /** Add `amount` to the allocation linked to `incomeCategoryId` (income flow). */
+  async creditByIncomeCategory(categoryId: string, userId: string, amount: number, em?: EntityManager) {
+    const repo = em ? em.getRepository(Allocation) : this.repo
+
+    // Find allocation that has this income category linked
+    const allocation = await repo
+      .createQueryBuilder('a')
+      .innerJoin('a.incomeCategories', 'c', 'c.id = :categoryId', { categoryId })
+      .where('a.user_id = :userId', { userId })
+      .getOne()
+
+    if (!allocation) return null
+
+    await repo
+      .createQueryBuilder()
+      .update(Allocation)
+      .set({ balance: () => `balance + ${amount}` })
       .where('id = :id', { id: allocation.id })
       .execute()
 
@@ -112,6 +166,10 @@ export class AllocationsService {
 
   async reverseDebitByCategory(categoryId: string, userId: string, amount: number, em?: EntityManager) {
     return this.debitByCategory(categoryId, userId, -amount, em)
+  }
+
+  async reverseCreditByIncomeCategory(categoryId: string, userId: string, amount: number, em?: EntityManager) {
+    return this.creditByIncomeCategory(categoryId, userId, -amount, em)
   }
 
   // ── Helper ────────────────────────────────────────────────────

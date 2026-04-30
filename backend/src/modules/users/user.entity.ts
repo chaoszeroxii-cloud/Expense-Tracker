@@ -22,6 +22,17 @@ export class User {
   @Column({ length: 3, default: 'THB' })
   currency: string
 
+  // ── Running total balance (income minus expenses, all-time) ──
+  // unallocated = totalBalance - SUM(allocation.balance)
+  @Column({
+    name: 'total_balance',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    default: 0,
+  })
+  totalBalance: number
+
   @OneToMany(() => Category, (c) => c.user)
   categories: Category[]
 

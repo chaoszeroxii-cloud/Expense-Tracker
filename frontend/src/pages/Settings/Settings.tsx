@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react'
+import { useState, FormEvent, useRef } from 'react'
 import Icon from '@mdi/react'
 import {
   mdiAccount, mdiLogout, mdiPlus, mdiTrashCan,
@@ -29,6 +29,7 @@ export default function Settings() {
   const { user, clearAuth, setAuth } = useAuthStore()
   const { theme, toggle: toggleTheme } = useThemeStore()
   const { lang, setLang } = useI18n()
+  const formRef = useRef<HTMLDivElement>(null)
 
   // ── Profile ────────────────────────────────────────────────
   const [name, setName]           = useState(user?.name ?? '')
@@ -69,11 +70,13 @@ export default function Settings() {
   const startEdit = (cat: Category) => {
     setEditId(cat.id); setShowAdd(false)
     setCatName(cat.name); setCatIcon(cat.icon); setCatColor(cat.color)
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
   const startAdd = () => {
     setEditId(null)
     setCatName(''); setCatIcon(catType === 'expense' ? 'food' : 'salary'); setCatColor('#6366f1')
     setShowAdd(true)
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
   const cancelForm = () => { setEditId(null); setShowAdd(false) }
 
@@ -180,7 +183,7 @@ export default function Settings() {
 
       {/* ── Categories ── */}
       <Card padding={false}>
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-theme">
+        <div ref={formRef} className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-theme">
           <h2 className="font-bold text-base-theme text-sm">{t('categories')}</h2>
           <button onClick={startAdd}
             className="flex items-center gap-1.5 text-xs font-semibold text-brand-600

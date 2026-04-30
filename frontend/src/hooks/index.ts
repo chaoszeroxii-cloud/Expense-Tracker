@@ -1,15 +1,18 @@
 import { useState, useEffect, useCallback } from 'react'
 import { analyticsApi, expensesApi, categoriesApi, allocationsApi } from '../api'
-import type { PeriodSummary, CategoryBreakdown, MonthlyTrend, Category, Expense, Allocation, AllocationSummary } from '../types'
+import type {
+  PeriodSummary, CategoryBreakdown, MonthlyTrend,
+  Category, Expense, Allocation, AllocationSummary, BalanceSummary,
+} from '../types'
 
 // Current month helper — returns "YYYY-MM"
 export const currentMonth = () => new Date().toISOString().slice(0, 7)
 
 // ── Generic fetcher hook ───────────────────────────────────────
 function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
-  const [data, setData] = useState<T | null>(null)
+  const [data, setData]       = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError]     = useState<string | null>(null)
 
   const fetch = useCallback(async () => {
     setLoading(true)
@@ -49,15 +52,18 @@ export function useCategories() {
 }
 
 export function useExpenses(month: string) {
-  return useFetch<Expense[]>(
-    () => expensesApi.list({ month }), [month],
-  )
+  return useFetch<Expense[]>(() => expensesApi.list({ month }), [month])
 }
 
 export function useAllocations() {
-  return useFetch(() => allocationsApi.list())
+  return useFetch<Allocation[]>(() => allocationsApi.list())
 }
 
 export function useAllocationSummary() {
   return useFetch(() => allocationsApi.getSummary())
+}
+
+// ── Balance summary: total / allocated / unallocated ─────────
+export function useBalanceSummary() {
+  return useFetch<BalanceSummary>(() => analyticsApi.getBalanceSummary())
 }

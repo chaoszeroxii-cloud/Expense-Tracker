@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { Expense } from '../expenses/expense.entity';
+import { Allocation } from '../allocations/allocation.entity';
+import { User } from '../users/user.entity';
 
 export interface CategoryBreakdown {
   categoryId: string;
@@ -14,15 +16,15 @@ export interface CategoryBreakdown {
 }
 
 export interface MonthlyTrend {
-  month: string;   // "2024-01"
-  label: string;   // "Jan 24"
+  month: string;
+  label: string;
   expense: number;
   income: number;
   net: number;
 }
 
 export interface DailySummary {
-  date: string;    // "2024-03-15"
+  date: string;
   expense: number;
   income: number;
   net: number;
@@ -36,11 +38,18 @@ export interface PeriodSummary {
   avgPerDay: number;
 }
 
+export interface BalanceSummary {
+  totalBalance: number;
+  allocatedBalance: number;
+  unallocatedBalance: number;
+}
+
 @Injectable()
 export class AnalyticsService {
   constructor(
     @InjectRepository(Expense)
     private readonly repo: Repository<Expense>,
+    private readonly dataSource: DataSource,
   ) {}
 
   // ─── 1. Summary for a given period ────────────────────────────────────────
@@ -177,51 +186,14 @@ export class AnalyticsService {
       .getRawMany();
   }
 
-  // ─── Helpers ───────────────────────────────────────────────────────────────
-  private buildDateFilter(
-    month?: string,
-    year?: string,
-  ): { dateFilter: string | null; params: Record<string, string> } {
-    if (month) {
-      return {
-        dateFilter: "TO_CHAR(e.occurred_at, 'YYYY-MM') = :month",
-        params: { month },
-      };
-    }
-    if (year) {
-      return {
-        dateFilter: "TO_CHAR(e.occurred_at, 'YYYY') = :year",
-        params: { year },
-      };
-    }
-    return { dateFilter: null, params: {} };
-  }
-
-  private getDaysInPeriod(month?: string, year?: string): number {
-    const now = new Date();
-    if (month) {
-      const [y, m] = month.split('-').map(Number);
-      const isCurrentMonth = y === now.getFullYear() && m === now.getMonth() + 1;
-      return isCurrentMonth ? now.getDate() : new Date(y, m, 0).getDate();
-    }
-    if (year) {
-      const y = parseInt(year);
-      const isCurrentYear = y === now.getFullYear();
-      return isCurrentYear
-        ? Math.floor((now.getTime() - new Date(y, 0, 1).getTime()) / 86400000)
-        : (y % 4 === 0 ? 366 : 365);
-    }
-    return 30;
-  }
-  
-  // ── 6. Allocation wallet summary ──────────────────────────────
+  // ─── 6. Allocation monthly summary (per wallet) ───────────────────────────
   async getAllocationSummary(userId: string) {
     // Total spent per allocation this month via its linked categories
     const now = new Date()
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    
+
     const rows = await this.repo
-    .createQueryBuilder('e')
+      .createQueryBuilder('e')
       .select([
         'e.allocation_id AS "allocationId"',
         'SUM(CASE WHEN e.type = \'expense\' THEN e.amount ELSE 0 END) AS "spentThisMonth"',
@@ -232,11 +204,61 @@ export class AnalyticsService {
       .andWhere("TO_CHAR(e.occurred_at, 'YYYY-MM') = :month", { month })
       .groupBy('e.allocation_id')
       .getRawMany()
-      
-      return rows.map(r => ({
-        allocationId:       r.allocationId,
-        spentThisMonth:     parseFloat(r.spentThisMonth)     || 0,
-        receivedThisMonth:  parseFloat(r.receivedThisMonth)  || 0,
+
+    return rows.map(r => ({
+      allocationId:      r.allocationId,
+      spentThisMonth:    parseFloat(r.spentThisMonth)    || 0,
+      receivedThisMonth: parseFloat(r.receivedThisMonth) || 0,
     }))
+  }
+
+  // ─── 7. Global balance summary ─────────────────────────────────────────────
+  // totalBalance    = user.totalBalance  (all income - all expenses, ever)
+  // allocatedBalance = SUM of all wallet balances
+  // unallocatedBalance = totalBalance - allocatedBalance  (available to distribute)
+  async getBalanceSummary(userId: string): Promise<BalanceSummary> {
+    const userRepo       = this.dataSource.getRepository(User)
+    const allocationRepo = this.dataSource.getRepository(Allocation)
+
+    const [user, allocations] = await Promise.all([
+      userRepo.findOne({ where: { id: userId } }),
+      allocationRepo.find({ where: { userId } }),
+    ])
+
+    const totalBalance    = Number(user?.totalBalance ?? 0)
+    const allocatedBalance = allocations.reduce((s, a) => s + Number(a.balance), 0)
+
+    return {
+      totalBalance,
+      allocatedBalance,
+      unallocatedBalance: totalBalance - allocatedBalance,
+    }
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+  private buildDateFilter(
+    month?: string,
+    year?: string,
+  ): { dateFilter: string | null; params: Record<string, string> } {
+    if (month) return { dateFilter: "TO_CHAR(e.occurred_at, 'YYYY-MM') = :month", params: { month } }
+    if (year)  return { dateFilter: "TO_CHAR(e.occurred_at, 'YYYY') = :year",     params: { year }  }
+    return { dateFilter: null, params: {} }
+  }
+
+  private getDaysInPeriod(month?: string, year?: string): number {
+    const now = new Date()
+    if (month) {
+      const [y, m] = month.split('-').map(Number)
+      const isCurrent = y === now.getFullYear() && m === now.getMonth() + 1
+      return isCurrent ? now.getDate() : new Date(y, m, 0).getDate()
+    }
+    if (year) {
+      const y = parseInt(year)
+      const isCurrent = y === now.getFullYear()
+      return isCurrent
+        ? Math.floor((now.getTime() - new Date(y, 0, 1).getTime()) / 86400000)
+        : (y % 4 === 0 ? 366 : 365)
+    }
+    return 30
   }
 }

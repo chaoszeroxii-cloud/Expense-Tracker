@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store/auth.store'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
-  Expense, Category, CreateExpensePayload,
+  Expense, Category, CreateExpensePayload, BalanceSummary,
 } from '../types'
 
 const http = axios.create({
@@ -30,7 +30,7 @@ http.interceptors.response.use(
   },
 )
 
-// ── Auth ────────────────────────────────────────────────────
+// ── Auth ─────────────────────────────────────────────────────
 export const authApi = {
   register: (payload: { email: string; name: string; password: string }) =>
     http.post('/auth/register', payload).then(r => r.data),
@@ -57,6 +57,9 @@ export const analyticsApi = {
 
   getDaily: (month: string) =>
     http.get('/analytics/daily', { params: { month } }).then(r => r.data),
+  // GET /api/analytics/balance — totalBalance, allocatedBalance, unallocatedBalance
+  getBalanceSummary: () =>
+    http.get<BalanceSummary>('/analytics/balance').then(r => r.data),
 }
 
 // ── Expenses ─────────────────────────────────────────────────
@@ -94,10 +97,10 @@ export const allocationsApi = {
   list: () =>
     http.get('/allocations').then(r => r.data),
 
-  create: (payload: { name: string; icon?: string; color?: string; categoryIds?: string[] }) =>
+  create: (payload: { name: string; icon?: string; color?: string; categoryIds?: string[]; incomeCategoryIds?: string[] }) =>
     http.post('/allocations', payload).then(r => r.data),
 
-  update: (id: string, payload: { name?: string; icon?: string; color?: string; categoryIds?: string[] }) =>
+  update: (id: string, payload: { name?: string; icon?: string; color?: string; categoryIds?: string[]; incomeCategoryIds?: string[] }) =>
     http.patch(`/allocations/${id}`, payload).then(r => r.data),
 
   remove: (id: string) =>
@@ -105,4 +108,7 @@ export const allocationsApi = {
 
   getSummary: () =>
     http.get('/analytics/allocations').then(r => r.data),
+  // POST /api/allocations/:id/move — move amount from unallocated into a wallet
+  moveToAllocation: (id: string, amount: number) =>
+    http.post(`/allocations/${id}/move`, { amount }).then(r => r.data),
 }

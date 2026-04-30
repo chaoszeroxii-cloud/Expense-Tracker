@@ -40,6 +40,15 @@ export class Allocation {
   })
   categories: Category[]
 
+  // Categories that credit THIS allocation when income is recorded
+  @ManyToMany(() => Category, { eager: true, cascade: ['insert', 'update'] })
+  @JoinTable({
+    name: 'allocation_income_categories',
+    joinColumn:        { name: 'allocation_id', referencedColumnName: 'id' },
+    inverseJoinColumn: { name: 'category_id',   referencedColumnName: 'id' },
+  })
+  incomeCategories: Category[]
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date
 

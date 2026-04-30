@@ -55,6 +55,7 @@ export interface CreateExpensePayload {
   note?: string
   tags?: string[]
   occurredAt: string
+  allocationId?: string
 }
 
 export interface Allocation {
@@ -64,10 +65,21 @@ export interface Allocation {
   color: string
   balance: number
   categories: Category[]
+  incomeCategories: Category[]
 }
 
 export interface AllocationSummary {
   allocationId: string
   spentThisMonth: number
   receivedThisMonth: number
+}
+
+// ── Balance Summary ───────────────────────────────────────────
+// totalBalance      = user.totalBalance  (net of all transactions ever)
+// allocatedBalance  = sum of all wallet balances
+// unallocatedBalance = totalBalance - allocatedBalance  (free to distribute)
+export interface BalanceSummary {
+  totalBalance: number
+  allocatedBalance: number
+  unallocatedBalance: number
 }

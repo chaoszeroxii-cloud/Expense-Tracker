@@ -8,7 +8,7 @@ import {
 } from '@mdi/js'
 import { Card, Skeleton, Amount } from '../../components/ui'
 import SpendingPieChart from '../../components/charts/SpendingPieChart'
-import TrendLineChart from '../../components/charts/TrendLineChart'
+import TrendSection from '../../components/charts/TrendSection'
 import AllocationWallets from '../../components/allocations/AllocationWallets'
 import { useSummary, useCategoryBreakdown, useMonthlyTrend, currentMonth } from '../../hooks'
 import { useT } from '../../store/i18n.store'
@@ -112,34 +112,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Spending by Category (Pie) ── */}
-      <Card className="animate-fade-up delay-75">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold text-base-theme text-sm">{t('spending_category')}</h2>
-          <span className="text-xs text-muted-theme font-medium">{t('this_month')}</span>
-        </div>
-        <SpendingPieChart data={categories} loading={loadingCat} />
-      </Card>
-
-      {/* ── 12-Month Trend ── */}
-      <Card className="animate-fade-up delay-150">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-bold text-base-theme text-sm">{t('trend_12m')}</h2>
-          <div className="flex items-center gap-3 text-xs text-muted-theme">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-brand-500 inline-block" /> {t('spent')}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" /> {t('income')}
-            </span>
-          </div>
-        </div>
-        <TrendLineChart data={trend} loading={loadingTrend} />
-      </Card>
-
-      {/* ── Wallet Balances ── */}
-      <AllocationWallets />
-
       {/* ── Net Balance ── */}
       {!loadingSum && summary && (
         <Card className="animate-fade-up delay-225">
@@ -160,6 +132,26 @@ export default function Dashboard() {
           )}
         </Card>
       )}
+
+      {/* ── Spending by Category (Pie) ── */}
+      <Card className="animate-fade-up delay-75">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-base-theme text-sm">{t('spending_category')}</h2>
+          <span className="text-xs text-muted-theme font-medium">{t('this_month')}</span>
+        </div>
+        <SpendingPieChart data={categories} loading={loadingCat} />
+      </Card>
+
+      {/* ── 12-Month Trend (collapsible + analysis) ── */}
+      <TrendSection
+        trend={trend}
+        loadingTrend={loadingTrend}
+        categories={categories}
+        lang={lang}
+      />
+
+      {/* ── Wallet Balances ── */}
+      <AllocationWallets />
     </div>
   )
 }

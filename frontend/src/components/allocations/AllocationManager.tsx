@@ -2,7 +2,7 @@ import { useState } from 'react'
 import Icon from '@mdi/react'
 import {
   mdiPlus, mdiTrashCan, mdiPencil, mdiCheck,
-  mdiClose, mdiChevronDown, mdiChevronUp,
+  mdiClose, mdiChevronDown, mdiChevronUp, mdiLockOutline,
 } from '@mdi/js'
 import clsx from 'clsx'
 import { allocationsApi } from '../../api'
@@ -17,8 +17,8 @@ const PRESET_COLORS = [
   '#ec4899','#eab308','#14b8a6','#22c55e','#10b981',
 ]
 
-interface FormState { name:string; icon:string; color:string; categoryIds:string[] }
-const EMPTY: FormState = { name:'', icon:'salary', color:'#6366f1', categoryIds:[] }
+interface FormState { name:string; icon:string; color:string; categoryIds:string[]; incomeCategoryIds:string[] }
+const EMPTY: FormState = { name:'', icon:'salary', color:'#6366f1', categoryIds:[], incomeCategoryIds:[] }
 
 export default function AllocationManager() {
   const t = useT()
@@ -38,28 +38,62 @@ export default function AllocationManager() {
   const closeConfirm = () => setConfirmState(s => ({ ...s, open: false }))
 
   const allExpenseCats = categories?.filter(c => c.type === 'expense') ?? []
+  const allIncomeCats  = categories?.filter(c => c.type === 'income')  ?? []
+
+  // ── Derive which category IDs are claimed by OTHER wallets ──
+  // When editing, exclude the current wallet so its own categories stay selectable.
+  const takenCategoryIds = new Set<string>(
+    (allocations ?? [])
+      .filter(a => a.id !== editId)          // exclude the wallet being edited
+      .flatMap(a => [...a.categories.map(c => c.id), ...a.incomeCategories.map(c => c.id)])
+  )
+
+  // Which wallet owns a given category (for tooltip text)
+  const categoryOwner = (catId: string): string => {
+    const owner = (allocations ?? []).find(
+      a => a.id !== editId && (
+        a.categories.some(c => c.id === catId) ||
+        a.incomeCategories.some(c => c.id === catId)
+      )
+    )
+    return owner?.name ?? ''
+  }
 
   const startAdd = () => { setEditId(null); setForm(EMPTY); setShowAdd(true) }
   const startEdit = (a: Allocation) => {
     setShowAdd(false); setEditId(a.id)
     setForm({ name: a.name, icon: a.icon??'💼', color: a.color??'#6366f1',
-              categoryIds: a.categories.map(c => c.id) })
+              categoryIds: a.categories.map(c => c.id),
+              incomeCategoryIds: a.incomeCategories.map(c => c.id) })
   }
   const cancel = () => { setShowAdd(false); setEditId(null) }
 
-  const toggleCat = (id: string) =>
+  const toggleCat = (id: string) => {
+    if (takenCategoryIds.has(id)) return   // guard — should not happen via UI
     setForm(f => ({
       ...f,
       categoryIds: f.categoryIds.includes(id)
         ? f.categoryIds.filter(x => x !== id)
         : [...f.categoryIds, id],
     }))
+  }
+
+  const toggleIncomeCat = (id: string) => {
+    if (takenCategoryIds.has(id)) return
+    setForm(f => ({
+      ...f,
+      incomeCategoryIds: f.incomeCategoryIds.includes(id)
+        ? f.incomeCategoryIds.filter(x => x !== id)
+        : [...f.incomeCategoryIds, id],
+    }))
+  }
 
   const handleSave = async () => {
     if (!form.name.trim()) return
     setSaving(true)
     try {
-      const payload = { name:form.name.trim(), icon:form.icon, color:form.color, categoryIds:form.categoryIds }
+      const payload = { name:form.name.trim(), icon:form.icon, color:form.color,
+                        categoryIds:form.categoryIds, incomeCategoryIds:form.incomeCategoryIds }
       editId ? await allocationsApi.update(editId, payload) : await allocationsApi.create(payload)
       cancel(); refetch()
     } finally { setSaving(false) }
@@ -124,25 +158,94 @@ export default function AllocationManager() {
             </div>
           </div>
 
-          {/* Linked Categories */}
+          {/* Linked Categories — Expense */}
           <div>
-            <p className="text-[10px] font-semibold text-muted-theme mb-1 uppercase tracking-wide">{t('linked_cats')}</p>
-            <p className="text-[10px] text-muted-theme mb-2">{t('linked_cats_desc')}</p>
+            <p className="text-[10px] font-semibold text-muted-theme mb-1 uppercase tracking-wide">{t('linked_expense_cats')}</p>
+            <p className="text-[10px] text-muted-theme mb-2">{t('linked_expense_cats_desc')}</p>
             {loadingC ? <Skeleton className="h-10 w-full" /> : (
               <div className="flex flex-wrap gap-2">
                 {allExpenseCats.map(cat => {
-                  const sel = form.categoryIds.includes(cat.id)
+                  const sel    = form.categoryIds.includes(cat.id)
+                  const taken  = takenCategoryIds.has(cat.id)
+                  const owner  = taken ? categoryOwner(cat.id) : ''
+
                   return (
-                    <button key={cat.id} type="button" onClick={() => toggleCat(cat.id)}
-                      className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
-                        sel ? 'text-white' : 'bg-slate-100 dark:bg-slate-700 text-muted-theme hover:bg-slate-200 dark:hover:bg-slate-600')}
-                      style={sel ? { backgroundColor: form.color } : {}}>
-                      <IconDisplay icon={cat.icon} size="sm" />
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => !taken && toggleCat(cat.id)}
+                      disabled={taken}
+                      title={taken ? `ผูกกับ "${owner}" แล้ว` : undefined}
+                      className={clsx(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                        taken
+                          ? 'bg-slate-100 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
+                          : sel
+                            ? 'text-white'
+                            : 'bg-slate-100 dark:bg-slate-700 text-muted-theme hover:bg-slate-200 dark:hover:bg-slate-600',
+                      )}
+                      style={!taken && sel ? { backgroundColor: form.color } : {}}
+                    >
+                      {taken
+                        ? <Icon path={mdiLockOutline} size={0.45} />
+                        : <IconDisplay icon={cat.icon} size="sm" />
+                      }
                       {cat.name}
-                      {sel && <Icon path={mdiCheck} size={0.5} />}
+                      {sel && !taken && <Icon path={mdiCheck} size={0.5} />}
                     </button>
                   )
                 })}
+              </div>
+            )}
+          </div>
+
+          {/* Linked Categories — Income */}
+          <div>
+            <p className="text-[10px] font-semibold text-muted-theme mb-1 uppercase tracking-wide">{t('linked_income_cats')}</p>
+            <p className="text-[10px] text-muted-theme mb-2">{t('linked_income_cats_desc')}</p>
+            {loadingC ? <Skeleton className="h-10 w-full" /> : (
+              <div className="flex flex-wrap gap-2">
+                {allIncomeCats.map(cat => {
+                  const sel    = form.incomeCategoryIds.includes(cat.id)
+                  const taken  = takenCategoryIds.has(cat.id)
+                  const owner  = taken ? categoryOwner(cat.id) : ''
+
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => !taken && toggleIncomeCat(cat.id)}
+                      disabled={taken}
+                      title={taken ? `ผูกกับ "${owner}" แล้ว` : undefined}
+                      className={clsx(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all',
+                        taken
+                          ? 'bg-slate-100 dark:bg-slate-700/60 text-slate-400 dark:text-slate-500 cursor-not-allowed opacity-60'
+                          : sel
+                            ? 'text-white'
+                            : 'bg-slate-100 dark:bg-slate-700 text-muted-theme hover:bg-slate-200 dark:hover:bg-slate-600',
+                      )}
+                      style={!taken && sel ? { backgroundColor: form.color } : {}}
+                    >
+                      {taken
+                        ? <Icon path={mdiLockOutline} size={0.45} />
+                        : <IconDisplay icon={cat.icon} size="sm" />
+                      }
+                      {cat.name}
+                      {sel && !taken && <Icon path={mdiCheck} size={0.5} />}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Legend: explain the lock icon if any taken categories exist */}
+            {!loadingC && takenCategoryIds.size > 0 && (
+              <div className="flex items-center gap-1.5 mt-2">
+                <Icon path={mdiLockOutline} size={0.45} color="#94a3b8" />
+                <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                  หมวดที่ผูกกับซองเงินอื่นแล้ว — ไม่สามารถเลือกซ้ำได้
+                </p>
               </div>
             )}
           </div>
@@ -188,7 +291,7 @@ export default function AllocationManager() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-base-theme truncate">{a.name}</p>
                     <p className="text-xs text-muted-theme">
-                      ฿{Number(a.balance).toLocaleString()} · {a.categories.length} {a.categories.length!==1?t('categorys_pl'):t('categorys')}
+                      ฿{Number(a.balance).toLocaleString()} · {(a.categories.length + a.incomeCategories.length)} {(a.categories.length + a.incomeCategories.length)!==1?t('categorys_pl'):t('categorys')}
                     </p>
                   </div>
                   <button onClick={() => setExpanded(expanded===a.id?null:a.id)}
@@ -204,15 +307,36 @@ export default function AllocationManager() {
                     <Icon path={mdiTrashCan} size={0.6} />
                   </button>
                 </div>
-                {expanded===a.id && a.categories.length>0 && (
-                  <div className="px-5 pb-3 flex flex-wrap gap-1.5 animate-fade-in">
-                    {a.categories.map(c => (
-                      <span key={c.id} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
-                        style={{ backgroundColor:(a.color??'#6366f1')+'18', color:a.color??'#6366f1' }}>
-                        <Icon path={c.icon} size={0.5} />
-                        {c.name}
-                      </span>
-                    ))}
+                {expanded===a.id && (a.categories.length>0 || a.incomeCategories.length>0) && (
+                  <div className="px-5 pb-3 space-y-2 animate-fade-in">
+                    {a.categories.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-theme mb-1 uppercase tracking-wide">{t('linked_expense_cats')}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {a.categories.map(c => (
+                            <span key={c.id} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
+                              style={{ backgroundColor:(a.color??'#6366f1')+'18', color:a.color??'#6366f1' }}>
+                              <IconDisplay icon={c.icon} size="sm" />
+                              {c.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {a.incomeCategories.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-semibold text-muted-theme mb-1 uppercase tracking-wide">{t('linked_income_cats')}</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {a.incomeCategories.map(c => (
+                            <span key={c.id} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium"
+                              style={{ backgroundColor:(a.color??'#6366f1')+'18', color:a.color??'#6366f1' }}>
+                              <IconDisplay icon={c.icon} size="sm" />
+                              {c.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </li>

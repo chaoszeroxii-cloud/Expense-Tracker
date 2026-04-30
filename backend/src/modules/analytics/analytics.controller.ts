@@ -49,4 +49,11 @@ export class AnalyticsController {
   getAllocationSummary(@CurrentUser() user: User) {
     return this.service.getAllocationSummary(user.id)
   }
+
+  // GET /api/analytics/balance
+  // → totalBalance, allocatedBalance, unallocatedBalance
+  @Get('balance')
+  getBalanceSummary(@CurrentUser() user: User) {
+    return this.service.getBalanceSummary(user.id)
+  }
 }

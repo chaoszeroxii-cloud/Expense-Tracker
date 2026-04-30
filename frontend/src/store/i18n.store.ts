@@ -29,6 +29,21 @@ const dict = {
     used:              'used',
     balance:           'Balance · Spent this month',
 
+    // Balance summary (new)
+    total_balance:       'Total Balance',
+    allocated:           'Allocated',
+    unallocated:         'Unallocated',
+    unallocated_funds:   'Unallocated Funds',
+    unallocated_desc:    'Funds not yet assigned to a wallet',
+    move_to_wallet:      'Move to Wallet',
+    move_funds:          'Move Funds',
+    move_amount_ph:      'Amount',
+    distribute:          'Distribute',
+    of_total:            'of total',
+    insufficient_funds:  'Not enough unallocated balance',
+    move_success:        'Funds moved!',
+    all_allocated:       'All funds are allocated',
+
     // Add Expense
     add_transaction:   'Add Transaction',
     expense:           'Expense',
@@ -48,6 +63,7 @@ const dict = {
     save_income:       'Save Income',
     saving:            'Saving…',
     saved:             'Saved!',
+    income_park_info:  'Income goes to your total balance. Distribute to wallets anytime.',
 
     // History
     history:           'History',
@@ -100,6 +116,10 @@ const dict = {
     wallet_name_ph:    'e.g. Food budget, Savings',
     linked_cats:       'Linked Expense Categories',
     linked_cats_desc:  'Expenses in these categories will auto-deduct from this wallet.',
+    linked_expense_cats:       'Expense Categories (Deduct)',
+    linked_expense_cats_desc:  'Expenses in these categories will auto-deduct from this wallet.',
+    linked_income_cats:        'Income Categories (Credit)',
+    linked_income_cats_desc:   'Income in these categories will auto-credit to this wallet.',
     no_wallet_items:   'No wallets yet — add one above',
     delete_wallet:     'Delete this wallet? The balance will be lost.',
     categorys:         'category',
@@ -128,6 +148,21 @@ const dict = {
     used:              'ใช้แล้ว',
     balance:           'ยอดเงิน · ใช้ไปเดือนนี้',
 
+    // Balance summary (new)
+    total_balance:       'ยอดเงินรวม',
+    allocated:           'จัดสรรแล้ว',
+    unallocated:         'รอจัดสรร',
+    unallocated_funds:   'เงินรอจัดสรร',
+    unallocated_desc:    'เงินที่ยังไม่ได้แบ่งเข้าซอง',
+    move_to_wallet:      'แบ่งเข้าซอง',
+    move_funds:          'ย้ายเงิน',
+    move_amount_ph:      'จำนวนเงิน',
+    distribute:          'แบ่งเงิน',
+    of_total:            'จากทั้งหมด',
+    insufficient_funds:  'ยอดเงินรอจัดสรรไม่พอ',
+    move_success:        'ย้ายเงินสำเร็จ!',
+    all_allocated:       'เงินทั้งหมดจัดสรรแล้ว',
+
     // Add Expense
     add_transaction:   'เพิ่มรายการ',
     expense:           'รายจ่าย',
@@ -147,6 +182,7 @@ const dict = {
     save_income:       'บันทึกรายรับ',
     saving:            'กำลังบันทึก…',
     saved:             'บันทึกแล้ว!',
+    income_park_info:  'รายรับจะเข้าสู่ยอดเงินรวม แบ่งเข้าซองได้ในภายหลัง',
 
     // History
     history:           'ประวัติ',
@@ -199,6 +235,10 @@ const dict = {
     wallet_name_ph:    'เช่น เงินกิน, เงินออม',
     linked_cats:       'หมวดหมู่รายจ่ายที่ผูก',
     linked_cats_desc:  'รายจ่ายในหมวดเหล่านี้จะหักจากซองเงินนี้อัตโนมัติ',
+    linked_expense_cats:       'หมวดหมู่รายจ่าย (หักออก)',
+    linked_expense_cats_desc:  'รายจ่ายในหมวดเหล่านี้จะหักจากซองเงินนี้อัตโนมัติ',
+    linked_income_cats:        'หมวดหมู่รายรับ (เพิ่มเข้า)',
+    linked_income_cats_desc:   'รายรับในหมวดเหล่านี้จะเพิ่มเข้าซองเงินนี้อัตโนมัติ',
     no_wallet_items:   'ยังไม่มีซองเงิน — เพิ่มด้านบน',
     delete_wallet:     'ลบซองเงินนี้? ยอดเงินจะหายไป',
     categorys:         'หมวด',

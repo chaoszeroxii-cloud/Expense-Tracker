@@ -97,6 +97,41 @@ export class AllocationsService {
     return { unallocatedBalance: newUnallocated }
   }
 
+  // ── Transfer between wallets ──────────────────────────────────
+  async transferBetweenAllocations(sourceId: string, targetId: string, userId: string, amount: number): Promise<void> {
+    if (amount <= 0) throw new BadRequestException('Amount must be positive')
+    if (sourceId === targetId) throw new BadRequestException('Cannot transfer to the same wallet')
+
+    const source = await this.findOne(sourceId, userId)
+    if (Number(source.balance) < amount) {
+      throw new BadRequestException(`Insufficient balance. Available: ฿${Number(source.balance).toFixed(2)}`)
+    }
+
+    await this.repo.createQueryBuilder()
+      .update(Allocation)
+      .set({ balance: () => `balance - ${amount}` })
+      .where('id = :id AND user_id = :userId', { id: sourceId, userId })
+      .execute()
+
+    await this.credit(targetId, userId, amount)
+  }
+
+  // ── Return wallet funds to unallocated pool ───────────────────
+  async unallocateFromAllocation(allocationId: string, userId: string, amount: number): Promise<void> {
+    if (amount <= 0) throw new BadRequestException('Amount must be positive')
+
+    const allocation = await this.findOne(allocationId, userId)
+    if (Number(allocation.balance) < amount) {
+      throw new BadRequestException(`Insufficient balance. Available: ฿${Number(allocation.balance).toFixed(2)}`)
+    }
+
+    await this.repo.createQueryBuilder()
+      .update(Allocation)
+      .set({ balance: () => `balance - ${amount}` })
+      .where('id = :id AND user_id = :userId', { id: allocationId, userId })
+      .execute()
+  }
+
   // ── Balance mutations (called from ExpensesService) ───────────
 
   /** Add `amount` to a specific allocation (income flow). */

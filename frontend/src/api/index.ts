@@ -111,4 +111,12 @@ export const allocationsApi = {
   // POST /api/allocations/:id/move — move amount from unallocated into a wallet
   moveToAllocation: (id: string, amount: number) =>
     http.post(`/allocations/${id}/move`, { amount }).then(r => r.data),
+
+  // POST /api/allocations/:id/transfer — move funds from one wallet to another
+  transfer: (id: string, targetAllocationId: string, amount: number) =>
+    http.post(`/allocations/${id}/transfer`, { targetAllocationId, amount }).then(r => r.data),
+
+  // POST /api/allocations/:id/unallocate — return wallet funds to unallocated pool
+  unallocate: (id: string, amount: number) =>
+    http.post(`/allocations/${id}/unallocate`, { amount }).then(r => r.data),
 }

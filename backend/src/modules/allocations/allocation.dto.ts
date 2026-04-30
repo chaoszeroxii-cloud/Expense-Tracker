@@ -65,3 +65,14 @@ export class MoveMoneyDto {
   @Type(() => Number)
   amount: number
 }
+
+// ── Transfer funds between two wallets ────────────────────────
+export class TransferMoneyDto {
+  @IsUUID('4')
+  targetAllocationId: string
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'Amount must be greater than 0' })
+  @Type(() => Number)
+  amount: number
+}

@@ -7,6 +7,9 @@ import {
   mdiClose,
   mdiCurrencyUsd,
   mdiProgressCheck,
+  mdiPencilOutline,
+  mdiSwapHorizontal,
+  mdiArrowLeft,
 } from "@mdi/js";
 import clsx from "clsx";
 import {
@@ -329,94 +332,105 @@ function UnallocatedBanner({
 function WalletRow({
   wallet,
   unallocated,
+  otherWallets,
   onMoved,
 }: {
   wallet: Enriched;
   unallocated: number;
+  otherWallets: Enriched[];
   onMoved: () => void;
 }) {
   const t = useT();
-  const [showMove, setShowMove] = useState(false);
-  const [inputAmt, setInputAmt] = useState("");
-  const [moving, setMoving] = useState(false);
-  const [done, setDone] = useState(false);
-  const [errMsg, setErrMsg] = useState("");
 
-  const handleMove = async () => {
-    const n = Number(inputAmt);
+  // "Add from unallocated" panel
+  const [showFund, setShowFund] = useState(false);
+  const [fundAmt, setFundAmt]   = useState("");
+  const [fundBusy, setFundBusy] = useState(false);
+  const [fundDone, setFundDone] = useState(false);
+  const [fundErr, setFundErr]   = useState("");
+
+  // "Adjust" panel (transfer / unallocate)
+  const [showAdj, setShowAdj]     = useState(false);
+  const [adjMode, setAdjMode]     = useState<"transfer" | "unallocate" | null>(null);
+  const [adjAmt, setAdjAmt]       = useState("");
+  const [adjTarget, setAdjTarget] = useState("");
+  const [adjBusy, setAdjBusy]     = useState(false);
+  const [adjDone, setAdjDone]     = useState(false);
+  const [adjErr, setAdjErr]       = useState("");
+
+  const resetAdj = () => {
+    setAdjMode(null);
+    setAdjAmt("");
+    setAdjTarget("");
+    setAdjBusy(false);
+    setAdjDone(false);
+    setAdjErr("");
+  };
+
+  const handleFund = async () => {
+    const n = Number(fundAmt);
     if (!n || n <= 0) return;
-    if (n > unallocated) {
-      setErrMsg("⚠️ " + t("insufficient_funds"));
-      return;
-    }
-    setMoving(true);
-    setErrMsg("");
+    if (n > unallocated) { setFundErr("⚠️ " + t("insufficient_funds")); return; }
+    setFundBusy(true); setFundErr("");
     try {
       await allocationsApi.moveToAllocation(wallet.id, n);
-      setDone(true);
-      setTimeout(() => {
-        setDone(false);
-        setShowMove(false);
-        setInputAmt("");
-        onMoved();
-      }, 800);
+      setFundDone(true);
+      setTimeout(() => { setFundDone(false); setShowFund(false); setFundAmt(""); onMoved(); }, 800);
     } catch (e: any) {
-      setErrMsg(e?.response?.data?.message ?? "Error");
-    } finally {
-      setMoving(false);
-    }
+      setFundErr(e?.response?.data?.message ?? "Error");
+    } finally { setFundBusy(false); }
+  };
+
+  const handleAdjust = async () => {
+    const n = Number(adjAmt);
+    if (!n || n <= 0) return;
+    if (n > Number(wallet.balance)) { setAdjErr("⚠️ " + t("insufficient_funds")); return; }
+    if (adjMode === "transfer" && !adjTarget) return;
+    setAdjBusy(true); setAdjErr("");
+    try {
+      if (adjMode === "transfer") {
+        await allocationsApi.transfer(wallet.id, adjTarget, n);
+      } else {
+        await allocationsApi.unallocate(wallet.id, n);
+      }
+      setAdjDone(true);
+      setTimeout(() => { setAdjDone(false); setShowAdj(false); resetAdj(); onMoved(); }, 800);
+    } catch (e: any) {
+      setAdjErr(e?.response?.data?.message ?? "Error");
+    } finally { setAdjBusy(false); }
   };
 
   const barColor =
-    wallet.usagePercent > 80
-      ? "#f43f5e"
-      : wallet.usagePercent > 50
-        ? "#f97316"
-        : (wallet.color ?? "#6366f1");
+    wallet.usagePercent > 80 ? "#f43f5e"
+    : wallet.usagePercent > 50 ? "#f97316"
+    : (wallet.color ?? "#6366f1");
+
+  const walletBalance = Number(wallet.balance);
 
   return (
     <li>
+      {/* Main row */}
       <div className="flex items-center gap-3 px-5 py-3">
-        {/* Icon */}
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: (wallet.color ?? "#6366f1") + "22" }}
         >
-          <IconDisplay
-            icon={wallet.icon ?? "💼"}
-            color={wallet.color}
-            size="md"
-          />
+          <IconDisplay icon={wallet.icon ?? "💼"} color={wallet.color} size="md" />
         </div>
 
-        {/* Info */}
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline justify-between gap-1 mb-1">
-            <p className="text-sm font-semibold text-base-theme truncate">
-              {wallet.name}
-            </p>
-            <p className="text-sm font-bold text-base-theme flex-shrink-0">
-              ฿{fmt(Number(wallet.balance))}
-            </p>
+            <p className="text-sm font-semibold text-base-theme truncate">{wallet.name}</p>
+            <p className="text-sm font-bold text-base-theme flex-shrink-0">฿{fmt(walletBalance)}</p>
           </div>
-          {/* Mini progress bar */}
           <div className="h-1 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${wallet.usagePercent}%`,
-                backgroundColor: barColor,
-              }}
-            />
+            <div className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${wallet.usagePercent}%`, backgroundColor: barColor }} />
           </div>
           <div className="flex items-center justify-between mt-0.5">
             <span className="text-[10px] text-muted-theme">
-              {getCombinedCategories(wallet)
-                .slice(0, 3)
-                .map((c) => c.name)
-                .join(", ")}
-              {getCombinedCategories(wallet).length > 3 &&
-                ` +${getCombinedCategories(wallet).length - 3}`}
+              {getCombinedCategories(wallet).slice(0, 3).map((c) => c.name).join(", ")}
+              {getCombinedCategories(wallet).length > 3 && ` +${getCombinedCategories(wallet).length - 3}`}
             </span>
             {wallet.spentThisMonth > 0 && (
               <span className="text-[10px] text-rose-400 font-medium">
@@ -426,33 +440,44 @@ function WalletRow({
           </div>
         </div>
 
-        {/* Add funds button (only if there are unallocated funds) */}
-        {unallocated > 0 && (
-          <button
-            onClick={() => {
-              setShowMove((v) => !v);
-              setInputAmt("");
-              setErrMsg("");
-            }}
-            className={clsx(
-              "flex-shrink-0 w-8 h-8 rounded-xl flex items-center justify-center transition-all",
-              showMove
-                ? "bg-brand-100 dark:bg-brand-900/40 text-brand-600"
-                : "bg-slate-100 dark:bg-slate-700 text-muted-theme hover:text-brand-500",
-            )}
-            title={t("move_to_wallet")}
-          >
-            <Icon path={mdiArrowRight} size={0.65} />
-          </button>
-        )}
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Adjust button (pencil) — shown when wallet has balance */}
+          {walletBalance > 0 && (
+            <button
+              onClick={() => { setShowAdj((v) => !v); setShowFund(false); resetAdj(); }}
+              className={clsx(
+                "w-8 h-8 rounded-xl flex items-center justify-center transition-all",
+                showAdj
+                  ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600"
+                  : "bg-slate-100 dark:bg-slate-700 text-muted-theme hover:text-indigo-500",
+              )}
+              title={t("adjust_wallet")}
+            >
+              <Icon path={mdiPencilOutline} size={0.6} />
+            </button>
+          )}
+          {/* Fund button (arrow) — shown when unallocated > 0 */}
+          {unallocated > 0 && (
+            <button
+              onClick={() => { setShowFund((v) => !v); setShowAdj(false); setFundAmt(""); setFundErr(""); }}
+              className={clsx(
+                "w-8 h-8 rounded-xl flex items-center justify-center transition-all",
+                showFund
+                  ? "bg-brand-100 dark:bg-brand-900/40 text-brand-600"
+                  : "bg-slate-100 dark:bg-slate-700 text-muted-theme hover:text-brand-500",
+              )}
+              title={t("move_to_wallet")}
+            >
+              <Icon path={mdiArrowRight} size={0.65} />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Inline move form */}
-      {showMove && (
-        <div
-          className="mx-5 mb-3 p-3 rounded-2xl bg-brand-50 dark:bg-brand-900/20
-                        border border-brand-100 dark:border-brand-800 animate-fade-up"
-        >
+      {/* Fund panel: add from unallocated */}
+      {showFund && (
+        <div className="mx-5 mb-3 p-3 rounded-2xl bg-brand-50 dark:bg-brand-900/20
+                        border border-brand-100 dark:border-brand-800 animate-fade-up">
           <p className="text-[10px] font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wide mb-2">
             {t("move_to_wallet")} → {wallet.name}
             <span className="ml-2 font-normal text-muted-theme normal-case">
@@ -461,57 +486,165 @@ function WalletRow({
           </p>
           <div className="flex gap-2">
             <div className="flex-1 relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-theme">
-                ฿
-              </span>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={1}
-                max={unallocated}
-                placeholder="0"
-                value={inputAmt}
-                onChange={(e) => {
-                  setInputAmt(e.target.value);
-                  setErrMsg("");
-                }}
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-theme">฿</span>
+              <input type="number" inputMode="decimal" min={1} max={unallocated} placeholder="0"
+                value={fundAmt} onChange={(e) => { setFundAmt(e.target.value); setFundErr(""); }}
                 className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
-                           text-sm font-semibold text-base-theme outline-none
-                           focus:border-brand-400 transition-all"
-              />
+                           text-sm font-semibold text-base-theme outline-none focus:border-brand-400 transition-all" />
             </div>
-            <button
-              type="button"
-              onClick={() => setInputAmt(String(unallocated))}
-              className="px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-xs font-bold text-muted-theme"
-            >
+            <button type="button" onClick={() => setFundAmt(String(unallocated))}
+              className="px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-xs font-bold text-muted-theme">
               Max
             </button>
-            <button
-              onClick={handleMove}
-              disabled={moving || done || !inputAmt || Number(inputAmt) <= 0}
+            <button onClick={handleFund} disabled={fundBusy || fundDone || !fundAmt || Number(fundAmt) <= 0}
               className={clsx(
                 "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all",
-                done
-                  ? "bg-emerald-500"
-                  : moving
-                    ? "bg-brand-300 cursor-not-allowed"
-                    : !inputAmt
-                      ? "bg-slate-200 dark:bg-slate-600 cursor-not-allowed"
-                      : "bg-brand-600 active:bg-brand-700",
-              )}
-            >
-              <Icon
-                path={done ? mdiCheck : mdiArrowRight}
-                size={0.65}
-                color="white"
-              />
+                fundDone ? "bg-emerald-500"
+                : fundBusy ? "bg-brand-300 cursor-not-allowed"
+                : !fundAmt ? "bg-slate-200 dark:bg-slate-600 cursor-not-allowed"
+                : "bg-brand-600 active:bg-brand-700",
+              )}>
+              <Icon path={fundDone ? mdiCheck : mdiArrowRight} size={0.65} color="white" />
             </button>
           </div>
-          {errMsg && (
-            <p className="text-[10px] text-rose-500 mt-1.5 font-medium">
-              {errMsg}
-            </p>
+          {fundErr && <p className="text-[10px] text-rose-500 mt-1.5 font-medium">{fundErr}</p>}
+        </div>
+      )}
+
+      {/* Adjust panel: transfer / unallocate */}
+      {showAdj && (
+        <div className="mx-5 mb-3 p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-900/20
+                        border border-indigo-100 dark:border-indigo-800 animate-fade-up">
+
+          {/* Mode selection */}
+          {adjMode === null && (
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide mb-2">
+                {wallet.name} · ฿{fmt(walletBalance)}
+              </p>
+              {otherWallets.length > 0 && (
+                <button onClick={() => setAdjMode("transfer")}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
+                             bg-white dark:bg-slate-700 border border-indigo-100 dark:border-indigo-700 text-left
+                             hover:border-indigo-400 transition-all">
+                  <Icon path={mdiSwapHorizontal} size={0.75} color="#6366f1" />
+                  <div>
+                    <p className="text-xs font-bold text-base-theme">{t("transfer_to_wallet")}</p>
+                    <p className="text-[10px] text-muted-theme">{t("transfer_to_wallet_desc")}</p>
+                  </div>
+                </button>
+              )}
+              <button onClick={() => setAdjMode("unallocate")}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
+                           bg-white dark:bg-slate-700 border border-indigo-100 dark:border-indigo-700 text-left
+                           hover:border-amber-400 transition-all">
+                <Icon path={mdiArrowLeft} size={0.75} color="#f59e0b" />
+                <div>
+                  <p className="text-xs font-bold text-base-theme">{t("return_to_unalloc")}</p>
+                  <p className="text-[10px] text-muted-theme">{t("return_to_unalloc_desc")}</p>
+                </div>
+              </button>
+            </div>
+          )}
+
+          {/* Transfer form */}
+          {adjMode === "transfer" && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <button onClick={() => { setAdjMode(null); setAdjAmt(""); setAdjTarget(""); setAdjErr(""); }}
+                  className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                  <Icon path={mdiClose} size={0.5} />
+                </button>
+                <p className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">
+                  {t("transfer_to_wallet")}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {otherWallets.map((w) => (
+                  <button key={w.id} onClick={() => setAdjTarget(w.id)}
+                    className={clsx(
+                      "flex items-center gap-2 px-2.5 py-2 rounded-xl border-2 transition-all text-left",
+                      adjTarget === w.id
+                        ? "border-indigo-500 bg-indigo-100 dark:bg-indigo-800/40"
+                        : "border-transparent bg-white dark:bg-slate-700/50",
+                    )}>
+                    <IconDisplay icon={w.icon ?? "💼"} color={w.color} size="sm" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-base-theme truncate">{w.name}</p>
+                      <p className="text-[10px] text-muted-theme">฿{fmt(Number(w.balance))}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-theme">฿</span>
+                  <input type="number" inputMode="decimal" min={1} max={walletBalance} placeholder="0"
+                    value={adjAmt} onChange={(e) => { setAdjAmt(e.target.value); setAdjErr(""); }}
+                    className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
+                               text-sm font-semibold text-base-theme outline-none focus:border-indigo-400 transition-all" />
+                </div>
+                <button type="button" onClick={() => setAdjAmt(String(walletBalance))}
+                  className="px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-xs font-bold text-muted-theme">
+                  Max
+                </button>
+                <button onClick={handleAdjust}
+                  disabled={adjBusy || adjDone || !adjAmt || !adjTarget || Number(adjAmt) <= 0}
+                  className={clsx(
+                    "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all",
+                    adjDone ? "bg-emerald-500"
+                    : adjBusy ? "bg-indigo-300 cursor-not-allowed"
+                    : (!adjAmt || !adjTarget) ? "bg-slate-200 dark:bg-slate-600 cursor-not-allowed"
+                    : "bg-indigo-600 active:bg-indigo-700",
+                  )}>
+                  <Icon path={adjDone ? mdiCheck : mdiSwapHorizontal} size={0.65} color="white" />
+                </button>
+              </div>
+              {adjErr && <p className="text-[10px] text-rose-500 mt-1.5 font-medium">{adjErr}</p>}
+            </div>
+          )}
+
+          {/* Unallocate form */}
+          {adjMode === "unallocate" && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 mb-2">
+                <button onClick={() => { setAdjMode(null); setAdjAmt(""); setAdjErr(""); }}
+                  className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                  <Icon path={mdiClose} size={0.5} />
+                </button>
+                <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wide">
+                  {t("return_to_unalloc")}
+                </p>
+              </div>
+              <p className="text-[10px] text-muted-theme">
+                {wallet.name}: ฿{fmt(walletBalance)}
+              </p>
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-theme">฿</span>
+                  <input type="number" inputMode="decimal" min={1} max={walletBalance} placeholder="0"
+                    value={adjAmt} onChange={(e) => { setAdjAmt(e.target.value); setAdjErr(""); }}
+                    className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
+                               text-sm font-semibold text-base-theme outline-none focus:border-amber-400 transition-all" />
+                </div>
+                <button type="button" onClick={() => setAdjAmt(String(walletBalance))}
+                  className="px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-xs font-bold text-muted-theme">
+                  Max
+                </button>
+                <button onClick={handleAdjust}
+                  disabled={adjBusy || adjDone || !adjAmt || Number(adjAmt) <= 0}
+                  className={clsx(
+                    "w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all",
+                    adjDone ? "bg-emerald-500"
+                    : adjBusy ? "bg-amber-300 cursor-not-allowed"
+                    : !adjAmt ? "bg-slate-200 dark:bg-slate-600 cursor-not-allowed"
+                    : "bg-amber-500 active:bg-amber-600",
+                  )}>
+                  <Icon path={adjDone ? mdiCheck : mdiArrowLeft} size={0.65} color="white" />
+                </button>
+              </div>
+              {adjErr && <p className="text-[10px] text-rose-500 mt-1.5 font-medium">{adjErr}</p>}
+            </div>
           )}
         </div>
       )}
@@ -609,6 +742,7 @@ export default function AllocationWallets() {
               key={wallet.id}
               wallet={wallet}
               unallocated={unallocated}
+              otherWallets={enriched.filter((w) => w.id !== wallet.id)}
               onMoved={refetchAll}
             />
           ))}

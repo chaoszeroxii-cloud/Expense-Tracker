@@ -35,6 +35,11 @@ export default function AddExpense() {
     ? allocations?.find(a => a.categories.some(c => c.id === categoryId))
     : null
 
+  // For income: find which wallet will be credited
+  const linkedIncomeAlloc = type === 'income' && categoryId
+    ? allocations?.find(a => a.incomeCategories?.some(c => c.id === categoryId))
+    : null
+
   const handleTypeChange = (tp: EntryType) => { setType(tp); setCatId('') }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -123,8 +128,37 @@ export default function AddExpense() {
           </div>
         </div>
 
-        {/* Income: info banner — no wallet required */}
-        {type === 'income' && (
+        {/* Income: wallet credit preview (if category linked) or general info */}
+        {type === 'income' && categoryId && (
+          <div className={clsx(
+            'rounded-2xl px-4 py-3 flex items-center gap-3 animate-fade-up',
+            linkedIncomeAlloc
+              ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800'
+              : 'bg-slate-50 dark:bg-slate-800 border border-theme',
+          )}>
+            <Icon path={mdiWallet} size={0.8} color={linkedIncomeAlloc ? '#10b981' : '#94a3b8'} />
+            {linkedIncomeAlloc ? (
+              <div>
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+                  {t('will_credit')}
+                  <IconDisplay icon={linkedIncomeAlloc.icon} size="sm" />
+                  {linkedIncomeAlloc.name}
+                </p>
+                <p className="text-[10px] text-emerald-500 mt-0.5">
+                  {t('income_linked_info')}
+                  {amount && Number(amount) > 0 && (
+                    <span className="ml-1 text-emerald-400">
+                      ฿{Number(linkedIncomeAlloc.balance).toLocaleString()} → ฿{(Number(linkedIncomeAlloc.balance) + Number(amount)).toLocaleString()} {t('after')}
+                    </span>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-theme font-medium">{t('income_park_info')}</p>
+            )}
+          </div>
+        )}
+        {type === 'income' && !categoryId && (
           <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-900/20
                           border border-emerald-100 dark:border-emerald-800
                           rounded-2xl px-4 py-3 animate-fade-up">

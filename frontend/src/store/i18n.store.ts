@@ -124,6 +124,19 @@ const dict = {
     delete_wallet:     'Delete this wallet? The balance will be lost.',
     categorys:         'category',
     categorys_pl:      'categories',
+
+    // Wallet adjust (transfer / unallocate)
+    adjust_wallet:          'Adjust',
+    transfer_to_wallet:     'Transfer to Wallet',
+    transfer_to_wallet_desc:'Move balance to another wallet',
+    return_to_unalloc:      'Return to Unallocated',
+    return_to_unalloc_desc: 'Move balance back to unallocated pool',
+    transfer_success:       'Transferred!',
+    unallocate_success:     'Returned!',
+
+    // Income wallet credit preview
+    will_credit:        'Will credit to:',
+    income_linked_info: 'Income will be added to this wallet automatically.',
   },
   th: {
     // Nav
@@ -243,6 +256,19 @@ const dict = {
     delete_wallet:     'ลบซองเงินนี้? ยอดเงินจะหายไป',
     categorys:         'หมวด',
     categorys_pl:      'หมวด',
+
+    // Wallet adjust (transfer / unallocate)
+    adjust_wallet:          'ปรับ',
+    transfer_to_wallet:     'โอนเข้าซองอื่น',
+    transfer_to_wallet_desc:'ย้ายยอดระหว่างซองเงิน',
+    return_to_unalloc:      'คืนเป็นรอจัดสรร',
+    return_to_unalloc_desc: 'คืนยอดกลับสู่เงินรอจัดสรร',
+    transfer_success:       'โอนแล้ว!',
+    unallocate_success:     'คืนแล้ว!',
+
+    // Income wallet credit preview
+    will_credit:        'จะเข้าซอง:',
+    income_linked_info: 'รายรับจะเพิ่มเข้าซองนี้อัตโนมัติ',
   },
 } as const
 

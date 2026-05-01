@@ -28,6 +28,10 @@ async function bootstrap(): Promise<INestApplication> {
 }
 
 export default async function handler(req: any, res: any) {
+  // Strip Vercel Services route prefix before passing to NestJS
+  if (req.url?.startsWith('/_/backend')) {
+    req.url = req.url.slice('/_/backend'.length) || '/'
+  }
   const app = await bootstrap()
   app.getHttpAdapter().getInstance()(req, res)
 }

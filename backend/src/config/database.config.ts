@@ -8,7 +8,7 @@ export const databaseConfig = (): TypeOrmModuleOptions => {
   const base: Partial<TypeOrmModuleOptions> = {
     type: 'postgres',
     entities: [User, Category, Expense, Allocation],
-    synchronize: process.env.NODE_ENV !== 'production',
+    synchronize: process.env.DB_SYNC === 'true' || process.env.NODE_ENV !== 'production',
     logging: process.env.NODE_ENV === 'development',
   }
 

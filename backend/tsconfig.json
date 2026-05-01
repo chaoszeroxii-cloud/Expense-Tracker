@@ -14,5 +14,6 @@
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false
-  }
+  },
+  "exclude": ["node_modules", "dist", "api"]
 }

@@ -60,7 +60,18 @@ export default defineConfig({
     }),
   ],
 
-    server: {
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split recharts (~1.2MB) into its own chunk — loaded only with charts
+          recharts: ['recharts'],
+        },
+      },
+    },
+  },
+
+  server: {
       host: '0.0.0.0',
       port: 5173,
       proxy: {

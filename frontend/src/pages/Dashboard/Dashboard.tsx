@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import Icon from '@mdi/react'
 import {
   mdiTrendingDown, mdiTrendingUp, mdiWallet,
@@ -8,10 +8,12 @@ import {
 } from '@mdi/js'
 import { Card, Skeleton, Amount } from '../../components/ui'
 import SpendingPieChart from '../../components/charts/SpendingPieChart'
-import TrendSection from '../../components/charts/TrendSection'
 import AllocationWallets from '../../components/allocations/AllocationWallets'
 import { useSummary, useCategoryBreakdown, useMonthlyTrend, currentMonth } from '../../hooks'
 import { useT } from '../../store/i18n.store'
+
+// Lazy-loaded heavy chart section (pulls in recharts)
+const TrendSection = lazy(() => import('../../components/charts/TrendSection'))
 
 function monthOffset(base: string, offset: number): string {
   const [y, m] = base.split('-').map(Number)
@@ -143,12 +145,14 @@ export default function Dashboard() {
       </Card>
 
       {/* ── 12-Month Trend (collapsible + analysis) ── */}
-      <TrendSection
-        trend={trend}
-        loadingTrend={loadingTrend}
-        categories={categories}
-        lang={lang}
-      />
+      <Suspense fallback={<Skeleton className="h-44 w-full rounded-3xl" />}>
+        <TrendSection
+          trend={trend}
+          loadingTrend={loadingTrend}
+          categories={categories}
+          lang={lang}
+        />
+      </Suspense>
 
       {/* ── Wallet Balances ── */}
       <AllocationWallets />

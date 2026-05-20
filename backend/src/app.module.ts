@@ -9,8 +9,10 @@ import { CategoriesModule } from './modules/categories/categories.module'
 import { AnalyticsModule } from './modules/analytics/analytics.module'
 import { AllocationsModule } from './modules/allocations/allocations.module'
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard'
+import { HealthController } from './health.controller'
 
 @Module({
+  controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync({ useFactory: databaseConfig }),

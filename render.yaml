@@ -6,6 +6,7 @@ services:
     rootDir: backend
     buildCommand: npm install && npm run build
     startCommand: node dist/main
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production

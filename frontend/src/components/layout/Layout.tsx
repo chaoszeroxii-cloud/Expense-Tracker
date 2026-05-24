@@ -30,7 +30,17 @@ export default function Layout() {
         <div className="px-6 py-5 border-b border-[var(--border)]">
           <span className="text-xl font-extrabold text-brand-600">MoneyFlow</span>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        <div className="px-3 pt-4 pb-2">
+          <button
+            onClick={() => navigate('/add')}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-brand-600 text-white font-semibold text-sm
+                       hover:bg-brand-700 active:scale-95 transition-all"
+          >
+            <Icon path={mdiPlus} size={0.85} color="white" />
+            เพิ่มรายการ
+          </button>
+        </div>
+        <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
           {NAV.map(item => (
             <SideNavItem key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey as any)} />
           ))}

@@ -15,6 +15,7 @@ export class LoansService {
     return this.loanRepo.save(
       this.loanRepo.create({
         userId,
+        direction: dto.direction ?? 'lent',
         borrower: dto.borrower,
         amount: dto.amount,
         note: dto.note,
@@ -78,13 +79,12 @@ export class LoansService {
 
   async getDashboardSummary(userId: string) {
     const active = await this.findActive(userId)
-    const totalLent = active.reduce((s, l) => s + l.amount, 0)
-    const totalPaid = active.reduce((s, l) => s + l.paidAmount, 0)
+    const lentActive = active.filter(l => l.direction === 'lent')
+    const borrowedActive = active.filter(l => l.direction === 'borrowed')
     return {
       activeLoans: active.length,
-      totalLent,
-      totalPaid,
-      totalOutstanding: totalLent - totalPaid,
+      totalOutstanding: lentActive.reduce((s, l) => s + l.outstanding, 0),
+      totalOwed: borrowedActive.reduce((s, l) => s + l.outstanding, 0),
       loans: active,
     }
   }
@@ -94,6 +94,7 @@ export class LoansService {
     const amount = parseFloat(loan.amount as any)
     return {
       id: loan.id,
+      direction: loan.direction ?? 'lent',
       borrower: loan.borrower,
       amount,
       paidAmount,

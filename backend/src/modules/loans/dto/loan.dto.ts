@@ -1,6 +1,10 @@
-import { IsString, IsNumber, IsPositive, IsOptional, IsDateString, MaxLength } from 'class-validator'
+import { IsString, IsNumber, IsPositive, IsOptional, IsDateString, MaxLength, IsIn } from 'class-validator'
 
 export class CreateLoanDto {
+  @IsString()
+  @IsIn(['lent', 'borrowed'])
+  direction: 'lent' | 'borrowed'
+
   @IsString()
   @MaxLength(100)
   borrower: string

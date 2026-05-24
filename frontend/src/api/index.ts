@@ -153,7 +153,7 @@ export const loansApi = {
   getSummary: () =>
     http.get<LoanSummary>('/loans/summary').then(r => r.data),
 
-  create: (payload: { borrower: string; amount: number; note?: string; lentAt: string; dueDate?: string }) =>
+  create: (payload: { direction: 'lent' | 'borrowed'; borrower: string; amount: number; note?: string; lentAt: string; dueDate?: string }) =>
     http.post<Loan>('/loans', payload).then(r => r.data),
 
   addPayment: (id: string, payload: { amount: number; paidAt: string; note?: string }) =>

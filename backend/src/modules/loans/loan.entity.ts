@@ -16,6 +16,9 @@ export class Loan {
   @JoinColumn({ name: 'user_id' })
   user: User
 
+  @Column({ length: 10, default: 'lent' })
+  direction: string   // 'lent' = เราให้ยืม | 'borrowed' = เรายืมมา
+
   @Column({ length: 100 })
   borrower: string
 

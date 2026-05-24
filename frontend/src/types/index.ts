@@ -109,6 +109,7 @@ export interface LoanPayment {
 
 export interface Loan {
   id: string
+  direction: 'lent' | 'borrowed'
   borrower: string
   amount: number
   paidAmount: number
@@ -122,9 +123,8 @@ export interface Loan {
 
 export interface LoanSummary {
   activeLoans: number
-  totalLent: number
-  totalPaid: number
   totalOutstanding: number
+  totalOwed: number
   loans: Loan[]
 }
 

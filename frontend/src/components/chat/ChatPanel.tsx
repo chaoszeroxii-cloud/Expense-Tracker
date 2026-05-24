@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
   mdiClose, mdiSend, mdiImage, mdiTrashCanOutline,
@@ -7,6 +8,7 @@ import {
 import { chatApi } from '../../api'
 import type { ChatMessage } from '../../types'
 import { useAuthStore } from '../../store/auth.store'
+import { useThemeStore } from '../../store/theme.store'
 
 interface Props {
   onClose: () => void
@@ -19,15 +21,45 @@ interface LocalMessage extends ChatMessage {
   extractedBill?: any
 }
 
+// Parse [THEME:x] and [NAVIGATE:/path] markers from AI response
+function parseMarkers(text: string): { clean: string; theme?: 'light' | 'dark'; navigate?: string; navReason?: string } {
+  let clean = text
+  let theme: 'light' | 'dark' | undefined
+  let navigate: string | undefined
+  let navReason: string | undefined
+
+  const themeMatch = clean.match(/\[THEME:(light|dark)\]/i)
+  if (themeMatch) {
+    theme = themeMatch[1] as 'light' | 'dark'
+    clean = clean.replace(themeMatch[0], '').trim()
+  }
+
+  const navMatch = clean.match(/\[NAVIGATE:([^\]]+)\]/i)
+  if (navMatch) {
+    navigate = navMatch[1]
+    clean = clean.replace(navMatch[0], '').trim()
+  }
+
+  return { clean, theme, navigate, navReason }
+}
+
 export default function ChatPanel({ onClose }: Props) {
   const user = useAuthStore(s => s.user)
+  const setTheme = useThemeStore(s => s.setTheme)
+  const navigate = useNavigate()
   const [messages, setMessages] = useState<LocalMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [pendingBill, setPendingBill] = useState<any>(null)
+  const [toast, setToast] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const showToast = (msg: string) => {
+    setToast(msg)
+    setTimeout(() => setToast(null), 3000)
+  }
 
   const scrollBottom = () => bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
 
@@ -56,8 +88,20 @@ export default function ChatPanel({ onClose }: Props) {
 
     try {
       const res = await chatApi.sendMessage(text, { userName: user?.name })
+      const { clean, theme, navigate: navPath } = parseMarkers(res.message)
+
+      // Execute UI actions from markers
+      if (theme) {
+        setTheme(theme)
+        showToast(`เปลี่ยนเป็น ${theme === 'dark' ? 'Dark' : 'Light'} mode แล้ว`)
+      }
+      if (navPath) {
+        showToast(`กำลังพาไปที่ ${navPath}...`)
+        setTimeout(() => { navigate(navPath); onClose() }, 800)
+      }
+
       setMessages(prev =>
-        prev.map(m => m.loading ? { ...m, content: res.message, loading: false } : m)
+        prev.map(m => m.loading ? { ...m, content: clean, loading: false } : m)
       )
     } catch {
       setMessages(prev =>
@@ -127,6 +171,13 @@ export default function ChatPanel({ onClose }: Props) {
         className="relative w-full h-full lg:w-[420px] bg-card flex flex-col shadow-2xl animate-slide-in-right"
         onClick={e => e.stopPropagation()}
       >
+        {/* Toast notification */}
+        {toast && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-4 py-2 bg-emerald-600 text-white text-xs font-semibold rounded-full shadow-lg animate-fade-in whitespace-nowrap">
+            {toast}
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] shrink-0">
           <div className="flex items-center gap-2.5">

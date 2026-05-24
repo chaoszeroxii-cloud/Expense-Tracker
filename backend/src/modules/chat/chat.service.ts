@@ -4,18 +4,27 @@ import { Repository } from 'typeorm'
 import axios from 'axios'
 import { ChatMessage } from './chat-message.entity'
 import { TavilyService } from './tavily.service'
+import { CategoriesService } from '../categories/categories.service'
+import { LoansService } from '../loans/loans.service'
+import { BudgetsService } from '../budgets/budgets.service'
+import { AllocationsService } from '../allocations/allocations.service'
+import { InvestmentsService } from '../investments/investments.service'
+import { TaxService } from '../tax/tax.service'
 
-// ── Tool definitions for DeepSeek ────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// Tool definitions for DeepSeek
+// ─────────────────────────────────────────────────────────────
 const TOOLS = [
+  // ── READ ──────────────────────────────────────────────────
   {
     type: 'function',
     function: {
       name: 'get_financial_summary',
-      description: 'ดึงข้อมูลสรุปการเงินของ user เดือนปัจจุบัน รวมถึง income, expense, net balance, emergency fund',
+      description: 'ดึงสรุปการเงิน: รายรับ รายจ่าย ยอดสุทธิ เดือนที่ระบุ',
       parameters: {
         type: 'object',
         properties: {
-          month: { type: 'string', description: 'รูปแบบ YYYY-MM ถ้าไม่ระบุจะใช้เดือนปัจจุบัน' },
+          month: { type: 'string', description: 'YYYY-MM ถ้าไม่ระบุใช้เดือนปัจจุบัน' },
         },
         required: [],
       },
@@ -25,13 +34,13 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_transactions',
-      description: 'ดึงรายการธุรกรรม income/expense ของ user',
+      description: 'ดึงรายการธุรกรรม พร้อม note/หมายเหตุ ใช้สำหรับดูประวัติและวิเคราะห์',
       parameters: {
         type: 'object',
         properties: {
-          month: { type: 'string', description: 'รูปแบบ YYYY-MM' },
-          type: { type: 'string', enum: ['expense', 'income', 'all'], description: 'ประเภทธุรกรรม' },
-          limit: { type: 'number', description: 'จำนวนสูงสุดที่จะดึง default 20' },
+          month: { type: 'string', description: 'YYYY-MM' },
+          type: { type: 'string', enum: ['expense', 'income', 'all'] },
+          limit: { type: 'number', description: 'จำนวนสูงสุด default 30' },
         },
         required: [],
       },
@@ -40,33 +49,22 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'create_transaction',
-      description: 'บันทึกรายรับหรือรายจ่ายใหม่ — ใช้เมื่อ user ขอให้บันทึกรายการ',
-      parameters: {
-        type: 'object',
-        properties: {
-          amount: { type: 'number', description: 'จำนวนเงิน (บาท)' },
-          type: { type: 'string', enum: ['expense', 'income'] },
-          note: { type: 'string', description: 'รายละเอียด' },
-          categoryName: { type: 'string', description: 'ชื่อหมวดหมู่ที่ใกล้เคียง เช่น Food & Drink, Transport' },
-          occurredAt: { type: 'string', description: 'วันที่ ISO format ถ้าไม่ระบุใช้วันนี้' },
-        },
-        required: ['amount', 'type', 'note'],
-      },
+      name: 'analyze_finances',
+      description: 'วิเคราะห์การเงินเชิงลึก: trend 3 เดือน, breakdown รายหมวด, budget vs actual, allocation balance, loans, top expenses พร้อม note เพื่อหาพฤติกรรมการใช้เงิน จุดอ่อน และให้คำแนะนำ',
+      parameters: { type: 'object', properties: {}, required: [] },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'web_search',
-      description: 'ค้นหาข้อมูลจาก internet เช่น NAV กองทุน ราคาหุ้น อัตราภาษี ข่าวการเงิน',
+      name: 'get_loan_status',
+      description: 'ดูสถานะหนี้สิน: เงินให้ยืม (lent) และเงินยืมมา (borrowed) พร้อม note',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'คำค้นหา ควรเป็นภาษาที่เหมาะสม (ภาษาไทยหรืออังกฤษ)' },
-          max_results: { type: 'number', description: 'จำนวนผลลัพธ์ default 5' },
+          direction: { type: 'string', enum: ['lent', 'borrowed', 'all'], description: 'ประเภทหนี้' },
         },
-        required: ['query'],
+        required: [],
       },
     },
   },
@@ -74,11 +72,11 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_budget_status',
-      description: 'ดูสถานะงบประมาณแต่ละหมวดเดือนนี้ ว่าใช้ไปเท่าไหร่จากที่ตั้งไว้',
+      description: 'ดูงบประมาณ vs รายจ่ายจริงต่อหมวดหมู่',
       parameters: {
         type: 'object',
         properties: {
-          month: { type: 'string', description: 'รูปแบบ YYYY-MM' },
+          month: { type: 'string', description: 'YYYY-MM' },
         },
         required: [],
       },
@@ -87,12 +85,340 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'get_loan_status',
-      description: 'ดูรายชื่อคนที่ยังค้างเงิน และยอดรวมที่ยังค้างอยู่',
+      name: 'get_portfolio',
+      description: 'ดูภาพรวมการลงทุน: ต้นทุน มูลค่าปัจจุบัน กำไร/ขาดทุน แต่ละกองทุน/หุ้น',
       parameters: { type: 'object', properties: {}, required: [] },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_tax_summary',
+      description: 'ดูค่าลดหย่อนภาษีที่บันทึกไว้ และผลคำนวณภาษีเบื้องต้น',
+      parameters: {
+        type: 'object',
+        properties: {
+          taxYear: { type: 'number', description: 'ปีภาษี เช่น 2568' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'calculate_comprehensive_tax',
+      description: 'คำนวณภาษีครอบคลุม: อิงจากรายได้จริงปีนี้ เงินปันผล กำไรลงทุน ค่าลดหย่อนทั้งหมด แนะนำการปรับให้ประหยัดภาษีสูงสุด',
+      parameters: {
+        type: 'object',
+        properties: {
+          taxYear: { type: 'number', description: 'ปีภาษี default ปีปัจจุบัน' },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: 'ค้นหาข้อมูลจาก internet เช่น NAV กองทุน อัตราภาษี ข่าวการเงิน',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'คำค้นหา' },
+          max_results: { type: 'number', description: 'จำนวนผลลัพธ์ default 5' },
+        },
+        required: ['query'],
+      },
+    },
+  },
+  // ── WRITE: Transactions ───────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'create_transaction',
+      description: 'บันทึกรายรับหรือรายจ่าย ต้องขอ confirm จาก user ก่อนเสมอ',
+      parameters: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: ['expense', 'income'] },
+          amount: { type: 'number' },
+          categoryName: { type: 'string', description: 'ชื่อหมวดหมู่ (ใกล้เคียง)' },
+          note: { type: 'string' },
+          occurredAt: { type: 'string', description: 'ISO datetime ถ้าไม่ระบุใช้ตอนนี้' },
+        },
+        required: ['type', 'amount'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_transaction',
+      description: 'ลบรายการธุรกรรม ต้องผ่าน double confirmation เท่านั้น',
+      parameters: {
+        type: 'object',
+        properties: {
+          transactionId: { type: 'string', description: 'id ของรายการ (ได้จาก get_transactions)' },
+        },
+        required: ['transactionId'],
+      },
+    },
+  },
+  // ── WRITE: Loans ──────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'create_loan',
+      description: 'บันทึกการให้ยืม (lent) หรือการยืมมา (borrowed) ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          direction: { type: 'string', enum: ['lent', 'borrowed'] },
+          borrower: { type: 'string', description: 'ชื่อคู่สัญญา (ผู้ยืม หรือ เจ้าหนี้)' },
+          amount: { type: 'number' },
+          note: { type: 'string' },
+          lentAt: { type: 'string', description: 'YYYY-MM-DD' },
+        },
+        required: ['direction', 'borrower', 'amount', 'lentAt'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'record_loan_payment',
+      description: 'บันทึกการชำระหนี้ (คืนเงิน/จ่ายคืน) ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          loanId: { type: 'string', description: 'id ของหนี้ (ได้จาก get_loan_status)' },
+          amount: { type: 'number' },
+          paidAt: { type: 'string', description: 'YYYY-MM-DD' },
+          note: { type: 'string' },
+        },
+        required: ['loanId', 'amount', 'paidAt'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_loan',
+      description: 'ลบรายการหนี้ ต้องผ่าน double confirmation เท่านั้น',
+      parameters: {
+        type: 'object',
+        properties: {
+          loanId: { type: 'string' },
+        },
+        required: ['loanId'],
+      },
+    },
+  },
+  // ── WRITE: Categories ────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'create_category',
+      description: 'สร้างหมวดหมู่รายรับหรือรายจ่ายใหม่ ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          type: { type: 'string', enum: ['expense', 'income'] },
+          icon: { type: 'string', description: 'emoji เช่น 🍕' },
+          color: { type: 'string', description: 'hex color เช่น #f97316' },
+        },
+        required: ['name', 'type'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_category',
+      description: 'ลบหมวดหมู่ที่ user สร้างเอง (ห้ามลบ default) ต้อง double confirmation',
+      parameters: {
+        type: 'object',
+        properties: {
+          categoryName: { type: 'string', description: 'ชื่อหมวดหมู่ที่จะลบ' },
+        },
+        required: ['categoryName'],
+      },
+    },
+  },
+  // ── WRITE: Allocations ───────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'create_allocation',
+      description: 'สร้างซองเงิน/wallet ใหม่ พร้อมผูกหมวดหมู่ ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string' },
+          icon: { type: 'string', description: 'emoji' },
+          color: { type: 'string', description: 'hex color' },
+          categoryNames: { type: 'array', items: { type: 'string' }, description: 'ชื่อหมวดรายจ่ายที่ผูก' },
+          incomeCategoryNames: { type: 'array', items: { type: 'string' }, description: 'ชื่อหมวดรายรับที่ผูก' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_allocation',
+      description: 'แก้ไข wallet: ชื่อ ไอคอน สี หรือผูก/ยกเลิกหมวดหมู่ ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          allocationName: { type: 'string', description: 'ชื่อ wallet ที่จะแก้' },
+          newName: { type: 'string' },
+          icon: { type: 'string' },
+          color: { type: 'string' },
+          categoryNames: { type: 'array', items: { type: 'string' }, description: 'หมวดรายจ่ายใหม่ (แทนที่ของเดิมทั้งหมด)' },
+          incomeCategoryNames: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['allocationName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'move_allocation_funds',
+      description: 'โอนเงินระหว่าง wallet หรือย้ายจาก unallocated pool ต้อง confirm พร้อมบอกยอดก่อน-หลัง',
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['move_in', 'transfer', 'unallocate'], description: 'move_in=จาก unallocated, transfer=ระหว่าง wallet, unallocate=คืนไป pool' },
+          fromAllocationName: { type: 'string', description: 'สำหรับ transfer/unallocate' },
+          toAllocationName: { type: 'string', description: 'สำหรับ move_in/transfer' },
+          amount: { type: 'number' },
+        },
+        required: ['action', 'amount'],
+      },
+    },
+  },
+  // ── WRITE: Budgets ───────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'set_budget_plan',
+      description: 'ตั้งงบประมาณหลายหมวดพร้อมกัน อิงจาก spending pattern ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          month: { type: 'string', description: 'YYYY-MM' },
+          budgets: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                categoryName: { type: 'string' },
+                amount: { type: 'number' },
+              },
+              required: ['categoryName', 'amount'],
+            },
+          },
+        },
+        required: ['month', 'budgets'],
+      },
+    },
+  },
+  // ── WRITE: Investments ───────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'add_investment',
+      description: 'เพิ่มกองทุน/หุ้นใหม่ในพอร์ต ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'ชื่อกองทุน เช่น SCBS&P500' },
+          symbol: { type: 'string', description: 'ชื่อย่อ' },
+          type: { type: 'string', enum: ['mutual_fund', 'stock', 'etf', 'bond', 'crypto', 'other'] },
+          note: { type: 'string' },
+        },
+        required: ['name', 'type'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'add_investment_transaction',
+      description: 'บันทึก ซื้อ/ขาย/ปันผล ของกองทุน ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          investmentName: { type: 'string', description: 'ชื่อกองทุน (ใกล้เคียง)' },
+          type: { type: 'string', enum: ['buy', 'sell', 'dividend'] },
+          amount: { type: 'number', description: 'มูลค่าเงิน (บาท)' },
+          units: { type: 'number', description: 'จำนวนหน่วย (ถ้ามี)' },
+          navPrice: { type: 'number', description: 'NAV ต่อหน่วย (ถ้ามี)' },
+          occurredAt: { type: 'string', description: 'YYYY-MM-DD' },
+          note: { type: 'string' },
+        },
+        required: ['investmentName', 'type', 'amount', 'occurredAt'],
+      },
+    },
+  },
+  // ── WRITE: Tax ───────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'add_tax_deduction',
+      description: 'บันทึกค่าลดหย่อนภาษี เช่น SSF RMF ประกันชีวิต ต้อง confirm ก่อน',
+      parameters: {
+        type: 'object',
+        properties: {
+          taxYear: { type: 'number', description: 'ปีภาษี เช่น 2568' },
+          type: { type: 'string', description: 'ประเภท เช่น ssf, rmf, life_insurance, health_insurance, personal_allowance' },
+          name: { type: 'string', description: 'ชื่อ เช่น SSF กรุงไทย' },
+          amount: { type: 'number' },
+          note: { type: 'string' },
+        },
+        required: ['taxYear', 'type', 'name', 'amount'],
+      },
+    },
+  },
+  // ── UI Actions ────────────────────────────────────────────
+  {
+    type: 'function',
+    function: {
+      name: 'change_theme',
+      description: 'เปลี่ยน theme ของแอปเป็น light หรือ dark',
+      parameters: {
+        type: 'object',
+        properties: {
+          theme: { type: 'string', enum: ['light', 'dark'] },
+        },
+        required: ['theme'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'navigate_to',
+      description: 'พา user ไปยังหน้าที่เกี่ยวข้อง เช่น /investments /tax /loans /budget',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'path เช่น /investments, /tax, /loans, /budget, /wallets, /finance' },
+          reason: { type: 'string', description: 'เหตุผลที่ navigate ไป' },
+        },
+        required: ['path'],
+      },
+    },
+  },
 ]
+
+// ─────────────────────────────────────────────────────────────
 
 @Injectable()
 export class ChatService {
@@ -106,27 +432,25 @@ export class ChatService {
     @InjectRepository(ChatMessage)
     private readonly msgRepo: Repository<ChatMessage>,
     private readonly tavily: TavilyService,
+    private readonly categoriesSvc: CategoriesService,
+    private readonly loansSvc: LoansService,
+    private readonly budgetsSvc: BudgetsService,
+    private readonly allocationsSvc: AllocationsService,
+    private readonly investmentsSvc: InvestmentsService,
+    private readonly taxSvc: TaxService,
   ) {}
 
   // ── Send chat message ──────────────────────────────────────
   async chat(userId: string, userMessage: string, context: Record<string, any> = {}) {
-    // Save user message
     await this.saveMessage(userId, 'user', userMessage)
-
-    // Load last 50 messages for context
     const history = await this.getHistory(userId)
-
     const systemPrompt = this.buildSystemPrompt(context)
     const messages = [
       { role: 'system', content: systemPrompt },
       ...history.slice(-this.MAX_HISTORY).map(m => ({ role: m.role, content: m.content })),
     ]
-
     const reply = await this.callDeepSeek(userId, messages)
-
-    // Save assistant reply
     await this.saveMessage(userId, 'assistant', reply)
-
     return { message: reply }
   }
 
@@ -157,34 +481,17 @@ export class ChatService {
         `${this.OPENROUTER_BASE}/chat/completions`,
         {
           model: this.VISION_MODEL,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: prompt },
-                { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
-              ],
-            },
-          ],
+          messages: [{ role: 'user', content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+          ]}],
           max_tokens: 1000,
         },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://moneyflow.app',
-            'X-Title': 'MoneyFlow',
-          },
-          timeout: 30000,
-        },
+        { headers: this.openRouterHeaders(), timeout: 30000 },
       )
-
       const content = res.data.choices[0]?.message?.content ?? ''
-      // Extract JSON from response
       const jsonMatch = content.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0])
-      }
+      if (jsonMatch) return JSON.parse(jsonMatch[0])
       return { raw: content, error: 'Could not parse JSON' }
     } catch (err: any) {
       this.logger.error(`Vision error: ${err.message}`)
@@ -192,16 +499,11 @@ export class ChatService {
     }
   }
 
-  // ── Get chat history ───────────────────────────────────────
+  // ── Chat history ───────────────────────────────────────────
   async getHistory(userId: string, limit = this.MAX_HISTORY): Promise<ChatMessage[]> {
-    return this.msgRepo.find({
-      where: { userId },
-      order: { createdAt: 'ASC' },
-      take: limit,
-    })
+    return this.msgRepo.find({ where: { userId }, order: { createdAt: 'ASC' }, take: limit })
   }
 
-  // ── Clear chat history ─────────────────────────────────────
   async clearHistory(userId: string) {
     await this.msgRepo.delete({ userId })
     return { success: true }
@@ -215,36 +517,19 @@ export class ChatService {
     try {
       const res = await axios.post(
         `${this.OPENROUTER_BASE}/chat/completions`,
-        {
-          model: this.CHAT_MODEL,
-          messages,
-          tools: TOOLS,
-          tool_choice: 'auto',
-          max_tokens: 2000,
-          temperature: 0.7,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://moneyflow.app',
-            'X-Title': 'MoneyFlow',
-          },
-          timeout: 60000,
-        },
+        { model: this.CHAT_MODEL, messages, tools: TOOLS, tool_choice: 'auto', max_tokens: 3000, temperature: 0.7 },
+        { headers: this.openRouterHeaders(), timeout: 60000 },
       )
 
       const choice = res.data.choices[0]
       const msg = choice.message
 
-      // Handle tool calls
       if (msg.tool_calls?.length > 0) {
         return this.handleToolCalls(userId, messages, msg)
       }
-
       return msg.content ?? 'ไม่มีการตอบกลับ'
     } catch (err: any) {
-      this.logger.error(`DeepSeek error: ${err.response?.data ?? err.message}`)
+      this.logger.error(`DeepSeek error: ${JSON.stringify(err.response?.data ?? err.message)}`)
       return `เกิดข้อผิดพลาด: ${err.message}`
     }
   }
@@ -255,70 +540,243 @@ export class ChatService {
     for (const call of assistantMsg.tool_calls) {
       const args = JSON.parse(call.function.arguments || '{}')
       let result: any
-
       try {
         result = await this.executeTool(userId, call.function.name, args)
       } catch (err: any) {
         result = { error: err.message }
       }
-
-      toolResults.push({
-        role: 'tool',
-        tool_call_id: call.id,
-        content: JSON.stringify(result),
-      })
+      toolResults.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) })
     }
 
-    // Second round with tool results
     const updatedMessages = [
       ...messages,
       { role: 'assistant', content: null, tool_calls: assistantMsg.tool_calls },
       ...toolResults,
     ]
-
     return this.callDeepSeek(userId, updatedMessages)
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // Tool executor
+  // ─────────────────────────────────────────────────────────────
   private async executeTool(userId: string, name: string, args: any): Promise<any> {
     const now = new Date()
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const currentYear = now.getFullYear()
+    const db = this.msgRepo.manager
 
     switch (name) {
+
+      // ── get_financial_summary ──────────────────────────────
       case 'get_financial_summary': {
         const month = args.month ?? currentMonth
-        const [expenses, incomes] = await Promise.all([
-          this.msgRepo.manager.query(
-            `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = $1 AND type = 'expense' AND TO_CHAR(occurred_at, 'YYYY-MM') = $2`,
-            [userId, month],
-          ),
-          this.msgRepo.manager.query(
-            `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE user_id = $1 AND type = 'income' AND TO_CHAR(occurred_at, 'YYYY-MM') = $2`,
-            [userId, month],
-          ),
+        const [exp, inc] = await Promise.all([
+          db.query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE user_id=$1 AND type='expense' AND TO_CHAR(occurred_at,'YYYY-MM')=$2`, [userId, month]),
+          db.query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE user_id=$1 AND type='income' AND TO_CHAR(occurred_at,'YYYY-MM')=$2`, [userId, month]),
         ])
-        const totalExpense = parseFloat(expenses[0]?.total ?? '0')
-        const totalIncome = parseFloat(incomes[0]?.total ?? '0')
+        const totalExpense = parseFloat(exp[0]?.total ?? '0')
+        const totalIncome = parseFloat(inc[0]?.total ?? '0')
         return { month, totalExpense, totalIncome, net: totalIncome - totalExpense }
       }
 
+      // ── get_transactions ───────────────────────────────────
       case 'get_transactions': {
         const month = args.month ?? currentMonth
-        const limit = args.limit ?? 20
-        const typeFilter = args.type === 'all' ? '' : `AND e.type = '${args.type ?? 'expense'}'`
-        const rows = await this.msgRepo.manager.query(
-          `SELECT e.amount, e.type, e.note, e.occurred_at, c.name as category
-           FROM expenses e LEFT JOIN categories c ON e.category_id = c.id
-           WHERE e.user_id = $1 AND TO_CHAR(e.occurred_at, 'YYYY-MM') = $2 ${typeFilter}
+        const limit = args.limit ?? 30
+        const typeFilter = args.type === 'all' ? '' : `AND e.type='${args.type ?? 'expense'}'`
+        const rows = await db.query(
+          `SELECT e.id, e.amount, e.type, e.note, e.occurred_at, c.name as category
+           FROM expenses e LEFT JOIN categories c ON e.category_id=c.id
+           WHERE e.user_id=$1 AND TO_CHAR(e.occurred_at,'YYYY-MM')=$2 ${typeFilter}
            ORDER BY e.occurred_at DESC LIMIT $3`,
           [userId, month, limit],
         )
-        return { transactions: rows, count: rows.length }
+        return { transactions: rows, count: rows.length, month }
       }
 
+      // ── analyze_finances ───────────────────────────────────
+      case 'analyze_finances': {
+        const months: string[] = []
+        for (let i = 2; i >= 0; i--) {
+          const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+          months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+        }
+
+        const [trend, catBreakdown, topExpenses, budgets, allocations, loans, portfolio] = await Promise.all([
+          // 3-month trend
+          db.query(
+            `SELECT TO_CHAR(occurred_at,'YYYY-MM') as month,
+                    SUM(CASE WHEN type='income' THEN amount ELSE 0 END) as income,
+                    SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) as expense
+             FROM expenses WHERE user_id=$1 AND occurred_at >= NOW() - INTERVAL '3 months'
+             GROUP BY 1 ORDER BY 1`,
+            [userId],
+          ),
+          // Category breakdown current month with notes sample
+          db.query(
+            `SELECT c.name as category, SUM(e.amount) as total, COUNT(*) as count,
+                    STRING_AGG(DISTINCT e.note, ' | ') as sample_notes
+             FROM expenses e LEFT JOIN categories c ON e.category_id=c.id
+             WHERE e.user_id=$1 AND TO_CHAR(e.occurred_at,'YYYY-MM')=$2 AND e.type='expense'
+             GROUP BY c.name ORDER BY total DESC LIMIT 10`,
+            [userId, currentMonth],
+          ),
+          // Top 5 biggest expenses this month with note
+          db.query(
+            `SELECT e.amount, e.note, e.occurred_at, c.name as category
+             FROM expenses e LEFT JOIN categories c ON e.category_id=c.id
+             WHERE e.user_id=$1 AND TO_CHAR(e.occurred_at,'YYYY-MM')=$2 AND e.type='expense'
+             ORDER BY e.amount DESC LIMIT 5`,
+            [userId, currentMonth],
+          ),
+          // Budget vs actual
+          this.budgetsSvc.getBudgetWithActual(userId, currentMonth),
+          // Allocation balances
+          this.allocationsSvc.findAll(userId),
+          // Active loans both directions
+          this.loansSvc.getDashboardSummary(userId),
+          // Portfolio
+          this.investmentsSvc.findAll(userId),
+        ])
+
+        return {
+          trend,
+          categoryBreakdown: catBreakdown,
+          topExpenses,
+          budgets,
+          allocations: allocations.map((a: any) => ({ name: a.name, balance: a.balance })),
+          loans: {
+            totalOutstanding: loans.totalOutstanding,
+            totalOwed: loans.totalOwed,
+            active: loans.loans?.slice(0, 5),
+          },
+          portfolio: {
+            totalCost: portfolio.reduce((s: number, inv: any) => s + (inv.totalCost ?? 0), 0),
+            totalValue: portfolio.reduce((s: number, inv: any) => s + (inv.currentValue ?? inv.totalCost ?? 0), 0),
+            investments: portfolio.map((inv: any) => ({ name: inv.name, type: inv.type, gain: inv.gain })),
+          },
+        }
+      }
+
+      // ── get_loan_status ────────────────────────────────────
+      case 'get_loan_status': {
+        const rows = await db.query(
+          `SELECT l.id, l.direction, l.borrower, l.amount, l.note, l.lent_at, l.status,
+                  COALESCE((SELECT SUM(p.amount) FROM loan_payments p WHERE p.loan_id=l.id),0) as paid
+           FROM loans l WHERE l.user_id=$1 AND ($2::text='all' OR l.direction=$2) AND l.status='active'
+           ORDER BY l.lent_at DESC`,
+          [userId, args.direction ?? 'all'],
+        )
+        const enriched = rows.map((r: any) => ({
+          id: r.id,
+          direction: r.direction,
+          borrower: r.borrower,
+          amount: parseFloat(r.amount),
+          paid: parseFloat(r.paid),
+          outstanding: parseFloat(r.amount) - parseFloat(r.paid),
+          note: r.note,
+          lentAt: r.lent_at,
+          status: r.status,
+        }))
+        const lent = enriched.filter((r: any) => r.direction === 'lent')
+        const borrowed = enriched.filter((r: any) => r.direction === 'borrowed')
+        return {
+          totalOutstanding: lent.reduce((s: number, r: any) => s + r.outstanding, 0),
+          totalOwed: borrowed.reduce((s: number, r: any) => s + r.outstanding, 0),
+          lent,
+          borrowed,
+        }
+      }
+
+      // ── get_budget_status ──────────────────────────────────
+      case 'get_budget_status': {
+        const month = args.month ?? currentMonth
+        return { month, budgets: await this.budgetsSvc.getBudgetWithActual(userId, month) }
+      }
+
+      // ── get_portfolio ──────────────────────────────────────
+      case 'get_portfolio': {
+        const investments = await this.investmentsSvc.findAll(userId)
+        const totalCost = investments.reduce((s: number, inv: any) => s + (inv.totalCost ?? 0), 0)
+        const totalValue = investments.reduce((s: number, inv: any) => s + (inv.currentValue ?? inv.totalCost ?? 0), 0)
+        return { investments, totalCost, totalValue, totalGain: totalValue - totalCost }
+      }
+
+      // ── get_tax_summary ────────────────────────────────────
+      case 'get_tax_summary': {
+        const taxYear = args.taxYear ?? currentYear
+        const deductions = await this.taxSvc.findByYear(userId, taxYear)
+        const types = this.taxSvc.getDeductionTypes()
+        return { taxYear, deductions, availableTypes: types }
+      }
+
+      // ── calculate_comprehensive_tax ────────────────────────
+      case 'calculate_comprehensive_tax': {
+        const taxYear = args.taxYear ?? currentYear
+        const yearStr = String(taxYear)
+
+        const [incomeRows, dividendRows, deductions] = await Promise.all([
+          // Annual income from transactions
+          db.query(
+            `SELECT COALESCE(SUM(amount),0) as total FROM expenses
+             WHERE user_id=$1 AND type='income' AND EXTRACT(YEAR FROM occurred_at)=$2`,
+            [userId, yearStr],
+          ),
+          // Dividends from investments
+          db.query(
+            `SELECT COALESCE(SUM(it.amount),0) as total
+             FROM investment_transactions it
+             JOIN investments i ON it.investment_id=i.id
+             WHERE i.user_id=$1 AND it.type='dividend' AND EXTRACT(YEAR FROM it.occurred_at)=$2`,
+            [userId, yearStr],
+          ),
+          this.taxSvc.findByYear(userId, taxYear),
+        ])
+
+        const annualIncome = parseFloat(incomeRows[0]?.total ?? '0')
+        const dividendIncome = parseFloat(dividendRows[0]?.total ?? '0')
+        const totalIncome = annualIncome + dividendIncome
+
+        // Use TaxService to calculate with existing deductions
+        const calculation = await this.taxSvc.calculate(userId, totalIncome, taxYear)
+
+        // Suggest optimization: how much more SSF/RMF to maximize deductions
+        const ssfDeducted = deductions.filter((d: any) => d.type === 'ssf').reduce((s: any, d: any) => s + parseFloat(d.amount), 0)
+        const rmfDeducted = deductions.filter((d: any) => d.type === 'rmf').reduce((s: any, d: any) => s + parseFloat(d.amount), 0)
+        const ssfMax = Math.min(totalIncome * 0.3, 200000)
+        const rmfMax = Math.min(totalIncome * 0.3, 500000)
+        const ssfRemaining = Math.max(0, ssfMax - ssfDeducted)
+        const rmfRemaining = Math.max(0, rmfMax - rmfDeducted)
+
+        return {
+          taxYear,
+          incomeBreakdown: { salary: annualIncome, dividends: dividendIncome, total: totalIncome },
+          calculation,
+          optimization: {
+            ssfDeducted, ssfMax: ssfMax.toFixed(0), ssfRemaining: ssfRemaining.toFixed(0),
+            rmfDeducted, rmfMax: rmfMax.toFixed(0), rmfRemaining: rmfRemaining.toFixed(0),
+            note: ssfRemaining > 0 || rmfRemaining > 0
+              ? `ซื้อ SSF เพิ่มได้อีก ฿${ssfRemaining.toFixed(0)} หรือ RMF ฿${rmfRemaining.toFixed(0)} เพื่อลดหย่อนสูงสุด`
+              : 'ใช้สิทธิ์ลดหย่อน SSF/RMF เต็มแล้ว',
+          },
+        }
+      }
+
+      // ── web_search ─────────────────────────────────────────
+      case 'web_search': {
+        const result = await this.tavily.search(args.query, args.max_results ?? 5)
+        return {
+          answer: result.answer,
+          results: result.results.slice(0, 3).map((r: any) => ({
+            title: r.title, url: r.url, snippet: r.content.slice(0, 300),
+          })),
+        }
+      }
+
+      // ── create_transaction ─────────────────────────────────
       case 'create_transaction': {
-        // Find closest matching category
-        const cats = await this.msgRepo.manager.query(
-          `SELECT id, name FROM categories WHERE user_id = $1 AND type = $2`,
+        const cats = await db.query(
+          `SELECT id, name FROM categories WHERE user_id=$1 AND type=$2`,
           [userId, args.type],
         )
         const cat = cats.find((c: any) =>
@@ -326,104 +784,306 @@ export class ChatService {
         ) ?? cats[0]
 
         const occurredAt = args.occurredAt ?? now.toISOString()
-        await this.msgRepo.manager.query(
+        await db.query(
           `INSERT INTO expenses (id, user_id, category_id, amount, type, note, occurred_at)
            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)`,
-          [userId, cat?.id ?? null, args.amount, args.type, args.note, occurredAt],
+          [userId, cat?.id ?? null, args.amount, args.type, args.note ?? null, occurredAt],
         )
-        // Update user balance
         const delta = args.type === 'income' ? args.amount : -args.amount
-        await this.msgRepo.manager.query(
-          `UPDATE users SET total_balance = total_balance + $1, updated_at = NOW() WHERE id = $2`,
-          [delta, userId],
-        )
+        await db.query(`UPDATE users SET total_balance=total_balance+$1, updated_at=NOW() WHERE id=$2`, [delta, userId])
+
+        // Debit/credit allocation if category is linked
+        if (cat?.id) {
+          try {
+            if (args.type === 'expense') {
+              await this.allocationsSvc.debitByCategory(cat.id, userId, args.amount)
+            } else {
+              await this.allocationsSvc.creditByIncomeCategory(cat.id, userId, args.amount)
+            }
+          } catch { /* allocation not linked — skip */ }
+        }
+
         return {
           success: true,
-          message: `บันทึก${args.type === 'income' ? 'รายรับ' : 'รายจ่าย'} ฿${args.amount} "${args.note}" แล้ว`,
-          category: cat?.name ?? 'ไม่ระบุหมวด',
+          message: `บันทึก${args.type === 'income' ? 'รายรับ' : 'รายจ่าย'} ฿${args.amount} หมวด "${cat?.name ?? 'ไม่ระบุ'}" แล้ว`,
         }
       }
 
-      case 'web_search': {
-        const result = await this.tavily.search(args.query, args.max_results ?? 5)
+      // ── delete_transaction ─────────────────────────────────
+      case 'delete_transaction': {
+        const [tx] = await db.query(
+          `SELECT e.*, c.name as category_name FROM expenses e LEFT JOIN categories c ON e.category_id=c.id WHERE e.id=$1 AND e.user_id=$2`,
+          [args.transactionId, userId],
+        )
+        if (!tx) return { error: 'ไม่พบรายการนี้' }
+
+        await db.query(`DELETE FROM expenses WHERE id=$1`, [args.transactionId])
+        const delta = tx.type === 'income' ? -parseFloat(tx.amount) : parseFloat(tx.amount)
+        await db.query(`UPDATE users SET total_balance=total_balance+$1, updated_at=NOW() WHERE id=$2`, [delta, userId])
+
         return {
-          answer: result.answer,
-          results: result.results.slice(0, 3).map(r => ({
-            title: r.title,
-            url: r.url,
-            snippet: r.content.slice(0, 300),
-          })),
+          success: true,
+          message: `ลบรายการ "${tx.note ?? tx.category_name}" ฿${tx.amount} แล้ว`,
         }
       }
 
-      case 'get_budget_status': {
+      // ── create_loan ────────────────────────────────────────
+      case 'create_loan': {
+        const loan = await this.loansSvc.create(userId, {
+          direction: args.direction,
+          borrower: args.borrower,
+          amount: args.amount,
+          note: args.note,
+          lentAt: args.lentAt,
+        })
+        return { success: true, loanId: loan.id, message: `บันทึก${args.direction === 'lent' ? 'การให้ยืม' : 'การยืมเงิน'} ฿${args.amount} กับ ${args.borrower} แล้ว` }
+      }
+
+      // ── record_loan_payment ────────────────────────────────
+      case 'record_loan_payment': {
+        await this.loansSvc.addPayment(userId, args.loanId, {
+          amount: args.amount,
+          paidAt: args.paidAt,
+          note: args.note,
+        })
+        return { success: true, message: `บันทึกการชำระ ฿${args.amount} แล้ว` }
+      }
+
+      // ── delete_loan ────────────────────────────────────────
+      case 'delete_loan': {
+        await this.loansSvc.remove(userId, args.loanId)
+        return { success: true, message: 'ลบรายการหนี้แล้ว' }
+      }
+
+      // ── create_category ────────────────────────────────────
+      case 'create_category': {
+        const cat = await this.categoriesSvc.create(
+          { name: args.name, type: args.type, icon: args.icon ?? '📦', color: args.color ?? '#94a3b8' },
+          userId,
+        )
+        return { success: true, categoryId: cat.id, message: `สร้างหมวดหมู่ "${args.name}" แล้ว` }
+      }
+
+      // ── delete_category ────────────────────────────────────
+      case 'delete_category': {
+        const cats = await this.categoriesSvc.findAll(userId)
+        const cat = cats.find((c: any) =>
+          c.name.toLowerCase().includes(args.categoryName.toLowerCase()),
+        )
+        if (!cat) return { error: `ไม่พบหมวดหมู่ "${args.categoryName}"` }
+        if (cat.isDefault) return { error: `"${cat.name}" เป็นหมวด default ลบไม่ได้ แต่สามารถเปลี่ยนชื่อหรือไอคอนได้` }
+        await this.categoriesSvc.remove(cat.id, userId)
+        return { success: true, message: `ลบหมวดหมู่ "${cat.name}" แล้ว` }
+      }
+
+      // ── create_allocation ──────────────────────────────────
+      case 'create_allocation': {
+        const allCats = await this.categoriesSvc.findAll(userId)
+        const resolveCatIds = (names: string[] = [], type: 'expense' | 'income') =>
+          names.map(n => allCats.find((c: any) =>
+            c.type === type && c.name.toLowerCase().includes(n.toLowerCase()),
+          )?.id).filter(Boolean)
+
+        const alloc = await this.allocationsSvc.create(
+          {
+            name: args.name,
+            icon: args.icon,
+            color: args.color,
+            categoryIds: resolveCatIds(args.categoryNames, 'expense'),
+            incomeCategoryIds: resolveCatIds(args.incomeCategoryNames, 'income'),
+          },
+          userId,
+        )
+        return { success: true, allocationId: alloc.id, message: `สร้าง wallet "${args.name}" แล้ว` }
+      }
+
+      // ── update_allocation ──────────────────────────────────
+      case 'update_allocation': {
+        const allocs = await this.allocationsSvc.findAll(userId)
+        const alloc = (allocs as any[]).find((a: any) =>
+          a.name.toLowerCase().includes(args.allocationName.toLowerCase()),
+        )
+        if (!alloc) return { error: `ไม่พบ wallet "${args.allocationName}"` }
+
+        const allCats = await this.categoriesSvc.findAll(userId)
+        const resolveCatIds = (names: string[] = [], type: 'expense' | 'income') =>
+          names.map(n => allCats.find((c: any) =>
+            c.type === type && c.name.toLowerCase().includes(n.toLowerCase()),
+          )?.id).filter(Boolean)
+
+        await this.allocationsSvc.update(alloc.id, {
+          name: args.newName,
+          icon: args.icon,
+          color: args.color,
+          categoryIds: args.categoryNames ? resolveCatIds(args.categoryNames, 'expense') : undefined,
+          incomeCategoryIds: args.incomeCategoryNames ? resolveCatIds(args.incomeCategoryNames, 'income') : undefined,
+        }, userId)
+        return { success: true, message: `อัปเดต wallet "${args.allocationName}" แล้ว` }
+      }
+
+      // ── move_allocation_funds ──────────────────────────────
+      case 'move_allocation_funds': {
+        const allocs = await this.allocationsSvc.findAll(userId)
+        const findAlloc = (name: string) =>
+          (allocs as any[]).find((a: any) => a.name.toLowerCase().includes(name?.toLowerCase() ?? ''))
+
+        if (args.action === 'move_in') {
+          const to = findAlloc(args.toAllocationName)
+          if (!to) return { error: `ไม่พบ wallet "${args.toAllocationName}"` }
+          const result = await this.allocationsSvc.moveToAllocation(to.id, userId, args.amount)
+          return { success: true, message: `ย้าย ฿${args.amount} จาก unallocated ไป "${to.name}" แล้ว`, ...result }
+        }
+
+        if (args.action === 'transfer') {
+          const from = findAlloc(args.fromAllocationName)
+          const to = findAlloc(args.toAllocationName)
+          if (!from || !to) return { error: 'ไม่พบ wallet ที่ระบุ' }
+          await this.allocationsSvc.transferBetweenAllocations(from.id, to.id, userId, args.amount)
+          return { success: true, message: `โอน ฿${args.amount} จาก "${from.name}" ไป "${to.name}" แล้ว` }
+        }
+
+        if (args.action === 'unallocate') {
+          const from = findAlloc(args.fromAllocationName)
+          if (!from) return { error: `ไม่พบ wallet "${args.fromAllocationName}"` }
+          await this.allocationsSvc.unallocateFromAllocation(from.id, userId, args.amount)
+          return { success: true, message: `คืน ฿${args.amount} จาก "${from.name}" ไป unallocated แล้ว` }
+        }
+
+        return { error: 'action ไม่ถูกต้อง' }
+      }
+
+      // ── set_budget_plan ────────────────────────────────────
+      case 'set_budget_plan': {
         const month = args.month ?? currentMonth
-        const rows = await this.msgRepo.manager.query(
-          `SELECT b.amount as budgeted, c.name as category,
-                  COALESCE((SELECT SUM(e.amount) FROM expenses e
-                    WHERE e.user_id = b.user_id AND e.category_id = b.category_id
-                    AND TO_CHAR(e.occurred_at, 'YYYY-MM') = b.month
-                    AND e.type = 'expense'), 0) as actual
-           FROM budgets b JOIN categories c ON b.category_id = c.id
-           WHERE b.user_id = $1 AND b.month = $2`,
-          [userId, month],
-        )
-        return { month, budgets: rows }
+        const allCats = await this.categoriesSvc.findAll(userId)
+        const results: string[] = []
+
+        for (const b of args.budgets ?? []) {
+          const cat = allCats.find((c: any) =>
+            c.name.toLowerCase().includes(b.categoryName.toLowerCase()),
+          )
+          if (!cat) { results.push(`ไม่พบหมวด "${b.categoryName}"`); continue }
+          await this.budgetsSvc.upsert(userId, { categoryId: cat.id, amount: b.amount, month })
+          results.push(`${cat.name}: ฿${b.amount}`)
+        }
+
+        return { success: true, month, set: results }
       }
 
-      case 'get_loan_status': {
-        const rows = await this.msgRepo.manager.query(
-          `SELECT l.id, l.borrower, l.amount,
-                  COALESCE((SELECT SUM(p.amount) FROM loan_payments p WHERE p.loan_id = l.id), 0) as paid
-           FROM loans l WHERE l.user_id = $1 AND l.status = 'active'`,
-          [userId],
-        )
-        const enriched = rows.map((r: any) => ({
-          borrower: r.borrower,
-          amount: parseFloat(r.amount),
-          paid: parseFloat(r.paid),
-          outstanding: parseFloat(r.amount) - parseFloat(r.paid),
-        }))
-        return {
-          activeLoans: enriched.length,
-          totalOutstanding: enriched.reduce((s: number, r: any) => s + r.outstanding, 0),
-          loans: enriched,
-        }
+      // ── add_investment ─────────────────────────────────────
+      case 'add_investment': {
+        const inv = await this.investmentsSvc.create(userId, {
+          name: args.name, symbol: args.symbol, type: args.type, note: args.note,
+        })
+        return { success: true, investmentId: inv.id, message: `เพิ่มกองทุน "${args.name}" แล้ว` }
       }
+
+      // ── add_investment_transaction ─────────────────────────
+      case 'add_investment_transaction': {
+        const investments = await this.investmentsSvc.findAll(userId)
+        const inv = investments.find((i: any) =>
+          i.name.toLowerCase().includes(args.investmentName.toLowerCase()),
+        )
+        if (!inv) return { error: `ไม่พบกองทุน "${args.investmentName}"` }
+
+        await this.investmentsSvc.addTransaction(userId, inv.id, {
+          type: args.type,
+          amount: args.amount,
+          units: args.units,
+          navPrice: args.navPrice,
+          occurredAt: args.occurredAt,
+          note: args.note,
+        })
+        return { success: true, message: `บันทึก${args.type === 'buy' ? 'การซื้อ' : args.type === 'sell' ? 'การขาย' : 'เงินปันผล'} ฿${args.amount} ให้ "${inv.name}" แล้ว` }
+      }
+
+      // ── add_tax_deduction ──────────────────────────────────
+      case 'add_tax_deduction': {
+        await this.taxSvc.upsert(userId, {
+          taxYear: args.taxYear,
+          type: args.type,
+          name: args.name,
+          amount: args.amount,
+          note: args.note,
+        })
+        return { success: true, message: `บันทึกค่าลดหย่อน "${args.name}" ฿${args.amount} ปี ${args.taxYear} แล้ว` }
+      }
+
+      // ── change_theme ───────────────────────────────────────
+      case 'change_theme':
+        return { action: 'theme', value: args.theme, marker: `[THEME:${args.theme}]` }
+
+      // ── navigate_to ────────────────────────────────────────
+      case 'navigate_to':
+        return { action: 'navigate', path: args.path, reason: args.reason, marker: `[NAVIGATE:${args.path}]` }
 
       default:
         return { error: `Unknown tool: ${name}` }
     }
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // System prompt
+  // ─────────────────────────────────────────────────────────────
   private buildSystemPrompt(context: Record<string, any>): string {
     const now = new Date()
-    return `คุณเป็น AI ผู้ช่วยการเงินส่วนตัวของ MoneyFlow
-วันที่วันนี้: ${now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}
-เดือนปัจจุบัน: ${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}
+    const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const currentYear = now.getFullYear()
 
-ความสามารถของคุณ:
-- ดูข้อมูลรายรับรายจ่าย และสรุปการเงิน
-- ดูและวิเคราะห์สถานะงบประมาณ
-- ดูยอดเงินให้ยืมที่ค้างอยู่
-- บันทึกรายการรายรับรายจ่าย (ต้องขอ confirm ก่อนเสมอ)
-- ค้นหาข้อมูลจาก internet เช่น NAV กองทุน อัตราภาษี ข่าวการเงิน
+    return `คุณเป็น AI ผู้ช่วยการเงินส่วนตัวของ MoneyFlow — ฉลาด เป็นมิตร และทำงานได้อิสระ
+วันที่วันนี้: ${dateStr} | เดือนปัจจุบัน: ${currentMonth} | ปีภาษีปัจจุบัน: ${currentYear}
+${context.userName ? `ชื่อ user: ${context.userName}` : ''}
 
-กฎสำคัญ:
-- ก่อน create_transaction ให้สรุปให้ user confirm ก่อนเสมอ เช่น "จะบันทึกค่าข้าว ฿80 หมวดอาหาร ใช่ไหม?"
-- ใช้ภาษาไทยเป็นหลัก เว้นแต่ user พิมพ์ภาษาอังกฤษ
-- ตอบกระชับ ตรงประเด็น ใช้ emoji เล็กน้อยให้ดูเป็นมิตร
-- เมื่อ search ข้อมูล ให้อ้างอิง source ด้วย
-${context.userName ? `ชื่อ user: ${context.userName}` : ''}`
+## ความสามารถของคุณ (25 tools)
+READ: get_financial_summary, get_transactions, analyze_finances, get_loan_status, get_budget_status, get_portfolio, get_tax_summary, calculate_comprehensive_tax, web_search
+WRITE: create/delete_transaction, create/record_payment/delete_loan, create/delete_category, create/update_allocation, move_allocation_funds, set_budget_plan, add_investment, add_investment_transaction, add_tax_deduction
+UI: change_theme, navigate_to
+
+## กฎการทำงาน — สำคัญมาก
+
+### WRITE operations (ยกเว้น delete)
+1. เรียก tool อ่านข้อมูลที่จำเป็นก่อน (ถ้ายังไม่รู้)
+2. อธิบายการกระทำ + เหตุผลชัดเจน
+3. รอ user พิมพ์ "ยืนยัน" / "ใช่" / "ok" / "ตกลง"
+4. จึงค่อย execute tool
+
+### DELETE operations (double confirmation)
+1. บอกว่าจะลบอะไร รายละเอียดครบ
+2. รอ user พิมพ์ยืนยันรอบแรก
+3. เตือนซ้ำ: "การลบถาวร undo ไม่ได้ พิมพ์ 'ลบเลย' เพื่อยืนยัน"
+4. รอ user พิมพ์ "ลบเลย" จึง execute
+
+### UI actions (theme/navigate)
+- change_theme และ navigate_to ทำได้ทันทีไม่ต้อง confirm
+- หลัง navigate_to ให้อธิบายว่าพาไปทำอะไร
+
+### การวิเคราะห์
+- ใช้ note/หมายเหตุจากธุรกรรมมาร่วมวิเคราะห์พฤติกรรม
+- หาจุดอ่อน เช่น หมวดที่เกินงบบ่อย หนี้นานเกินไป portfolio ไม่ balanced
+- แนะนำเป็น actionable steps เสมอ
+
+## สไตล์การตอบ
+- ภาษาไทยเป็นหลัก ใช้ภาษาอังกฤษตาม user
+- กระชับ ตรงประเด็น emoji เล็กน้อย
+- เมื่อ web_search ให้อ้างอิง source
+- ถ้า category/wallet ไม่พบ ให้ถาม user แทนการ error`
+  }
+
+  private openRouterHeaders() {
+    return {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://moneyflow.app',
+      'X-Title': 'MoneyFlow',
+    }
   }
 
   private async saveMessage(userId: string, role: string, content: string) {
     await this.msgRepo.save(this.msgRepo.create({ userId, role, content }))
-
-    // Keep only last MAX_HISTORY messages per user
     await this.msgRepo.manager.query(
-      `DELETE FROM chat_messages WHERE user_id = $1 AND id NOT IN (
-        SELECT id FROM chat_messages WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2
+      `DELETE FROM chat_messages WHERE user_id=$1 AND id NOT IN (
+        SELECT id FROM chat_messages WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2
       )`,
       [userId, this.MAX_HISTORY],
     )

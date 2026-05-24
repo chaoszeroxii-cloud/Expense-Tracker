@@ -237,34 +237,71 @@ export default function Dashboard() {
       )}
 
       {/* ── Loan Summary ── */}
-      {!loadingLoans && loanData && loanData.activeLoans > 0 && (
-        <Card className="animate-fade-up">
-          <button onClick={() => navigate('/loans')} className="flex items-center justify-between w-full mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
-                <Icon path={mdiCashMultiple} size={0.7} color="#f59e0b" />
+      {!loadingLoans && loanData && loanData.activeLoans > 0 && (() => {
+        const lent     = loanData.loans.filter((l: any) => l.direction === 'lent')
+        const borrowed = loanData.loans.filter((l: any) => l.direction === 'borrowed')
+        return (
+          <Card className="animate-fade-up">
+            <button onClick={() => navigate('/loans')} className="flex items-center justify-between w-full mb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+                  <Icon path={mdiCashMultiple} size={0.7} color="#f59e0b" />
+                </div>
+                <h2 className="font-bold text-base-theme text-sm">หนี้สิน</h2>
               </div>
-              <h2 className="font-bold text-base-theme text-sm">เงินให้ยืม</h2>
-            </div>
-            <Icon path={mdiChevronRightIcon} size={0.7} className="text-muted-theme" />
-          </button>
-          <div className="space-y-2">
-            {loanData.loans.slice(0, 3).map(loan => (
-              <div key={loan.id} className="flex items-center justify-between py-1.5 border-b border-[var(--border)] last:border-0">
-                <span className="text-sm text-base-theme font-medium">{loan.borrower}</span>
-                <span className="text-sm font-bold text-amber-600 dark:text-amber-400">฿{fmt(loan.outstanding)}</span>
+              <Icon path={mdiChevronRightIcon} size={0.7} className="text-muted-theme" />
+            </button>
+
+            {/* ลูกหนี้ (lent) */}
+            {lent.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mb-1.5 uppercase tracking-wide">ลูกหนี้</p>
+                <div className="space-y-1.5">
+                  {lent.slice(0, 3).map((loan: any) => (
+                    <div key={loan.id} className="flex items-center justify-between py-1 border-b border-[var(--border)] last:border-0">
+                      <span className="text-sm text-base-theme font-medium">{loan.borrower}</span>
+                      <span className="text-sm font-bold text-amber-600 dark:text-amber-400">฿{fmt(loan.outstanding)}</span>
+                    </div>
+                  ))}
+                  {lent.length > 3 && <p className="text-xs text-muted-theme text-center">+{lent.length - 3} คนอื่น</p>}
+                </div>
               </div>
-            ))}
-            {loanData.activeLoans > 3 && (
-              <p className="text-xs text-muted-theme text-center">+{loanData.activeLoans - 3} คนอื่น</p>
             )}
-          </div>
-          <div className="mt-3 pt-3 border-t border-[var(--border)] flex justify-between text-sm">
-            <span className="text-muted-theme">ยอดค้างทั้งหมด</span>
-            <span className="font-bold text-base-theme">฿{fmt(loanData.totalOutstanding)}</span>
-          </div>
-        </Card>
-      )}
+
+            {/* เจ้าหนี้ (borrowed) */}
+            {borrowed.length > 0 && (
+              <div className="mb-2">
+                <p className="text-[10px] text-rose-500 dark:text-rose-400 font-semibold mb-1.5 uppercase tracking-wide">ต้องคืน</p>
+                <div className="space-y-1.5">
+                  {borrowed.slice(0, 2).map((loan: any) => (
+                    <div key={loan.id} className="flex items-center justify-between py-1 border-b border-[var(--border)] last:border-0">
+                      <span className="text-sm text-base-theme font-medium">{loan.borrower}</span>
+                      <span className="text-sm font-bold text-rose-500 dark:text-rose-400">฿{fmt(loan.outstanding)}</span>
+                    </div>
+                  ))}
+                  {borrowed.length > 2 && <p className="text-xs text-muted-theme text-center">+{borrowed.length - 2} รายการ</p>}
+                </div>
+              </div>
+            )}
+
+            {/* Summary row */}
+            <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-1">
+              {lent.length > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-theme">ลูกหนี้ค้างทั้งหมด</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400">฿{fmt(loanData.totalOutstanding)}</span>
+                </div>
+              )}
+              {borrowed.length > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-theme">ที่ต้องคืนทั้งหมด</span>
+                  <span className="font-bold text-rose-500 dark:text-rose-400">฿{fmt(loanData.totalOwed)}</span>
+                </div>
+              )}
+            </div>
+          </Card>
+        )
+      })()}
 
       {/* ── Wallet Balances ── */}
       <AllocationWallets />

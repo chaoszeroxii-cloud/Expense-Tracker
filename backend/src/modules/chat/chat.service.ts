@@ -340,7 +340,7 @@ const TOOLS = [
         properties: {
           name: { type: 'string', description: 'ชื่อกองทุน เช่น SCBS&P500' },
           symbol: { type: 'string', description: 'ชื่อย่อ' },
-          type: { type: 'string', enum: ['mutual_fund', 'stock', 'etf', 'bond', 'crypto', 'other'] },
+          type: { type: 'string', enum: ['mutual_fund', 'stock_th', 'stock_us', 'crypto', 'gold', 'other'] },
           note: { type: 'string' },
         },
         required: ['name', 'type'],
@@ -355,7 +355,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          investmentName: { type: 'string', description: 'ชื่อกองทุน (ใกล้เคียง)' },
+          investmentName: { type: 'string', description: 'ชื่อหรือ symbol ของกองทุน (ค้นแบบ fuzzy — ส่ง symbol เช่น SCBS&P500 ได้)' },
           type: { type: 'string', enum: ['buy', 'sell', 'dividend'] },
           amount: { type: 'number', description: 'มูลค่าเงิน (บาท)' },
           units: { type: 'number', description: 'จำนวนหน่วย (ถ้ามี)' },
@@ -623,8 +623,15 @@ export class ChatService {
           let args: any
           try { args = JSON.parse(call.function.arguments || '{}') } catch { args = {} }
           let result: any
-          try { result = await this.executeTool(userId, call.function.name, args) }
-          catch (err: any) { result = { error: err.message } }
+          try {
+            result = await this.executeTool(userId, call.function.name, args)
+            if (result?.success === false || result?.error) {
+              this.logger.warn(`Tool ${call.function.name} returned error: ${JSON.stringify(result)}`)
+            }
+          } catch (err: any) {
+            this.logger.error(`Tool ${call.function.name} threw: ${err.message}`)
+            result = { error: err.message }
+          }
           if (result?.marker) uiMarkers.push(result.marker)
           toolResults.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) })
         }
@@ -1138,10 +1145,15 @@ export class ChatService {
       // ── add_investment_transaction ─────────────────────────
       case 'add_investment_transaction': {
         const investments = await this.investmentsSvc.findAll(userId)
+        const search = (args.investmentName ?? '').toLowerCase()
         const inv = investments.find((i: any) =>
-          i.name.toLowerCase().includes(args.investmentName.toLowerCase()),
+          i.name.toLowerCase().includes(search) ||
+          (i.symbol && i.symbol.toLowerCase().includes(search)),
         )
-        if (!inv) return { error: `ไม่พบกองทุน "${args.investmentName}"` }
+        if (!inv) {
+          const available = investments.map((i: any) => `${i.name}${i.symbol ? ` (${i.symbol})` : ''}`).join(', ')
+          return { success: false, error: `ไม่พบกองทุน "${args.investmentName}"`, availableInvestments: available || 'ไม่มีกองทุนในพอร์ต' }
+        }
 
         await this.investmentsSvc.addTransaction(userId, inv.id, {
           type: args.type,
@@ -1151,7 +1163,8 @@ export class ChatService {
           occurredAt: args.occurredAt,
           note: args.note,
         })
-        return { success: true, message: `บันทึก${args.type === 'buy' ? 'การซื้อ' : args.type === 'sell' ? 'การขาย' : 'เงินปันผล'} ฿${args.amount} ให้ "${inv.name}" แล้ว` }
+        this.logger.log(`add_investment_transaction: saved ${args.type} ฿${args.amount} for "${inv.name}"`)
+        return { success: true, message: `บันทึก${args.type === 'buy' ? 'การซื้อ' : args.type === 'sell' ? 'การขาย' : 'เงินปันผล'} ฿${args.amount} ให้ "${inv.name}" (${inv.symbol ?? ''}) แล้ว` }
       }
 
       // ── add_tax_deduction ──────────────────────────────────

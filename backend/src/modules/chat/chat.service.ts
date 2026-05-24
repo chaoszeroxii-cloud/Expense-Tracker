@@ -589,7 +589,7 @@ export class ChatService {
         }
       })
 
-      response.data.on('end', resolve)
+      response.data.on('end', () => resolve())
       response.data.on('error', reject)
     })
 

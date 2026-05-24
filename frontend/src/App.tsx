@@ -1,15 +1,22 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import Layout from './components/layout/Layout'
-import PrivateRoute from './components/layout/PrivateRoute'
+import PrivateRoute, { AdminRoute } from './components/layout/PrivateRoute'
 import Dashboard from './pages/Dashboard/Dashboard'
 
 // ── Lazy-loaded pages ──────────────────────────────────
-const AuthPage   = lazy(() => import('./pages/Auth/AuthPage'))
-const AddExpense = lazy(() => import('./pages/AddExpense/AddExpense'))
-const History    = lazy(() => import('./pages/History/History'))
-const Settings   = lazy(() => import('./pages/Settings/Settings'))
-const Wallets    = lazy(() => import('./pages/Wallets/Wallets'))
+const AuthPage      = lazy(() => import('./pages/Auth/AuthPage'))
+const AddExpense    = lazy(() => import('./pages/AddExpense/AddExpense'))
+const History       = lazy(() => import('./pages/History/History'))
+const Settings      = lazy(() => import('./pages/Settings/Settings'))
+const Wallets       = lazy(() => import('./pages/Wallets/Wallets'))
+const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
+const Finance       = lazy(() => import('./pages/Finance/Finance'))
+const Budget        = lazy(() => import('./pages/Budget/Budget'))
+const Loans         = lazy(() => import('./pages/Loans/Loans'))
+const Investments   = lazy(() => import('./pages/Investments/Investments'))
+const Tax           = lazy(() => import('./pages/Tax/Tax'))
+const AdminDashboard = lazy(() => import('./pages/Admin/AdminDashboard'))
 
 function PageLoader() {
   return (
@@ -27,13 +34,26 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public */}
         <Route path="/login" element={<Lazy><AuthPage /></Lazy>} />
+
+        {/* Onboarding — auth required but not onboarding-gated */}
+        <Route element={<OnboardingRoute />}>
+          <Route path="/onboarding" element={<Lazy><Onboarding /></Lazy>} />
+        </Route>
+
+        {/* Protected + onboarding-gated */}
         <Route element={<PrivateRoute />}>
           <Route element={<Layout />}>
-            <Route path="/"         element={<Dashboard />} />
-            <Route path="/history"  element={<Lazy><History /></Lazy>} />
-            <Route path="/wallets"  element={<Lazy><Wallets /></Lazy>} />
-            <Route path="/settings" element={<Lazy><Settings /></Lazy>} />
+            <Route path="/"           element={<Dashboard />} />
+            <Route path="/history"    element={<Lazy><History /></Lazy>} />
+            <Route path="/wallets"    element={<Lazy><Wallets /></Lazy>} />
+            <Route path="/settings"   element={<Lazy><Settings /></Lazy>} />
+            <Route path="/finance"    element={<Lazy><Finance /></Lazy>} />
+            <Route path="/budget"     element={<Lazy><Budget /></Lazy>} />
+            <Route path="/loans"      element={<Lazy><Loans /></Lazy>} />
+            <Route path="/investments" element={<Lazy><Investments /></Lazy>} />
+            <Route path="/tax"        element={<Lazy><Tax /></Lazy>} />
           </Route>
           <Route path="/add" element={
             <Lazy>
@@ -43,8 +63,24 @@ export default function App() {
             </Lazy>
           } />
         </Route>
+
+        {/* Admin — role-gated */}
+        <Route element={<AdminRoute />}>
+          <Route path="/admin" element={<Lazy><AdminDashboard /></Lazy>} />
+        </Route>
+
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
 }
+
+// Auth-only route (no onboarding redirect)
+function OnboardingRoute() {
+  const { token } = useAuthStoreRaw()
+  return token ? <Outlet /> : <Navigate to="/login" replace />
+}
+
+import { useAuthStore } from './store/auth.store'
+import { Outlet } from 'react-router-dom'
+function useAuthStoreRaw() { return useAuthStore() }

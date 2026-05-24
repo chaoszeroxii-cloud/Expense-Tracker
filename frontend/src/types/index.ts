@@ -83,3 +83,151 @@ export interface BalanceSummary {
   allocatedBalance: number
   unallocatedBalance: number
 }
+
+// ── Budget ────────────────────────────────────────────────────
+export interface BudgetItem {
+  id: string
+  categoryId: string
+  categoryName: string
+  categoryIcon: string
+  categoryColor: string
+  month: string
+  budgeted: number
+  actual: number
+  remaining: number
+}
+
+// ── Loans ─────────────────────────────────────────────────────
+export interface LoanPayment {
+  id: string
+  loanId: string
+  amount: number
+  paidAt: string
+  note?: string
+  createdAt: string
+}
+
+export interface Loan {
+  id: string
+  borrower: string
+  amount: number
+  paidAmount: number
+  outstanding: number
+  note?: string
+  lentAt: string
+  dueDate?: string
+  status: 'active' | 'settled'
+  payments: LoanPayment[]
+}
+
+export interface LoanSummary {
+  activeLoans: number
+  totalLent: number
+  totalPaid: number
+  totalOutstanding: number
+  loans: Loan[]
+}
+
+// ── Investments ───────────────────────────────────────────────
+export type InvestmentType = 'mutual_fund' | 'stock_th' | 'stock_us' | 'crypto' | 'gold' | 'other'
+
+export interface InvestmentTransaction {
+  id: string
+  investmentId: string
+  type: 'buy' | 'sell' | 'dividend'
+  amount: number
+  units?: number
+  navPrice?: number
+  occurredAt: string
+  note?: string
+  createdAt: string
+}
+
+export interface Investment {
+  id: string
+  name: string
+  symbol?: string
+  type: InvestmentType
+  note?: string
+  totalCost: number
+  totalSold: number
+  netCost: number
+  totalUnits: number
+  transactions: InvestmentTransaction[]
+  createdAt: string
+}
+
+// ── Tax ───────────────────────────────────────────────────────
+export interface TaxDeduction {
+  id: string
+  taxYear: number
+  type: string
+  name: string
+  amount: number
+  maxAmount?: number
+  note?: string
+}
+
+export interface TaxCalculationResult {
+  annualIncome: number
+  employmentDeduction: number
+  totalDeductions: number
+  netIncome: number
+  tax: number
+  effectiveRate: number
+  deductions: TaxDeduction[]
+  optimizations: {
+    type: string
+    name: string
+    maxAmount: number
+    estimatedTaxSaving: number
+    description: string
+  }[]
+}
+
+export interface TaxDeductionType {
+  type: string
+  name: string
+  max: number
+  description: string
+}
+
+// ── Emergency Fund ────────────────────────────────────────────
+export interface EmergencyFundSummary {
+  avgMonthlyExpense: number
+  targetMonths: number
+  suggestedTarget: number
+  currentAmount: number
+  progress: number
+  remaining: number
+  walletId: string | null
+  walletName: string | null
+}
+
+// ── Chat ──────────────────────────────────────────────────────
+export interface ChatMessage {
+  id?: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt?: string
+}
+
+// ── Admin ─────────────────────────────────────────────────────
+export interface AdminUser {
+  id: string
+  email: string
+  name: string
+  role: string
+  onboardingCompleted: boolean
+  currency: string
+  totalBalance: number
+  transactionCount: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AdminStats {
+  totalUsers: number
+  adminUsers: number
+  newThisMonth: number
+}

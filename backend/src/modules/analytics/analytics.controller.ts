@@ -56,4 +56,10 @@ export class AnalyticsController {
   getBalanceSummary(@CurrentUser() user: User) {
     return this.service.getBalanceSummary(user.id)
   }
+
+  // GET /api/analytics/emergency-fund?months=6
+  @Get('emergency-fund')
+  getEmergencyFund(@CurrentUser() user: User, @Query('months') months?: string) {
+    return this.service.getEmergencyFundSummary(user.id, parseInt(months ?? '6'))
+  }
 }

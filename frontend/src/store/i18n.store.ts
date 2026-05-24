@@ -10,6 +10,7 @@ const dict = {
     // Nav
     nav_dashboard:  'Dashboard',
     nav_history:    'History',
+    nav_finance:    'Finance',
     nav_wallets:    'Wallets',
     nav_settings:   'Settings',
 
@@ -142,6 +143,7 @@ const dict = {
     // Nav
     nav_dashboard:  'ภาพรวม',
     nav_history:    'ประวัติ',
+    nav_finance:    'การเงิน',
     nav_wallets:    'ซองเงิน',
     nav_settings:   'ตั้งค่า',
 

@@ -1,15 +1,19 @@
 import { useState, lazy, Suspense } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
   mdiTrendingDown, mdiTrendingUp, mdiWallet,
   mdiSwapVertical, mdiChevronLeft, mdiChevronRight,
-  mdiEmoticonHappy,
-  mdiEmoticonSad,
+  mdiEmoticonHappy, mdiEmoticonSad,
+  mdiChartBar, mdiCashMultiple, mdiShield, mdiChevronRight as mdiChevronRightIcon,
 } from '@mdi/js'
 import { Card, Skeleton, Amount } from '../../components/ui'
 import SpendingPieChart from '../../components/charts/SpendingPieChart'
 import AllocationWallets from '../../components/allocations/AllocationWallets'
-import { useSummary, useCategoryBreakdown, useMonthlyTrend, currentMonth } from '../../hooks'
+import {
+  useSummary, useCategoryBreakdown, useMonthlyTrend, currentMonth,
+  useBudgetSummary, useLoanSummary, useEmergencyFund,
+} from '../../hooks'
 import { useT } from '../../store/i18n.store'
 
 // Lazy-loaded heavy chart section (pulls in recharts)
@@ -28,8 +32,13 @@ function formatMonthLabel(ym: string, lang = 'th') {
   )
 }
 
+function fmt(n: number) {
+  return n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+}
+
 export default function Dashboard() {
   const t    = useT()
+  const navigate = useNavigate()
   const lang = localStorage.getItem('flo_lang') ?? 'th'
   const [month, setMonth] = useState(currentMonth())
   const isCurrentMonth = month === currentMonth()
@@ -37,6 +46,9 @@ export default function Dashboard() {
   const { data: summary,    loading: loadingSum }   = useSummary(month)
   const { data: categories, loading: loadingCat }   = useCategoryBreakdown(month, 'expense')
   const { data: trend,      loading: loadingTrend } = useMonthlyTrend()
+  const { data: budgets,    loading: loadingBudget } = useBudgetSummary(month)
+  const { data: loanData,   loading: loadingLoans }  = useLoanSummary()
+  const { data: efData,     loading: loadingEF }     = useEmergencyFund(6)
 
   return (
     <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">
@@ -153,6 +165,106 @@ export default function Dashboard() {
           lang={lang}
         />
       </Suspense>
+
+      {/* ── Budget Progress ── */}
+      {!loadingBudget && budgets && budgets.length > 0 && (
+        <Card className="animate-fade-up">
+          <button
+            onClick={() => navigate('/budget')}
+            className="flex items-center justify-between w-full mb-4"
+          >
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
+                <Icon path={mdiChartBar} size={0.7} color="#6366f1" />
+              </div>
+              <h2 className="font-bold text-base-theme text-sm">งบประมาณเดือนนี้</h2>
+            </div>
+            <Icon path={mdiChevronRightIcon} size={0.7} className="text-muted-theme" />
+          </button>
+          <div className="space-y-3">
+            {budgets.slice(0, 4).map(b => {
+              const pct = b.budgeted > 0 ? Math.min(100, (b.actual / b.budgeted) * 100) : 0
+              const over = b.actual > b.budgeted
+              return (
+                <div key={b.id}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-base-theme font-medium">{b.categoryIcon} {b.categoryName}</span>
+                    <span className={over ? 'text-red-500 font-semibold' : 'text-muted-theme'}>
+                      {over ? `เกิน ฿${fmt(b.actual - b.budgeted)}` : `฿${fmt(b.actual)} / ฿${fmt(b.budgeted)}`}
+                    </span>
+                  </div>
+                  <div className="w-full bg-[var(--input)] rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+            {budgets.length > 4 && (
+              <p className="text-xs text-muted-theme text-center">+{budgets.length - 4} หมวดอื่น</p>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {/* ── Emergency Fund ── */}
+      {!loadingEF && efData && (
+        <Card className="animate-fade-up">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+              <Icon path={mdiShield} size={0.7} color="#f59e0b" />
+            </div>
+            <h2 className="font-bold text-base-theme text-sm">เงินสำรองฉุกเฉิน</h2>
+          </div>
+          <div className="w-full bg-[var(--input)] rounded-full h-3 overflow-hidden mb-2">
+            <div
+              className={`h-full rounded-full transition-all ${efData.progress >= 100 ? 'bg-emerald-500' : efData.progress >= 60 ? 'bg-amber-500' : 'bg-red-400'}`}
+              style={{ width: `${efData.progress}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-theme">฿{fmt(efData.currentAmount)}</span>
+            <span className={`font-semibold ${efData.progress >= 100 ? 'text-emerald-500' : 'text-muted-theme'}`}>
+              {efData.progress >= 100 ? '✓ ครบแล้ว!' : `${efData.progress.toFixed(0)}% (เป้า ฿${fmt(efData.suggestedTarget)})`}
+            </span>
+          </div>
+          {efData.remaining > 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">ต้องออมอีก ฿{fmt(efData.remaining)} เพื่อครบ {efData.targetMonths} เดือน</p>
+          )}
+        </Card>
+      )}
+
+      {/* ── Loan Summary ── */}
+      {!loadingLoans && loanData && loanData.activeLoans > 0 && (
+        <Card className="animate-fade-up">
+          <button onClick={() => navigate('/loans')} className="flex items-center justify-between w-full mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
+                <Icon path={mdiCashMultiple} size={0.7} color="#f59e0b" />
+              </div>
+              <h2 className="font-bold text-base-theme text-sm">เงินให้ยืม</h2>
+            </div>
+            <Icon path={mdiChevronRightIcon} size={0.7} className="text-muted-theme" />
+          </button>
+          <div className="space-y-2">
+            {loanData.loans.slice(0, 3).map(loan => (
+              <div key={loan.id} className="flex items-center justify-between py-1.5 border-b border-[var(--border)] last:border-0">
+                <span className="text-sm text-base-theme font-medium">{loan.borrower}</span>
+                <span className="text-sm font-bold text-amber-600 dark:text-amber-400">฿{fmt(loan.outstanding)}</span>
+              </div>
+            ))}
+            {loanData.activeLoans > 3 && (
+              <p className="text-xs text-muted-theme text-center">+{loanData.activeLoans - 3} คนอื่น</p>
+            )}
+          </div>
+          <div className="mt-3 pt-3 border-t border-[var(--border)] flex justify-between text-sm">
+            <span className="text-muted-theme">ยอดค้างทั้งหมด</span>
+            <span className="font-bold text-base-theme">฿{fmt(loanData.totalOutstanding)}</span>
+          </div>
+        </Card>
+      )}
 
       {/* ── Wallet Balances ── */}
       <AllocationWallets />

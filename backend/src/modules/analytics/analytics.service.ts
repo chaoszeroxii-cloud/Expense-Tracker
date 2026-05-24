@@ -235,6 +235,47 @@ export class AnalyticsService {
     }
   }
 
+  // ─── 8. Emergency Fund summary ────────────────────────────────────────────
+  async getEmergencyFundSummary(userId: string, targetMonths = 6) {
+    const allocationRepo = this.dataSource.getRepository(Allocation)
+
+    const threeMonthsAgo = new Date()
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3)
+
+    const avgRow = await this.repo
+      .createQueryBuilder('e')
+      .select("SUM(e.amount) / 3.0 AS avg_monthly")
+      .where('e.user_id = :userId', { userId })
+      .andWhere("e.type = 'expense'")
+      .andWhere('e.occurred_at >= :since', { since: threeMonthsAgo })
+      .getRawOne()
+
+    const avgMonthlyExpense = parseFloat(avgRow?.avg_monthly) || 0
+    const suggestedTarget = avgMonthlyExpense * targetMonths
+
+    // Find allocation tagged as emergency fund (name contains "สำรอง" or "emergency")
+    const allocations = await allocationRepo.find({ where: { userId } })
+    const efWallet = allocations.find(
+      (a) =>
+        a.name.toLowerCase().includes('สำรอง') ||
+        a.name.toLowerCase().includes('emergency') ||
+        a.name.toLowerCase().includes('ฉุกเฉิน'),
+    )
+
+    const currentAmount = efWallet ? Number(efWallet.balance) : 0
+
+    return {
+      avgMonthlyExpense,
+      targetMonths,
+      suggestedTarget,
+      currentAmount,
+      progress: suggestedTarget > 0 ? Math.min(100, (currentAmount / suggestedTarget) * 100) : 0,
+      remaining: Math.max(0, suggestedTarget - currentAmount),
+      walletId: efWallet?.id ?? null,
+      walletName: efWallet?.name ?? null,
+    }
+  }
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
   private buildDateFilter(
     month?: string,

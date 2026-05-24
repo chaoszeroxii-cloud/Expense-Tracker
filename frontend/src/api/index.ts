@@ -3,6 +3,9 @@ import { useAuthStore } from '../store/auth.store'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Expense, Category, CreateExpensePayload, BalanceSummary,
+  BudgetItem, Loan, LoanSummary, Investment, InvestmentTransaction,
+  TaxDeduction, TaxCalculationResult, TaxDeductionType,
+  EmergencyFundSummary, AdminUser, AdminStats,
 } from '../types'
 
 const http = axios.create({
@@ -42,6 +45,12 @@ export const authApi = {
 
   updateProfile: (payload: { name: string }) =>
     http.patch('/auth/profile', payload).then(r => r.data),
+
+  getOnboardingWallets: () =>
+    http.get('/auth/onboarding/wallets').then(r => r.data),
+
+  completeOnboarding: (wallets: string[]) =>
+    http.post('/auth/onboarding', { wallets }).then(r => r.data),
 }
 
 // ── Analytics ────────────────────────────────────────────────
@@ -60,6 +69,9 @@ export const analyticsApi = {
   // GET /api/analytics/balance — totalBalance, allocatedBalance, unallocatedBalance
   getBalanceSummary: () =>
     http.get<BalanceSummary>('/analytics/balance').then(r => r.data),
+
+  getEmergencyFund: (months = 6) =>
+    http.get<EmergencyFundSummary>('/analytics/emergency-fund', { params: { months } }).then(r => r.data),
 }
 
 // ── Expenses ─────────────────────────────────────────────────
@@ -119,4 +131,87 @@ export const allocationsApi = {
   // POST /api/allocations/:id/unallocate — return wallet funds to unallocated pool
   unallocate: (id: string, amount: number) =>
     http.post(`/allocations/${id}/unallocate`, { amount }).then(r => r.data),
+}
+
+// ── Budgets ───────────────────────────────────────────────────
+export const budgetsApi = {
+  getWithActual: (month?: string) =>
+    http.get<BudgetItem[]>('/budgets', { params: { month } }).then(r => r.data),
+
+  upsert: (payload: { categoryId: string; amount: number; month: string }) =>
+    http.post('/budgets', payload).then(r => r.data),
+
+  remove: (id: string) =>
+    http.delete(`/budgets/${id}`).then(r => r.data),
+}
+
+// ── Loans ─────────────────────────────────────────────────────
+export const loansApi = {
+  findAll: () =>
+    http.get<Loan[]>('/loans').then(r => r.data),
+
+  getSummary: () =>
+    http.get<LoanSummary>('/loans/summary').then(r => r.data),
+
+  create: (payload: { borrower: string; amount: number; note?: string; lentAt: string; dueDate?: string }) =>
+    http.post<Loan>('/loans', payload).then(r => r.data),
+
+  addPayment: (id: string, payload: { amount: number; paidAt: string; note?: string }) =>
+    http.post<Loan>(`/loans/${id}/payments`, payload).then(r => r.data),
+
+  remove: (id: string) =>
+    http.delete(`/loans/${id}`).then(r => r.data),
+}
+
+// ── Investments ───────────────────────────────────────────────
+export const investmentsApi = {
+  findAll: () =>
+    http.get<Investment[]>('/investments').then(r => r.data),
+
+  create: (payload: { name: string; symbol?: string; type: string; note?: string }) =>
+    http.post<Investment>('/investments', payload).then(r => r.data),
+
+  addTransaction: (id: string, payload: {
+    type: string; amount: number; units?: number; navPrice?: number; occurredAt: string; note?: string
+  }) =>
+    http.post<InvestmentTransaction>(`/investments/${id}/transactions`, payload).then(r => r.data),
+
+  remove: (id: string) =>
+    http.delete(`/investments/${id}`).then(r => r.data),
+}
+
+// ── Tax ───────────────────────────────────────────────────────
+export const taxApi = {
+  getTypes: () =>
+    http.get<TaxDeductionType[]>('/tax/types').then(r => r.data),
+
+  findByYear: (year: number) =>
+    http.get<TaxDeduction[]>('/tax/deductions', { params: { year } }).then(r => r.data),
+
+  upsert: (payload: { taxYear: number; type: string; name: string; amount: number; maxAmount?: number; note?: string }) =>
+    http.post<TaxDeduction>('/tax/deductions', payload).then(r => r.data),
+
+  remove: (id: string) =>
+    http.delete(`/tax/deductions/${id}`).then(r => r.data),
+
+  calculate: (income: number, year: number) =>
+    http.get<TaxCalculationResult>('/tax/calculate', { params: { income, year } }).then(r => r.data),
+}
+
+// ── Admin ─────────────────────────────────────────────────────
+export const adminApi = {
+  getStats: () =>
+    http.get<AdminStats>('/admin/stats').then(r => r.data),
+
+  getUsers: () =>
+    http.get<AdminUser[]>('/admin/users').then(r => r.data),
+
+  getUser: (id: string) =>
+    http.get<AdminUser>(`/admin/users/${id}`).then(r => r.data),
+
+  setRole: (id: string, role: 'user' | 'admin') =>
+    http.patch(`/admin/users/${id}/role`, { role }).then(r => r.data),
+
+  deleteUser: (id: string) =>
+    http.delete(`/admin/users/${id}`).then(r => r.data),
 }

@@ -5,6 +5,8 @@ interface AuthUser {
   email: string
   name: string
   currency: string
+  role: string
+  onboardingCompleted: boolean
 }
 
 interface AuthState {

@@ -1,5 +1,5 @@
-import { Controller, Post, Get, Patch, Body, UseGuards } from '@nestjs/common'
-import { AuthService } from './auth.service'
+import { Controller, Post, Get, Patch, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
+import { AuthService, DEFAULT_WALLETS } from './auth.service'
 import { RegisterDto, LoginDto, UpdateProfileDto } from './auth.dto'
 import { JwtAuthGuard } from './jwt-auth.guard'
 import { Public } from './jwt-auth.guard'
@@ -35,5 +35,18 @@ export class AuthController {
   @Patch('profile')
   updateProfile(@CurrentUser() user: User, @Body() dto: UpdateProfileDto) {
     return this.service.updateProfile(user.id, dto)
+  }
+
+  // POST /api/auth/onboarding  (protected)
+  @Post('onboarding')
+  @HttpCode(HttpStatus.OK)
+  completeOnboarding(@CurrentUser() user: User, @Body() body: { wallets: string[] }) {
+    return this.service.completeOnboarding(user.id, body.wallets ?? [])
+  }
+
+  // GET /api/auth/onboarding/wallets  (public reference)
+  @Get('onboarding/wallets')
+  getDefaultWallets() {
+    return DEFAULT_WALLETS
   }
 }

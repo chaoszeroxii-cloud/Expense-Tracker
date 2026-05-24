@@ -7,9 +7,20 @@ import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcrypt'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
+import { Allocation } from '../allocations/allocation.entity'
 import { RegisterDto, LoginDto, UpdateProfileDto } from './auth.dto'
 
 const SALT_ROUNDS = 12
+
+export const DEFAULT_WALLETS = [
+  { key: 'emergency',  name: 'เงินสำรองฉุกเฉิน', icon: '🏦', color: '#f59e0b', pct: 10 },
+  { key: 'fixed',      name: 'ค่าใช้จ่ายคงที่',   icon: '🏠', color: '#3b82f6', pct: 30 },
+  { key: 'daily',      name: 'ค่าใช้จ่ายประจำวัน', icon: '🍚', color: '#10b981', pct: 20 },
+  { key: 'savings',    name: 'เป้าหมายการออม',     icon: '🎯', color: '#6366f1', pct: 10 },
+  { key: 'investment', name: 'การลงทุน',           icon: '📈', color: '#06b6d4', pct: 15 },
+  { key: 'personal',   name: 'ส่วนตัว/บันเทิง',   icon: '🎉', color: '#ec4899', pct: 10 },
+  { key: 'health',     name: 'สุขภาพ/ประกัน',     icon: '🏥', color: '#ef4444', pct: 5  },
+] as const
 
 const DEFAULT_CATEGORIES = [
   { name: 'Food & Drink',   icon: '🍜', color: '#f97316', type: 'expense' },
@@ -35,6 +46,9 @@ export class AuthService {
 
     @InjectRepository(Category)
     private readonly categories: Repository<Category>,
+
+    @InjectRepository(Allocation)
+    private readonly allocations: Repository<Allocation>,
 
     private readonly jwt: JwtService,
   ) {}
@@ -80,6 +94,24 @@ export class AuthService {
   me(user: User) {
     const { passwordHash: _, ...safe } = user as any
     return safe
+  }
+
+  // ── Onboarding ──────────────────────────────────────────────
+  async completeOnboarding(userId: string, selectedWalletKeys: string[]) {
+    const user = await this.users.findOne({ where: { id: userId } })
+    if (!user) return
+
+    const wallets = DEFAULT_WALLETS.filter((w) => selectedWalletKeys.includes(w.key))
+    if (wallets.length === 0) {
+      // minimum 3 default wallets if nothing selected
+      wallets.push(DEFAULT_WALLETS[0], DEFAULT_WALLETS[2], DEFAULT_WALLETS[3])
+    }
+
+    await this.allocations.save(
+      wallets.map((w) => this.allocations.create({ userId, name: w.name, icon: w.icon, color: w.color })),
+    )
+    await this.users.update(userId, { onboardingCompleted: true })
+    return { success: true, created: wallets.length }
   }
 
   // ── Helpers ─────────────────────────────────────────────────

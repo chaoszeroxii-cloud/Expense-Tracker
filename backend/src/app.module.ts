@@ -8,6 +8,11 @@ import { ExpensesModule } from './modules/expenses/expenses.module'
 import { CategoriesModule } from './modules/categories/categories.module'
 import { AnalyticsModule } from './modules/analytics/analytics.module'
 import { AllocationsModule } from './modules/allocations/allocations.module'
+import { BudgetsModule } from './modules/budgets/budgets.module'
+import { LoansModule } from './modules/loans/loans.module'
+import { InvestmentsModule } from './modules/investments/investments.module'
+import { TaxModule } from './modules/tax/tax.module'
+import { AdminModule } from './modules/admin/admin.module'
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard'
 import { HealthController } from './health.controller'
 
@@ -21,6 +26,11 @@ import { HealthController } from './health.controller'
     ExpensesModule,
     CategoriesModule,
     AnalyticsModule,
+    BudgetsModule,
+    LoansModule,
+    InvestmentsModule,
+    TaxModule,
+    AdminModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: JwtAuthGuard },

@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { analyticsApi, expensesApi, categoriesApi, allocationsApi } from '../api'
+import { analyticsApi, expensesApi, categoriesApi, allocationsApi, budgetsApi, loansApi } from '../api'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
+  BudgetItem, LoanSummary, EmergencyFundSummary,
 } from '../types'
 
 // Current month helper — returns "YYYY-MM"
@@ -66,4 +67,16 @@ export function useAllocationSummary() {
 // ── Balance summary: total / allocated / unallocated ─────────
 export function useBalanceSummary() {
   return useFetch<BalanceSummary>(() => analyticsApi.getBalanceSummary())
+}
+
+export function useBudgetSummary(month: string) {
+  return useFetch<BudgetItem[]>(() => budgetsApi.getWithActual(month), [month])
+}
+
+export function useLoanSummary() {
+  return useFetch<LoanSummary>(() => loansApi.getSummary())
+}
+
+export function useEmergencyFund(months = 6) {
+  return useFetch<EmergencyFundSummary>(() => analyticsApi.getEmergencyFund(months), [months])
 }

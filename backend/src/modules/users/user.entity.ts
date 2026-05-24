@@ -22,6 +22,12 @@ export class User {
   @Column({ length: 3, default: 'THB' })
   currency: string
 
+  @Column({ length: 10, default: 'user' })
+  role: string
+
+  @Column({ name: 'onboarding_completed', default: false })
+  onboardingCompleted: boolean
+
   // ── Running total balance (income minus expenses, all-time) ──
   // unallocated = totalBalance - SUM(allocation.balance)
   @Column({

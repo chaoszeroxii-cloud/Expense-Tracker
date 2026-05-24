@@ -27,6 +27,10 @@ export default function Tax() {
   }, [year])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    window.addEventListener('moneyflow:data-changed', load)
+    return () => window.removeEventListener('moneyflow:data-changed', load)
+  }, [load])
 
   const handleCalculate = async () => {
     if (!income) return

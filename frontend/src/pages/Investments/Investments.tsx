@@ -30,6 +30,10 @@ export default function Investments() {
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    window.addEventListener('moneyflow:data-changed', load)
+    return () => window.removeEventListener('moneyflow:data-changed', load)
+  }, [load])
 
   const totalNetCost = investments.reduce((s, i) => s + i.netCost, 0)
 

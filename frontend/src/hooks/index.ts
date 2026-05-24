@@ -30,6 +30,11 @@ function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
 
   useEffect(() => { fetch() }, [fetch])
 
+  useEffect(() => {
+    window.addEventListener('moneyflow:data-changed', fetch)
+    return () => window.removeEventListener('moneyflow:data-changed', fetch)
+  }, [fetch])
+
   return { data, loading, error, refetch: fetch }
 }
 

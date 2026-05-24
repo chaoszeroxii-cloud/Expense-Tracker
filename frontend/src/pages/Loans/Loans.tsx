@@ -41,6 +41,10 @@ export default function Loans() {
   }, [filter])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    window.addEventListener('moneyflow:data-changed', load)
+    return () => window.removeEventListener('moneyflow:data-changed', load)
+  }, [load])
 
   const visible = loans.filter(l => l.direction === tab)
 

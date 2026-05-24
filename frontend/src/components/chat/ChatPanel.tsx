@@ -56,6 +56,7 @@ export default function ChatPanel({ onClose }: Props) {
   const [toast, setToast] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -85,6 +86,7 @@ export default function ChatPanel({ onClose }: Props) {
 
     setMessages(prev => [...prev, userMsg, placeholder])
     setInput('')
+    if (textareaRef.current) { textareaRef.current.style.height = 'auto' }
     setSending(true)
 
     try {
@@ -135,6 +137,9 @@ export default function ChatPanel({ onClose }: Props) {
       setMessages(prev => prev.map(m =>
         m.localId === streamId ? { ...m, content: clean, streaming: false } : m
       ))
+
+      // Notify all pages to re-fetch their data
+      window.dispatchEvent(new CustomEvent('moneyflow:data-changed'))
 
       if (theme) {
         setTheme(theme)
@@ -297,8 +302,14 @@ export default function ChatPanel({ onClose }: Props) {
 
             {/* Text input */}
             <textarea
+              ref={textareaRef}
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={e => {
+                setInput(e.target.value)
+                const el = e.target
+                el.style.height = 'auto'
+                el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+              }}
               onKeyDown={e => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -309,8 +320,7 @@ export default function ChatPanel({ onClose }: Props) {
               rows={1}
               className="flex-1 px-3 py-2.5 rounded-xl bg-[var(--input)] text-base-theme text-sm
                          border border-[var(--border)] outline-none resize-none
-                         max-h-28 overflow-y-auto placeholder:text-muted-theme"
-              style={{ scrollbarWidth: 'none' }}
+                         overflow-hidden placeholder:text-muted-theme"
             />
 
             {/* Send button */}

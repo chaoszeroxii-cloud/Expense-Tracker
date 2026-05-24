@@ -31,6 +31,10 @@ export default function Budget() {
   }, [month])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    window.addEventListener('moneyflow:data-changed', load)
+    return () => window.removeEventListener('moneyflow:data-changed', load)
+  }, [load])
 
   const totalBudgeted = budgets.reduce((s, b) => s + b.budgeted, 0)
   const totalActual   = budgets.reduce((s, b) => s + b.actual, 0)

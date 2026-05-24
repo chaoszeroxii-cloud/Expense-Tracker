@@ -3,6 +3,7 @@ import { budgetsApi, categoriesApi } from '../../api'
 import type { BudgetItem, Category } from '../../types'
 import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
+import CustomSelect from '../../components/ui/CustomSelect'
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7)
@@ -166,16 +167,12 @@ export default function Budget() {
                 <Icon path={mdiClose} size={0.9} />
               </button>
             </div>
-            <select
+            <CustomSelect
               value={form.categoryId}
-              onChange={e => setForm(f => ({ ...f, categoryId: e.target.value }))}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
-            >
-              <option value="">เลือกหมวดหมู่</option>
-              {availableCategories.map(c => (
-                <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
-              ))}
-            </select>
+              onChange={v => setForm(f => ({ ...f, categoryId: v }))}
+              placeholder="เลือกหมวดหมู่"
+              options={availableCategories.map(c => ({ value: c.id, label: `${c.icon} ${c.name}` }))}
+            />
             <input
               type="number"
               placeholder="จำนวนเงิน (บาท)"

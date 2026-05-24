@@ -3,6 +3,7 @@ import { investmentsApi } from '../../api'
 import type { Investment } from '../../types'
 import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiTrendingUp, mdiClose } from '@mdi/js'
+import CustomSelect from '../../components/ui/CustomSelect'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -149,10 +150,11 @@ export default function Investments() {
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none" />
             <input placeholder="Symbol (เช่น SCBS&P500)" value={invForm.symbol} onChange={e => setInvForm(f => ({ ...f, symbol: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none" />
-            <select value={invForm.type} onChange={e => setInvForm(f => ({ ...f, type: e.target.value }))}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none">
-              {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            <CustomSelect
+              value={invForm.type}
+              onChange={v => setInvForm(f => ({ ...f, type: v }))}
+              options={Object.entries(TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))}
+            />
             <button onClick={handleCreateInv} disabled={saving || !invForm.name}
               className="w-full py-3 rounded-xl bg-brand-600 text-white font-bold text-sm disabled:opacity-50">
               {saving ? 'กำลังบันทึก...' : 'เพิ่ม'}
@@ -169,12 +171,15 @@ export default function Investments() {
               <h2 className="font-bold text-base-theme">บันทึกรายการ</h2>
               <button onClick={() => setShowTx(null)} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
             </div>
-            <select value={txForm.type} onChange={e => setTxForm(f => ({ ...f, type: e.target.value }))}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none">
-              <option value="buy">ซื้อ</option>
-              <option value="sell">ขาย</option>
-              <option value="dividend">เงินปันผล</option>
-            </select>
+            <CustomSelect
+              value={txForm.type}
+              onChange={v => setTxForm(f => ({ ...f, type: v }))}
+              options={[
+                { value: 'buy', label: 'ซื้อ' },
+                { value: 'sell', label: 'ขาย' },
+                { value: 'dividend', label: 'เงินปันผล' },
+              ]}
+            />
             <input type="number" placeholder="จำนวนเงิน (บาท)" value={txForm.amount} onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none" />
             <input type="number" placeholder="จำนวนหน่วย (ไม่บังคับ)" value={txForm.units} onChange={e => setTxForm(f => ({ ...f, units: e.target.value }))}

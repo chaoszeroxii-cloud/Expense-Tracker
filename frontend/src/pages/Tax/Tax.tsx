@@ -3,6 +3,7 @@ import { taxApi } from '../../api'
 import type { TaxDeduction, TaxCalculationResult, TaxDeductionType } from '../../types'
 import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiClose, mdiLightbulbOutline, mdiReceiptTextOutline } from '@mdi/js'
+import CustomSelect from '../../components/ui/CustomSelect'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -192,11 +193,12 @@ export default function Tax() {
               <h2 className="font-bold text-base-theme">เพิ่มค่าลดหย่อน</h2>
               <button onClick={() => setShowAdd(false)} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
             </div>
-            <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none">
-              <option value="">เลือกประเภท</option>
-              {types.map(t => <option key={t.type} value={t.type}>{t.name}</option>)}
-            </select>
+            <CustomSelect
+              value={form.type}
+              onChange={v => setForm(f => ({ ...f, type: v }))}
+              placeholder="เลือกประเภท"
+              options={types.map(t => ({ value: t.type, label: t.name }))}
+            />
             {selectedType && (
               <p className="text-xs text-muted-theme -mt-2 px-1">{selectedType.description}</p>
             )}

@@ -536,6 +536,7 @@ export class ChatService {
 
   private async handleToolCalls(userId: string, messages: any[], assistantMsg: any): Promise<string> {
     const toolResults: any[] = []
+    const uiMarkers: string[] = []
 
     for (const call of assistantMsg.tool_calls) {
       const args = JSON.parse(call.function.arguments || '{}')
@@ -545,6 +546,8 @@ export class ChatService {
       } catch (err: any) {
         result = { error: err.message }
       }
+      // Collect UI action markers — inject them into final response ourselves
+      if (result?.marker) uiMarkers.push(result.marker)
       toolResults.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) })
     }
 
@@ -553,7 +556,8 @@ export class ChatService {
       { role: 'assistant', content: null, tool_calls: assistantMsg.tool_calls },
       ...toolResults,
     ]
-    return this.callDeepSeek(userId, updatedMessages)
+    const response = await this.callDeepSeek(userId, updatedMessages)
+    return uiMarkers.length > 0 ? `${response} ${uiMarkers.join(' ')}` : response
   }
 
   // ─────────────────────────────────────────────────────────────

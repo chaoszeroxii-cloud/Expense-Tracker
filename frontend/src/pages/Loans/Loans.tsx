@@ -28,6 +28,7 @@ export default function Loans() {
   })
   const [payForm, setPayForm] = useState({ amount: '', paidAt: new Date().toISOString().slice(0, 10), note: '' })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -51,21 +52,43 @@ export default function Loans() {
   const handleCreate = async () => {
     if (!form.borrower || !form.amount) return
     setSaving(true)
-    await loansApi.create({ ...form, amount: parseFloat(form.amount) })
-    setShowAdd(false)
-    setForm({ direction: 'lent', borrower: '', amount: '', note: '', lentAt: new Date().toISOString().slice(0, 10) })
-    await load()
-    setSaving(false)
+    setError('')
+    try {
+      await loansApi.create({
+        direction: form.direction,
+        borrower: form.borrower,
+        amount: parseFloat(form.amount),
+        lentAt: form.lentAt,
+        ...(form.note ? { note: form.note } : {}),
+      })
+      setShowAdd(false)
+      setForm({ direction: 'lent', borrower: '', amount: '', note: '', lentAt: new Date().toISOString().slice(0, 10) })
+      await load()
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? err?.message ?? 'เกิดข้อผิดพลาด')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handlePayment = async () => {
     if (!showPayment || !payForm.amount) return
     setSaving(true)
-    await loansApi.addPayment(showPayment, { amount: parseFloat(payForm.amount), paidAt: payForm.paidAt, note: payForm.note })
-    setShowPayment(null)
-    setPayForm({ amount: '', paidAt: new Date().toISOString().slice(0, 10), note: '' })
-    await load()
-    setSaving(false)
+    setError('')
+    try {
+      await loansApi.addPayment(showPayment, {
+        amount: parseFloat(payForm.amount),
+        paidAt: payForm.paidAt,
+        ...(payForm.note ? { note: payForm.note } : {}),
+      })
+      setShowPayment(null)
+      setPayForm({ amount: '', paidAt: new Date().toISOString().slice(0, 10), note: '' })
+      await load()
+    } catch (err: any) {
+      setError(err?.response?.data?.message ?? err?.message ?? 'เกิดข้อผิดพลาด')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleDelete = async (id: string) => {
@@ -75,6 +98,7 @@ export default function Loans() {
 
   const openAdd = (dir: 'lent' | 'borrowed') => {
     setForm(f => ({ ...f, direction: dir }))
+    setError('')
     setShowAdd(true)
   }
 
@@ -228,7 +252,7 @@ export default function Loans() {
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base-theme">บันทึก{form.direction === 'lent' ? 'การให้ยืม' : 'การยืมเงิน'}</h2>
-              <button onClick={() => setShowAdd(false)} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
+              <button onClick={() => { setShowAdd(false); setError('') }} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
             </div>
 
             {/* Direction selector */}
@@ -273,6 +297,7 @@ export default function Loans() {
                 className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
               />
             </div>
+            {error && <p className="text-xs text-red-500 text-center">{error}</p>}
             <button
               onClick={handleCreate}
               disabled={saving || !form.borrower || !form.amount}
@@ -291,7 +316,7 @@ export default function Loans() {
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base-theme">บันทึกการชำระ</h2>
-              <button onClick={() => setShowPayment(null)} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
+              <button onClick={() => { setShowPayment(null); setError('') }} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
             </div>
             <input
               type="number" placeholder="จำนวนเงิน"
@@ -313,6 +338,7 @@ export default function Loans() {
               onChange={e => setPayForm(f => ({ ...f, note: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
             />
+            {error && <p className="text-xs text-red-500 text-center">{error}</p>}
             <button
               onClick={handlePayment}
               disabled={saving || !payForm.amount}

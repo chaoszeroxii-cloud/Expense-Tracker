@@ -17,6 +17,7 @@ interface Props {
 interface LocalMessage extends ChatMessage {
   localId: string
   loading?: boolean
+  streaming?: boolean
   imagePreview?: string
   extractedBill?: any
 }
@@ -78,19 +79,63 @@ export default function ChatPanel({ onClose }: Props) {
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || sending) return
-    const localId = crypto.randomUUID()
-    const userMsg: LocalMessage = { localId, role: 'user', content: text }
-    const loadingMsg: LocalMessage = { localId: crypto.randomUUID(), role: 'assistant', content: '', loading: true }
+    const streamId = crypto.randomUUID()
+    const userMsg: LocalMessage = { localId: crypto.randomUUID(), role: 'user', content: text }
+    const placeholder: LocalMessage = { localId: streamId, role: 'assistant', content: '', loading: true }
 
-    setMessages(prev => [...prev, userMsg, loadingMsg])
+    setMessages(prev => [...prev, userMsg, placeholder])
     setInput('')
     setSending(true)
 
     try {
-      const res = await chatApi.sendMessage(text, { userName: user?.name })
-      const { clean, theme, navigate: navPath } = parseMarkers(res.message)
+      const res = await chatApi.sendMessageStream(text, { userName: user?.name })
+      if (!res.body) throw new Error('No response body')
 
-      // Execute UI actions from markers
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let accumulated = ''
+      let firstChunk = true
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.startsWith('data:')) continue
+          const data = line.slice(5).trim()
+          if (data === '[DONE]') break
+
+          try {
+            const parsed = JSON.parse(data)
+            if (parsed.content) {
+              accumulated += parsed.content
+              if (firstChunk) {
+                // Switch from loading dots to streaming text
+                firstChunk = false
+                setMessages(prev => prev.map(m =>
+                  m.localId === streamId ? { ...m, loading: false, streaming: true, content: accumulated } : m
+                ))
+              } else {
+                setMessages(prev => prev.map(m =>
+                  m.localId === streamId ? { ...m, content: accumulated } : m
+                ))
+              }
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      }
+
+      // Finalize: parse markers, strip them from display
+      const { clean, theme, navigate: navPath } = parseMarkers(accumulated)
+      setMessages(prev => prev.map(m =>
+        m.localId === streamId ? { ...m, content: clean, streaming: false } : m
+      ))
+
       if (theme) {
         setTheme(theme)
         showToast(`เปลี่ยนเป็น ${theme === 'dark' ? 'Dark' : 'Light'} mode แล้ว`)
@@ -99,14 +144,10 @@ export default function ChatPanel({ onClose }: Props) {
         showToast(`กำลังพาไปที่ ${navPath}...`)
         setTimeout(() => { navigate(navPath); onClose() }, 800)
       }
-
-      setMessages(prev =>
-        prev.map(m => m.loading ? { ...m, content: clean, loading: false } : m)
-      )
     } catch {
-      setMessages(prev =>
-        prev.map(m => m.loading ? { ...m, content: '❌ เกิดข้อผิดพลาด ลองใหม่อีกครั้ง', loading: false } : m)
-      )
+      setMessages(prev => prev.map(m =>
+        m.localId === streamId ? { ...m, content: '❌ เกิดข้อผิดพลาด ลองใหม่อีกครั้ง', loading: false, streaming: false } : m
+      ))
     } finally {
       setSending(false)
     }
@@ -327,6 +368,9 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
               : 'bg-[var(--input)] text-base-theme rounded-tl-sm'
             }`}>
             <FormattedMessage content={msg.content} />
+            {msg.streaming && (
+              <span className="inline-block w-0.5 h-3.5 bg-emerald-400 align-middle ml-0.5 animate-pulse" />
+            )}
           </div>
         )}
       </div>

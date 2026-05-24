@@ -1,8 +1,9 @@
 import {
   Controller, Post, Get, Delete, Body, UploadedFile,
   UseInterceptors, MaxFileSizeValidator, ParseFilePipe,
-  FileTypeValidator,
+  FileTypeValidator, Res,
 } from '@nestjs/common'
+import { Response } from 'express'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { ChatService } from './chat.service'
 import { TavilyService } from './tavily.service'
@@ -15,7 +16,7 @@ export class ChatController {
     private readonly tavily: TavilyService,
   ) {}
 
-  // POST /api/chat  — send a text message
+  // POST /api/chat  — send a text message (non-streaming, kept for fallback)
   @Post()
   sendMessage(
     @CurrentUser() user,
@@ -25,6 +26,27 @@ export class ChatController {
       ...body.context,
       userName: user.name,
     })
+  }
+
+  // POST /api/chat/stream  — SSE streaming chat
+  @Post('stream')
+  async streamMessage(
+    @CurrentUser() user,
+    @Body() body: { message: string; context?: Record<string, any> },
+    @Res() res: Response,
+  ) {
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('Connection', 'keep-alive')
+    res.setHeader('X-Accel-Buffering', 'no')
+    res.flushHeaders()
+
+    await this.svc.chatStream(user.id, body.message, {
+      ...body.context,
+      userName: user.name,
+    }, res)
+
+    if (!res.writableEnded) res.end()
   }
 
   // POST /api/chat/vision  — upload image for bill reading

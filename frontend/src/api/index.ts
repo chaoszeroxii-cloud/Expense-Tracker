@@ -199,9 +199,24 @@ export const taxApi = {
 }
 
 // ── Chat ─────────────────────────────────────────────────────
+const chatBase = () =>
+  import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api'
+
 export const chatApi = {
   sendMessage: (message: string, context?: Record<string, any>) =>
     http.post<{ message: string }>('/chat', { message, context }).then(r => r.data),
+
+  sendMessageStream: (message: string, context?: Record<string, any>): Promise<Response> => {
+    const token = useAuthStore.getState().token
+    return fetch(`${chatBase()}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ message, context }),
+    })
+  },
 
   analyzeImage: (file: File) => {
     const form = new FormData()

@@ -509,6 +509,159 @@ export class ChatService {
     return { success: true }
   }
 
+  // ── SSE helpers ───────────────────────────────────────────
+  private sendSSEChunk(res: any, content: string) {
+    res.write(`data: ${JSON.stringify({ content })}\n\n`)
+  }
+
+  // ── Stream from OpenRouter, forwarding content chunks ─────
+  private async streamFromOpenRouter(
+    messages: any[],
+    onChunk: (text: string) => void,
+    includeTools = true,
+  ): Promise<{ content: string; toolCalls: any[] | null }> {
+    const apiKey = process.env.OPENROUTER_API_KEY
+    if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured')
+
+    const body: any = {
+      model: this.CHAT_MODEL,
+      messages,
+      max_tokens: 3000,
+      temperature: 0.7,
+      stream: true,
+    }
+    if (includeTools) { body.tools = TOOLS; body.tool_choice = 'auto' }
+
+    const response = await axios.post(
+      `${this.OPENROUTER_BASE}/chat/completions`,
+      body,
+      { headers: this.openRouterHeaders(), responseType: 'stream', timeout: 60000 },
+    )
+
+    let fullContent = ''
+    const toolCallsMap: Record<number, any> = {}
+    let isToolCallResponse = false
+
+    await new Promise<void>((resolve, reject) => {
+      let buffer = ''
+
+      response.data.on('data', (raw: Buffer) => {
+        buffer += raw.toString('utf8')
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed.startsWith('data:')) continue
+          const data = trimmed.slice(5).trim()
+          if (data === '[DONE]') { resolve(); return }
+
+          try {
+            const parsed = JSON.parse(data)
+            const choice = parsed.choices?.[0]
+            if (!choice) continue
+            const delta = choice.delta
+
+            // Accumulate tool call deltas
+            if (delta?.tool_calls?.length > 0) {
+              isToolCallResponse = true
+              for (const tc of delta.tool_calls) {
+                const idx = tc.index ?? 0
+                if (!toolCallsMap[idx]) {
+                  toolCallsMap[idx] = { id: '', type: 'function', function: { name: '', arguments: '' } }
+                }
+                if (tc.id) toolCallsMap[idx].id = tc.id
+                if (tc.function?.name) toolCallsMap[idx].function.name += tc.function.name
+                if (tc.function?.arguments) toolCallsMap[idx].function.arguments += tc.function.arguments
+              }
+            }
+
+            // Stream content only if this is not a tool-call response
+            if (delta?.content && !isToolCallResponse) {
+              fullContent += delta.content
+              onChunk(delta.content)
+            }
+
+            if (choice.finish_reason === 'stop' || choice.finish_reason === 'tool_calls') {
+              resolve(); return
+            }
+          } catch { /* ignore malformed SSE lines */ }
+        }
+      })
+
+      response.data.on('end', resolve)
+      response.data.on('error', reject)
+    })
+
+    const toolCalls = Object.keys(toolCallsMap).length > 0 ? Object.values(toolCallsMap) : null
+    return { content: fullContent, toolCalls }
+  }
+
+  // ── Streaming chat (SSE endpoint) ─────────────────────────
+  async chatStream(userId: string, userMessage: string, context: Record<string, any>, res: any) {
+    await this.saveMessage(userId, 'user', userMessage)
+    const history = await this.getHistory(userId)
+    const systemPrompt = this.buildSystemPrompt(context)
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...history.slice(-this.MAX_HISTORY).map((m: any) => ({ role: m.role, content: m.content })),
+    ]
+
+    let fullResponse = ''
+    const uiMarkers: string[] = []
+
+    try {
+      const { content: firstContent, toolCalls } = await this.streamFromOpenRouter(
+        messages,
+        chunk => this.sendSSEChunk(res, chunk),
+      )
+
+      if (toolCalls && toolCalls.length > 0) {
+        // Execute all tools
+        const toolResults: any[] = []
+        for (const call of toolCalls) {
+          let args: any
+          try { args = JSON.parse(call.function.arguments || '{}') } catch { args = {} }
+          let result: any
+          try { result = await this.executeTool(userId, call.function.name, args) }
+          catch (err: any) { result = { error: err.message } }
+          if (result?.marker) uiMarkers.push(result.marker)
+          toolResults.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) })
+        }
+
+        const updatedMessages = [
+          ...messages,
+          { role: 'assistant', content: firstContent || null, tool_calls: toolCalls },
+          ...toolResults,
+        ]
+
+        // Second call: stream the final response (no tools to avoid recursion)
+        const { content: secondContent } = await this.streamFromOpenRouter(
+          updatedMessages,
+          chunk => this.sendSSEChunk(res, chunk),
+          false,
+        )
+        fullResponse = secondContent
+      } else {
+        fullResponse = firstContent
+      }
+
+      // Append UI action markers
+      if (uiMarkers.length > 0) {
+        const markersStr = ' ' + uiMarkers.join(' ')
+        this.sendSSEChunk(res, markersStr)
+        fullResponse += markersStr
+      }
+
+      await this.saveMessage(userId, 'assistant', fullResponse)
+      res.write('data: [DONE]\n\n')
+    } catch (err: any) {
+      this.logger.error(`chatStream error: ${err.message}`)
+      this.sendSSEChunk(res, `\n\nเกิดข้อผิดพลาด: ${err.message}`)
+      res.write('data: [DONE]\n\n')
+    }
+  }
+
   // ── DeepSeek with tool calling ─────────────────────────────
   private async callDeepSeek(userId: string, messages: any[]): Promise<string> {
     const apiKey = process.env.OPENROUTER_API_KEY

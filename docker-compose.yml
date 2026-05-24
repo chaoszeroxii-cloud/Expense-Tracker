@@ -39,8 +39,13 @@ services:
       DB_NAME:      ${DB_NAME:-expense_tracker}
       DB_USER:      ${DB_USER:-expense_user}
       DB_PASSWORD:  ${DB_PASSWORD:?DB_PASSWORD is required}
-      JWT_SECRET:   ${JWT_SECRET:?JWT_SECRET is required}
-      CORS_ORIGIN:  ${FRONTEND_URL:-http://localhost:3000}
+      JWT_SECRET:             ${JWT_SECRET:?JWT_SECRET is required}
+      CORS_ORIGIN:            ${FRONTEND_URL:-http://localhost:3000}
+      OPENROUTER_API_KEY:     ${OPENROUTER_API_KEY}
+      TAVILY_KEY_1:           ${TAVILY_KEY_1}
+      TAVILY_KEY_2:           ${TAVILY_KEY_2}
+      TAVILY_KEY_3:           ${TAVILY_KEY_3}
+      TAVILY_KEY_4:           ${TAVILY_KEY_4}
     volumes:
       - ./backend:/app            # hot reload in dev
       - /app/node_modules         # hot reload in dev

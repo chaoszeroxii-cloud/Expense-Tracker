@@ -98,8 +98,8 @@ const TOOLS = [
 export class ChatService {
   private readonly logger = new Logger(ChatService.name)
   private readonly OPENROUTER_BASE = 'https://openrouter.ai/api/v1'
-  private readonly CHAT_MODEL = 'deepseek/deepseek-v3-base:free'
-  private readonly VISION_MODEL = 'google/gemini-2.0-flash-001'
+  private readonly CHAT_MODEL = 'deepseek/deepseek-v4-flash'
+  private readonly VISION_MODEL = 'google/gemini-2.5-flash-lite'
   private readonly MAX_HISTORY = 50
 
   constructor(

@@ -831,10 +831,11 @@ export class ChatService {
            ORDER BY l.lent_at DESC`,
           [userId, args.direction ?? 'all'],
         )
+        const fmtB = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
         const enriched = rows.map((r: any) => ({
           id: r.id,
           direction: r.direction,
-          borrower: r.borrower,
+          borrower: r.borrower.trim(),
           amount: parseFloat(r.amount),
           paid: parseFloat(r.paid),
           outstanding: parseFloat(r.amount) - parseFloat(r.paid),
@@ -844,11 +845,25 @@ export class ChatService {
         }))
         const lent = enriched.filter((r: any) => r.direction === 'lent')
         const borrowed = enriched.filter((r: any) => r.direction === 'borrowed')
+
+        const lentLines = lent.length === 0
+          ? ['(ไม่มีรายการ)']
+          : lent.map((r: any) => `  • ${r.borrower}: ยืมไป ฿${fmtB(r.amount)} | คืนแล้ว ฿${fmtB(r.paid)} | ค้างอยู่ ฿${fmtB(r.outstanding)}${r.note ? ` | หมายเหตุ: ${r.note}` : ''} | id=${r.id}`)
+        const borrowedLines = borrowed.length === 0
+          ? ['(ไม่มีรายการ)']
+          : borrowed.map((r: any) => `  • ${r.borrower}: ยืมมา ฿${fmtB(r.amount)} | จ่ายคืนแล้ว ฿${fmtB(r.paid)} | ยังต้องคืน ฿${fmtB(r.outstanding)}${r.note ? ` | หมายเหตุ: ${r.note}` : ''} | id=${r.id}`)
+
         return {
           totalOutstanding: lent.reduce((s: number, r: any) => s + r.outstanding, 0),
           totalOwed: borrowed.reduce((s: number, r: any) => s + r.outstanding, 0),
-          lent,
-          borrowed,
+          lentLoans: lent,
+          borrowedLoans: borrowed,
+          summary: [
+            `=== หนี้ที่เราให้คนอื่นยืม (ลูกหนี้) รวม ${lent.length} รายการ ===`,
+            ...lentLines,
+            `=== หนี้ที่เรายืมคนอื่น (เจ้าหนี้) รวม ${borrowed.length} รายการ ===`,
+            ...borrowedLines,
+          ].join('\n'),
         }
       }
 

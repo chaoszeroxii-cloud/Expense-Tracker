@@ -176,6 +176,9 @@ export const investmentsApi = {
   }) =>
     http.post<InvestmentTransaction>(`/investments/${id}/transactions`, payload).then(r => r.data),
 
+  removeTransaction: (txId: string) =>
+    http.delete(`/investments/transactions/${txId}`).then(r => r.data),
+
   remove: (id: string) =>
     http.delete(`/investments/${id}`).then(r => r.data),
 }

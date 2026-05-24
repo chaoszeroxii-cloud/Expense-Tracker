@@ -4,6 +4,7 @@ import type { BudgetItem, Category } from '../../types'
 import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
+import { useT, useI18n } from '../../store/i18n.store'
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7)
@@ -14,6 +15,9 @@ function fmt(n: number) {
 }
 
 export default function Budget() {
+  const t = useT()
+  const lang = useI18n(s => s.lang)
+  const dateLocale = lang === 'en' ? 'en-US' : 'th-TH'
   const [month, setMonth] = useState(currentMonth())
   const [budgets, setBudgets] = useState<BudgetItem[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -74,8 +78,8 @@ export default function Budget() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-base-theme">งบประมาณ</h1>
-          <p className="text-xs text-muted-theme mt-0.5">ตั้งเป้าแต่ละหมวด ติดตาม actual</p>
+          <h1 className="text-2xl font-extrabold text-base-theme">{t('budget_title')}</h1>
+          <p className="text-xs text-muted-theme mt-0.5">{t('budget_subtitle')}</p>
         </div>
         <button
           onClick={() => setShowForm(true)}
@@ -83,7 +87,7 @@ export default function Budget() {
                      active:scale-95 transition-transform"
         >
           <Icon path={mdiPlus} size={0.8} />
-          เพิ่ม
+          {t('add')}
         </button>
       </div>
 
@@ -91,7 +95,7 @@ export default function Budget() {
       <div className="flex items-center justify-center gap-4">
         <button onClick={() => changeMonth(-1)} className="p-2 rounded-full hover:bg-[var(--input)] text-muted-theme">‹</button>
         <span className="font-bold text-base-theme text-sm min-w-[100px] text-center">
-          {new Date(month + '-01').toLocaleDateString('th-TH', { year: 'numeric', month: 'long' })}
+          {new Date(month + '-01').toLocaleDateString(dateLocale, { year: 'numeric', month: 'long' })}
         </span>
         <button
           onClick={() => changeMonth(1)}
@@ -103,7 +107,7 @@ export default function Budget() {
       {/* Summary card */}
       <div className="bg-card rounded-2xl border border-[var(--border)] p-4">
         <div className="flex justify-between text-sm mb-3">
-          <span className="text-muted-theme">งบทั้งหมด</span>
+          <span className="text-muted-theme">{t('budget_total')}</span>
           <span className="font-bold text-base-theme">฿{fmt(totalBudgeted)}</span>
         </div>
         <div className="w-full bg-[var(--input)] rounded-full h-2.5 overflow-hidden">
@@ -113,9 +117,9 @@ export default function Budget() {
           />
         </div>
         <div className="flex justify-between text-xs mt-2 text-muted-theme">
-          <span>ใช้ไป ฿{fmt(totalActual)}</span>
+          <span>{t('spent')} ฿{fmt(totalActual)}</span>
           <span className={totalActual > totalBudgeted ? 'text-red-500 font-semibold' : 'text-emerald-500 font-semibold'}>
-            {totalActual > totalBudgeted ? `เกิน ฿${fmt(totalActual - totalBudgeted)}` : `เหลือ ฿${fmt(totalBudgeted - totalActual)}`}
+            {totalActual > totalBudgeted ? `${t('budget_over')} ฿${fmt(totalActual - totalBudgeted)}` : `${t('budget_left')} ฿${fmt(totalBudgeted - totalActual)}`}
           </span>
         </div>
       </div>
@@ -128,8 +132,8 @@ export default function Budget() {
       ) : budgets.length === 0 ? (
         <div className="text-center py-12 text-muted-theme">
           <div className="text-4xl mb-2">📊</div>
-          <p className="font-semibold">ยังไม่มีงบประมาณ</p>
-          <p className="text-sm mt-1">กด + เพื่อตั้งงบแต่ละหมวด</p>
+          <p className="font-semibold">{t('no_budget')}</p>
+          <p className="text-sm mt-1">{t('add_budget_hint')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -154,11 +158,11 @@ export default function Budget() {
                   />
                 </div>
                 <div className="flex justify-between text-xs text-muted-theme">
-                  <span>ใช้ ฿{fmt(b.actual)}</span>
-                  <span>ตั้งไว้ ฿{fmt(b.budgeted)}</span>
+                  <span>{t('budget_used')} ฿{fmt(b.actual)}</span>
+                  <span>{t('budget_set')} ฿{fmt(b.budgeted)}</span>
                 </div>
                 {over && (
-                  <p className="text-xs text-red-500 font-semibold mt-1">เกินงบ ฿{fmt(b.actual - b.budgeted)}</p>
+                  <p className="text-xs text-red-500 font-semibold mt-1">{t('budget_over_by')} ฿{fmt(b.actual - b.budgeted)}</p>
                 )}
               </div>
             )
@@ -171,7 +175,7 @@ export default function Budget() {
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-base-theme">ตั้งงบประมาณ</h2>
+              <h2 className="font-bold text-base-theme">{t('set_budget')}</h2>
               <button onClick={() => setShowForm(false)} className="p-1 text-muted-theme">
                 <Icon path={mdiClose} size={0.9} />
               </button>
@@ -179,12 +183,12 @@ export default function Budget() {
             <CustomSelect
               value={form.categoryId}
               onChange={v => setForm(f => ({ ...f, categoryId: v }))}
-              placeholder="เลือกหมวดหมู่"
+              placeholder={t('select_category')}
               options={availableCategories.map(c => ({ value: c.id, label: `${c.icon} ${c.name}` }))}
             />
             <input
               type="number"
-              placeholder="จำนวนเงิน (บาท)"
+              placeholder={t('amount_baht')}
               value={form.amount}
               onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
@@ -194,7 +198,7 @@ export default function Budget() {
               disabled={saving || !form.categoryId || !form.amount}
               className="w-full py-3 rounded-xl bg-brand-600 text-white font-bold text-sm disabled:opacity-50"
             >
-              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+              {saving ? t('saving') : t('save')}
             </button>
           </div>
         </div>

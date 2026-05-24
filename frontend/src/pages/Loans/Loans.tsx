@@ -3,17 +3,16 @@ import { loansApi } from '../../api'
 import type { Loan } from '../../types'
 import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiCashMultiple, mdiClose, mdiCheck, mdiArrowTopRight, mdiArrowBottomLeft } from '@mdi/js'
+import { useT, useI18n } from '../../store/i18n.store'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
-const DIRECTION_LABELS = {
-  lent:     { label: 'ให้ยืม',  badge: 'ลูกหนี้',  color: 'amber',   icon: mdiArrowTopRight },
-  borrowed: { label: 'ยืมมา',   badge: 'เจ้าหนี้', color: 'rose',    icon: mdiArrowBottomLeft },
-} as const
-
 export default function Loans() {
+  const t = useT()
+  const lang = useI18n(s => s.lang)
+  const dateLocale = lang === 'en' ? 'en-US' : 'th-TH'
   const [loans, setLoans] = useState<Loan[]>([])
   const [summary, setSummary] = useState({ totalOutstanding: 0, totalOwed: 0 })
   const [loading, setLoading] = useState(true)
@@ -88,15 +87,15 @@ export default function Loans() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-base-theme">หนี้สิน</h1>
-          <p className="text-xs text-muted-theme mt-0.5">ติดตามเงินให้ยืมและเงินกู้</p>
+          <h1 className="text-2xl font-extrabold text-base-theme">{t('loans_title')}</h1>
+          <p className="text-xs text-muted-theme mt-0.5">{t('loans_subtitle')}</p>
         </div>
         <button
           onClick={() => openAdd(tab)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold active:scale-95 transition-transform"
         >
           <Icon path={mdiPlus} size={0.8} />
-          บันทึก
+          {t('save')}
         </button>
       </div>
 
@@ -108,7 +107,7 @@ export default function Loans() {
         >
           <div className="flex items-center gap-2 mb-1">
             <Icon path={mdiArrowTopRight} size={0.8} color="#f59e0b" />
-            <span className="text-xs text-amber-700 dark:text-amber-300 font-medium">ลูกหนี้ค้างอยู่</span>
+            <span className="text-xs text-amber-700 dark:text-amber-300 font-medium">{t('outstanding_recv')}</span>
           </div>
           <p className="text-xl font-extrabold text-amber-800 dark:text-amber-200">฿{fmt(summary.totalOutstanding)}</p>
         </div>
@@ -118,7 +117,7 @@ export default function Loans() {
         >
           <div className="flex items-center gap-2 mb-1">
             <Icon path={mdiArrowBottomLeft} size={0.8} color="#f43f5e" />
-            <span className="text-xs text-rose-700 dark:text-rose-300 font-medium">ที่ต้องคืน</span>
+            <span className="text-xs text-rose-700 dark:text-rose-300 font-medium">{t('to_repay')}</span>
           </div>
           <p className="text-xl font-extrabold text-rose-800 dark:text-rose-200">฿{fmt(summary.totalOwed)}</p>
         </div>
@@ -126,22 +125,19 @@ export default function Loans() {
 
       {/* Tabs */}
       <div className="flex gap-2">
-        {(['lent', 'borrowed'] as const).map(d => {
-          const cfg = DIRECTION_LABELS[d]
-          return (
-            <button
-              key={d}
-              onClick={() => setTab(d)}
-              className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-colors
-                ${tab === d
-                  ? d === 'lent' ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'
-                  : 'bg-card border border-[var(--border)] text-muted-theme'}`}
-            >
-              <Icon path={cfg.icon} size={0.7} />
-              {cfg.label}
-            </button>
-          )
-        })}
+        {(['lent', 'borrowed'] as const).map(d => (
+          <button
+            key={d}
+            onClick={() => setTab(d)}
+            className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold transition-colors
+              ${tab === d
+                ? d === 'lent' ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'
+                : 'bg-card border border-[var(--border)] text-muted-theme'}`}
+          >
+            <Icon path={d === 'lent' ? mdiArrowTopRight : mdiArrowBottomLeft} size={0.7} />
+            {d === 'lent' ? t('lent_label') : t('borrowed_label')}
+          </button>
+        ))}
         <div className="flex-1" />
         {(['active', 'all'] as const).map(f => (
           <button
@@ -150,7 +146,7 @@ export default function Loans() {
             className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors
               ${filter === f ? 'bg-brand-600 text-white' : 'bg-card border border-[var(--border)] text-muted-theme'}`}
           >
-            {f === 'active' ? 'ค้างอยู่' : 'ทั้งหมด'}
+            {f === 'active' ? t('filter_active') : t('filter_all')}
           </button>
         ))}
       </div>
@@ -163,8 +159,8 @@ export default function Loans() {
       ) : visible.length === 0 ? (
         <div className="text-center py-12 text-muted-theme">
           <div className="text-4xl mb-2">{tab === 'lent' ? '🤝' : '💳'}</div>
-          <p className="font-semibold">{tab === 'lent' ? 'ยังไม่มีการให้ยืมเงิน' : 'ยังไม่มีการยืมเงิน'}</p>
-          <p className="text-sm mt-1">กด + เพื่อบันทึก</p>
+          <p className="font-semibold">{tab === 'lent' ? t('no_loans_lent') : t('no_loans_borrowed')}</p>
+          <p className="text-sm mt-1">{t('tap_plus_record')}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -183,11 +179,11 @@ export default function Loans() {
                           : isLent
                             ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
                             : 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300'}`}>
-                        {loan.status === 'settled' ? 'เสร็จสิ้น' : isLent ? 'ยังค้าง' : 'ยังต้องคืน'}
+                        {loan.status === 'settled' ? t('loan_settled') : isLent ? t('loan_active_lent') : t('loan_active_borrowed')}
                       </span>
                     </div>
                     {loan.note && <p className="text-xs text-muted-theme mt-0.5">{loan.note}</p>}
-                    <p className="text-xs text-muted-theme">{new Date(loan.lentAt).toLocaleDateString('th-TH')}</p>
+                    <p className="text-xs text-muted-theme">{new Date(loan.lentAt).toLocaleDateString(dateLocale)}</p>
                   </div>
                   <button onClick={() => handleDelete(loan.id)} className="p-1 text-muted-theme hover:text-red-500">
                     <Icon path={mdiTrashCanOutline} size={0.75} />
@@ -201,7 +197,7 @@ export default function Loans() {
 
                 <div className="flex items-center justify-between">
                   <div className="text-sm">
-                    <span className="text-muted-theme text-xs">{isLent ? 'คืนแล้ว ' : 'จ่ายแล้ว '}</span>
+                    <span className="text-muted-theme text-xs">{isLent ? t('loan_returned') : t('loan_paid_out')} </span>
                     <span className="font-semibold text-base-theme">฿{fmt(loan.paidAmount)}</span>
                     <span className="text-muted-theme text-xs"> / ฿{fmt(loan.amount)}</span>
                   </div>
@@ -212,13 +208,13 @@ export default function Loans() {
                         ${isLent ? 'bg-emerald-500' : 'bg-rose-500'}`}
                     >
                       <Icon path={mdiCheck} size={0.65} />
-                      {isLent ? 'บันทึกการคืน' : 'บันทึกการจ่าย'}
+                      {isLent ? t('record_return') : t('record_pay')}
                     </button>
                   )}
                 </div>
                 {loan.outstanding > 0 && (
                   <p className={`text-xs font-semibold mt-2 ${isLent ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'}`}>
-                    {isLent ? 'ยังค้างอยู่' : 'ยังต้องคืน'} ฿{fmt(loan.outstanding)}
+                    {isLent ? t('still_outstanding') : t('still_to_repay')} ฿{fmt(loan.outstanding)}
                   </p>
                 )}
               </div>
@@ -232,7 +228,7 @@ export default function Loans() {
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-base-theme">บันทึก{form.direction === 'lent' ? 'การให้ยืม' : 'การยืมเงิน'}</h2>
+              <h2 className="font-bold text-base-theme">{form.direction === 'lent' ? t('record_lend_modal') : t('record_borrow_modal')}</h2>
               <button onClick={() => setShowAdd(false)} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
             </div>
 
@@ -247,31 +243,31 @@ export default function Loans() {
                       ? d === 'lent' ? 'bg-amber-500 text-white' : 'bg-rose-500 text-white'
                       : 'bg-[var(--input)] text-muted-theme'}`}
                 >
-                  {d === 'lent' ? '↗ ให้ยืม' : '↙ ยืมมา'}
+                  {d === 'lent' ? t('lent_arrow') : t('borrowed_arrow')}
                 </button>
               ))}
             </div>
 
             <input
-              placeholder={form.direction === 'lent' ? 'ชื่อผู้ยืม' : 'ชื่อเจ้าหนี้'}
+              placeholder={form.direction === 'lent' ? t('borrower_name') : t('lender_name')}
               value={form.borrower}
               onChange={e => setForm(f => ({ ...f, borrower: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
             />
             <input
-              type="number" placeholder="จำนวนเงิน (บาท)"
+              type="number" placeholder={t('amount_baht')}
               value={form.amount}
               onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
             />
             <input
-              placeholder="หมายเหตุ (ไม่บังคับ)"
+              placeholder={t('note_optional')}
               value={form.note}
               onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
             />
             <div>
-              <label className="text-xs text-muted-theme mb-1 block">วันที่</label>
+              <label className="text-xs text-muted-theme mb-1 block">{t('date')}</label>
               <input
                 type="date" value={form.lentAt}
                 onChange={e => setForm(f => ({ ...f, lentAt: e.target.value }))}
@@ -284,7 +280,7 @@ export default function Loans() {
               className={`w-full py-3 rounded-xl text-white font-bold text-sm disabled:opacity-50
                 ${form.direction === 'lent' ? 'bg-amber-500' : 'bg-rose-500'}`}
             >
-              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+              {saving ? t('saving') : t('save')}
             </button>
           </div>
         </div>
@@ -295,17 +291,17 @@ export default function Loans() {
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-base-theme">บันทึกการชำระ</h2>
+              <h2 className="font-bold text-base-theme">{t('record_payment_modal')}</h2>
               <button onClick={() => setShowPayment(null)} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
             </div>
             <input
-              type="number" placeholder="จำนวนเงิน"
+              type="number" placeholder={t('amount_label')}
               value={payForm.amount}
               onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
             />
             <div>
-              <label className="text-xs text-muted-theme mb-1 block">วันที่ชำระ</label>
+              <label className="text-xs text-muted-theme mb-1 block">{t('payment_date')}</label>
               <input
                 type="date" value={payForm.paidAt}
                 onChange={e => setPayForm(f => ({ ...f, paidAt: e.target.value }))}
@@ -313,7 +309,7 @@ export default function Loans() {
               />
             </div>
             <input
-              placeholder="หมายเหตุ (ไม่บังคับ)"
+              placeholder={t('note_optional')}
               value={payForm.note}
               onChange={e => setPayForm(f => ({ ...f, note: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
@@ -323,7 +319,7 @@ export default function Loans() {
               disabled={saving || !payForm.amount}
               className="w-full py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm disabled:opacity-50"
             >
-              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+              {saving ? t('saving') : t('save')}
             </button>
           </div>
         </div>

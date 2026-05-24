@@ -22,6 +22,11 @@ export class InvestmentsController {
     return this.svc.addTransaction(user.id, id, dto)
   }
 
+  @Delete('transactions/:txId')
+  removeTransaction(@CurrentUser() user, @Param('txId') txId: string) {
+    return this.svc.removeTransaction(user.id, txId)
+  }
+
   @Delete(':id')
   remove(@CurrentUser() user, @Param('id') id: string) {
     return this.svc.remove(user.id, id)

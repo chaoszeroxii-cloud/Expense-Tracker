@@ -47,6 +47,12 @@ export class InvestmentsService {
     await this.repo.remove(inv)
   }
 
+  async removeTransaction(userId: string, txId: string): Promise<void> {
+    const tx = await this.txRepo.findOne({ where: { id: txId, userId } })
+    if (!tx) throw new NotFoundException('Transaction not found')
+    await this.txRepo.remove(tx)
+  }
+
   private enrich(inv: Investment) {
     const buys = inv.transactions.filter((t) => t.type === 'buy')
     const sells = inv.transactions.filter((t) => t.type === 'sell')

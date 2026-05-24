@@ -37,7 +37,7 @@ export default function Layout() {
                        hover:bg-brand-700 active:scale-95 transition-all"
           >
             <Icon path={mdiPlus} size={0.85} color="white" />
-            เพิ่มรายการ
+            {t('add_transaction')}
           </button>
         </div>
         <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">

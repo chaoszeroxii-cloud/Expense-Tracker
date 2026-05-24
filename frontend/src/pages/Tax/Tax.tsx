@@ -4,12 +4,15 @@ import type { TaxDeduction, TaxCalculationResult, TaxDeductionType } from '../..
 import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiClose, mdiLightbulbOutline, mdiReceiptTextOutline } from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
+import { useT, useI18n } from '../../store/i18n.store'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
 export default function Tax() {
+  const t = useT()
+  const lang = useI18n(s => s.lang)
   const year = new Date().getFullYear()
   const [income, setIncome] = useState('')
   const [deductions, setDeductions] = useState<TaxDeduction[]>([])
@@ -21,17 +24,17 @@ export default function Tax() {
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
-    const [d, t] = await Promise.all([taxApi.findByYear(year), taxApi.getTypes()])
+    const [d, tp] = await Promise.all([taxApi.findByYear(year), taxApi.getTypes()])
     setDeductions(d)
-    setTypes(t)
+    setTypes(tp)
   }, [year])
 
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const types: string[] = (e as CustomEvent).detail?.types ?? []
-      if (types.includes('tax')) load()
+      const evtTypes: string[] = (e as CustomEvent).detail?.types ?? []
+      if (evtTypes.includes('tax')) load()
     }
     window.addEventListener('moneyflow:refresh', handler)
     return () => window.removeEventListener('moneyflow:refresh', handler)
@@ -48,7 +51,7 @@ export default function Tax() {
   const handleAddDeduction = async () => {
     if (!form.type || !form.amount) return
     setSaving(true)
-    const typeInfo = types.find(t => t.type === form.type)
+    const typeInfo = types.find(tp => tp.type === form.type)
     await taxApi.upsert({
       taxYear: year, type: form.type,
       name: typeInfo?.name ?? form.type,
@@ -69,25 +72,25 @@ export default function Tax() {
     if (income) await handleCalculate()
   }
 
-  const selectedType = types.find(t => t.type === form.type)
+  const selectedType = types.find(tp => tp.type === form.type)
 
   return (
     <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-extrabold text-base-theme">วางแผนภาษี</h1>
-          <p className="text-xs text-muted-theme mt-0.5">ภาษีเงินได้บุคคลธรรมดา ปี {year + 543}</p>
+          <h1 className="text-2xl font-extrabold text-base-theme">{t('tax_title')}</h1>
+          <p className="text-xs text-muted-theme mt-0.5">{t('tax_subtitle')} {lang === 'th' ? `ปี ${year + 543}` : year}</p>
         </div>
         <button onClick={() => setShowAdd(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold active:scale-95 transition-transform">
           <Icon path={mdiPlus} size={0.8} />
-          ค่าลดหย่อน
+          {t('deduction_button')}
         </button>
       </div>
 
       {/* Income input + calculate */}
       <div className="bg-card rounded-2xl border border-[var(--border)] p-4 space-y-3">
-        <p className="text-sm font-semibold text-base-theme">รายได้ต่อปี</p>
+        <p className="text-sm font-semibold text-base-theme">{t('annual_income_label')}</p>
         <div className="flex gap-2">
           <input
             type="number"
@@ -98,7 +101,7 @@ export default function Tax() {
           />
           <button onClick={handleCalculate} disabled={!income || loading}
             className="px-4 py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm disabled:opacity-50 shrink-0">
-            {loading ? '...' : 'คำนวณ'}
+            {loading ? '...' : t('calculate')}
           </button>
         </div>
       </div>
@@ -108,14 +111,14 @@ export default function Tax() {
         <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800 p-4 space-y-3">
           <div className="flex items-center gap-2">
             <Icon path={mdiReceiptTextOutline} size={0.9} color="#10b981" />
-            <span className="font-bold text-emerald-800 dark:text-emerald-200 text-sm">ผลการคำนวณภาษี</span>
+            <span className="font-bold text-emerald-800 dark:text-emerald-200 text-sm">{t('tax_result_title')}</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: 'รายได้พึงประเมิน', value: `฿${fmt(result.annualIncome)}` },
-              { label: 'หักค่าใช้จ่าย', value: `฿${fmt(result.employmentDeduction)}` },
-              { label: 'ค่าลดหย่อนรวม', value: `฿${fmt(result.totalDeductions)}` },
-              { label: 'เงินได้สุทธิ', value: `฿${fmt(result.netIncome)}` },
+              { label: t('tax_gross_income'), value: `฿${fmt(result.annualIncome)}` },
+              { label: t('tax_expense_ded'), value: `฿${fmt(result.employmentDeduction)}` },
+              { label: t('tax_total_ded'), value: `฿${fmt(result.totalDeductions)}` },
+              { label: t('tax_net_income'), value: `฿${fmt(result.netIncome)}` },
             ].map(item => (
               <div key={item.label} className="bg-white dark:bg-emerald-900/30 rounded-xl p-3">
                 <p className="text-[10px] text-muted-theme">{item.label}</p>
@@ -124,9 +127,9 @@ export default function Tax() {
             ))}
           </div>
           <div className="bg-white dark:bg-emerald-900/30 rounded-xl p-3 text-center">
-            <p className="text-xs text-muted-theme">ภาษีที่ต้องชำระ</p>
+            <p className="text-xs text-muted-theme">{t('tax_payable')}</p>
             <p className="text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">฿{fmt(result.tax)}</p>
-            <p className="text-xs text-muted-theme mt-0.5">อัตราภาษีที่แท้จริง {result.effectiveRate.toFixed(2)}%</p>
+            <p className="text-xs text-muted-theme mt-0.5">{t('effective_rate')} {result.effectiveRate.toFixed(2)}%</p>
           </div>
 
           {/* Optimizations */}
@@ -134,7 +137,7 @@ export default function Tax() {
             <div className="space-y-2">
               <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300">
                 <Icon path={mdiLightbulbOutline} size={0.8} />
-                <span className="text-xs font-bold">AI แนะนำ: วิธีลดภาษี</span>
+                <span className="text-xs font-bold">{t('ai_tax_tips')}</span>
               </div>
               {result.optimizations.map(opt => (
                 <div key={opt.type} className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 border border-amber-200 dark:border-amber-700">
@@ -144,7 +147,7 @@ export default function Tax() {
                       <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">{opt.description}</p>
                     </div>
                     <div className="text-right shrink-0 ml-2">
-                      <p className="text-[10px] text-muted-theme">ประหยัดได้</p>
+                      <p className="text-[10px] text-muted-theme">{t('potential_savings')}</p>
                       <p className="text-sm font-bold text-emerald-600">฿{fmt(opt.estimatedTaxSaving)}</p>
                     </div>
                   </div>
@@ -157,16 +160,16 @@ export default function Tax() {
 
       {/* Deductions list */}
       <div>
-        <h2 className="font-bold text-base-theme text-sm mb-3">ค่าลดหย่อนที่บันทึกไว้ ({year + 543})</h2>
+        <h2 className="font-bold text-base-theme text-sm mb-3">{t('saved_deductions')} ({lang === 'th' ? year + 543 : year})</h2>
         {deductions.length === 0 ? (
           <div className="text-center py-8 text-muted-theme">
             <div className="text-3xl mb-2">📝</div>
-            <p className="text-sm">ยังไม่มีค่าลดหย่อน กด + เพื่อเพิ่ม</p>
+            <p className="text-sm">{t('no_deductions')}</p>
           </div>
         ) : (
           <div className="space-y-2">
             {deductions.map(d => {
-              const typeInfo = types.find(t => t.type === d.type)
+              const typeInfo = types.find(tp => tp.type === d.type)
               const pct = typeInfo?.max && typeInfo.max > 0 ? Math.min(100, (d.amount / typeInfo.max) * 100) : 0
               return (
                 <div key={d.id} className="bg-card rounded-2xl border border-[var(--border)] p-3">
@@ -184,7 +187,7 @@ export default function Tax() {
                       <div className="w-full bg-[var(--input)] rounded-full h-1.5 overflow-hidden">
                         <div className="h-full bg-brand-500 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
-                      <p className="text-[10px] text-muted-theme mt-0.5">สูงสุด ฿{fmt(typeInfo.max)}</p>
+                      <p className="text-[10px] text-muted-theme mt-0.5">{t('max_amount_label')} ฿{fmt(typeInfo.max)}</p>
                     </>
                   )}
                 </div>
@@ -199,24 +202,24 @@ export default function Tax() {
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
-              <h2 className="font-bold text-base-theme">เพิ่มค่าลดหย่อน</h2>
+              <h2 className="font-bold text-base-theme">{t('add_deduction')}</h2>
               <button onClick={() => setShowAdd(false)} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
             </div>
             <CustomSelect
               value={form.type}
               onChange={v => setForm(f => ({ ...f, type: v }))}
-              placeholder="เลือกประเภท"
-              options={types.map(t => ({ value: t.type, label: t.name }))}
+              placeholder={t('select_type')}
+              options={types.map(tp => ({ value: tp.type, label: tp.name }))}
             />
             {selectedType && (
               <p className="text-xs text-muted-theme -mt-2 px-1">{selectedType.description}</p>
             )}
-            <input type="number" placeholder={`จำนวนเงิน${selectedType?.max ? ` (สูงสุด ฿${fmt(selectedType.max)})` : ''}`}
+            <input type="number" placeholder={`${t('amount_label')}${selectedType?.max ? ` (${t('max_amount_label')} ฿${fmt(selectedType.max)})` : ''}`}
               value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none" />
             <button onClick={handleAddDeduction} disabled={saving || !form.type || !form.amount}
               className="w-full py-3 rounded-xl bg-brand-600 text-white font-bold text-sm disabled:opacity-50">
-              {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+              {saving ? t('saving') : t('save')}
             </button>
           </div>
         </div>

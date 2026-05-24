@@ -4,11 +4,11 @@ import Icon from '@mdi/react'
 import {
   mdiViewDashboard, mdiHistory, mdiWallet,
   mdiCog, mdiPlus, mdiFinance, mdiRobot,
-  mdiChevronRight,
 } from '@mdi/js'
 import clsx from 'clsx'
 import { useT } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
+import ChatPanel from '../chat/ChatPanel'
 
 const NAV = [
   { to: '/',         icon: mdiViewDashboard, labelKey: 'nav_dashboard' },
@@ -87,45 +87,12 @@ export default function Layout() {
           <Icon path={mdiRobot} size={1} color="white" />
         </button>
 
-        {/* ── Chat panel (placeholder — Phase 2) ── */}
+        {/* ── Chat panel ── */}
         {chatOpen && (
           <ChatPanel onClose={() => setChatOpen(false)} />
         )}
       </div>
     </div>
-  )
-}
-
-function ChatPanel({ onClose }: { onClose: () => void }) {
-  return (
-    <>
-      {/* Backdrop (mobile fullscreen, desktop side panel) */}
-      <div className="fixed inset-0 z-50 flex lg:justify-end" onClick={onClose}>
-        <div className="absolute inset-0 bg-black/40 lg:hidden" />
-        <div
-          className="relative w-full h-full lg:w-96 bg-card flex flex-col shadow-2xl animate-slide-in-right"
-          onClick={e => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-            <div className="flex items-center gap-2">
-              <Icon path={mdiRobot} size={0.9} className="text-emerald-500" />
-              <span className="font-bold text-base-theme">AI Assistant</span>
-              <span className="text-[10px] bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-semibold">Beta</span>
-            </div>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--input)] text-muted-theme">
-              <Icon path={mdiChevronRight} size={0.9} />
-            </button>
-          </div>
-          <div className="flex-1 flex items-center justify-center text-muted-theme text-sm px-4 text-center">
-            <div>
-              <Icon path={mdiRobot} size={2} className="mx-auto mb-3 opacity-30" />
-              <p className="font-semibold">AI Assistant กำลังมา</p>
-              <p className="text-xs mt-1 opacity-70">Phase 2 — พร้อมใช้งานเร็วๆ นี้</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
   )
 }
 

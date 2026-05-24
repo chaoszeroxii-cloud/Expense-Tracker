@@ -198,6 +198,27 @@ export const taxApi = {
     http.get<TaxCalculationResult>('/tax/calculate', { params: { income, year } }).then(r => r.data),
 }
 
+// ── Chat ─────────────────────────────────────────────────────
+export const chatApi = {
+  sendMessage: (message: string, context?: Record<string, any>) =>
+    http.post<{ message: string }>('/chat', { message, context }).then(r => r.data),
+
+  analyzeImage: (file: File) => {
+    const form = new FormData()
+    form.append('image', file)
+    return http.post('/chat/vision', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+  },
+
+  getHistory: () =>
+    http.get('/chat/history').then(r => r.data),
+
+  clearHistory: () =>
+    http.delete('/chat/history').then(r => r.data),
+
+  getTavilyStatus: () =>
+    http.get('/chat/tavily-status').then(r => r.data),
+}
+
 // ── Admin ─────────────────────────────────────────────────────
 export const adminApi = {
   getStats: () =>

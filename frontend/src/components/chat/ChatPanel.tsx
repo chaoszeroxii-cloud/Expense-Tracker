@@ -22,12 +22,12 @@ interface LocalMessage extends ChatMessage {
   extractedBill?: any
 }
 
-// Parse [THEME:x] and [NAVIGATE:/path] markers from AI response
-function parseMarkers(text: string): { clean: string; theme?: 'light' | 'dark'; navigate?: string; navReason?: string } {
+// Parse [THEME:x], [NAVIGATE:/path], and [REFRESH:page,...] markers from AI response
+function parseMarkers(text: string): { clean: string; theme?: 'light' | 'dark'; navigate?: string; refresh?: string[] } {
   let clean = text
   let theme: 'light' | 'dark' | undefined
   let navigate: string | undefined
-  let navReason: string | undefined
+  let refresh: string[] | undefined
 
   const themeMatch = clean.match(/\[THEME:(light|dark)\]/i)
   if (themeMatch) {
@@ -41,7 +41,13 @@ function parseMarkers(text: string): { clean: string; theme?: 'light' | 'dark'; 
     clean = clean.replace(navMatch[0], '').trim()
   }
 
-  return { clean, theme, navigate, navReason }
+  const refreshMatch = clean.match(/\[REFRESH:([^\]]+)\]/gi)
+  if (refreshMatch) {
+    refresh = refreshMatch.flatMap(m => m.replace(/\[REFRESH:/i, '').replace(']', '').split(',').map(s => s.trim()))
+    refreshMatch.forEach(m => { clean = clean.replace(m, '').trim() })
+  }
+
+  return { clean, theme, navigate, refresh }
 }
 
 export default function ChatPanel({ onClose }: Props) {
@@ -96,6 +102,8 @@ export default function ChatPanel({ onClose }: Props) {
       let buffer = ''
       let accumulated = ''
       let firstChunk = true
+      let currentEvent = 'message'
+      let pendingAction: { refresh?: string[]; theme?: string; navigate?: string } = {}
 
       while (true) {
         const { done, value } = await reader.read()
@@ -106,16 +114,29 @@ export default function ChatPanel({ onClose }: Props) {
         buffer = lines.pop() ?? ''
 
         for (const line of lines) {
+          if (line.startsWith('event:')) {
+            currentEvent = line.slice(6).trim()
+            continue
+          }
+          if (line === '') { currentEvent = 'message'; continue }
           if (!line.startsWith('data:')) continue
           const data = line.slice(5).trim()
           if (data === '[DONE]') break
 
           try {
             const parsed = JSON.parse(data)
+
+            if (currentEvent === 'action') {
+              if (parsed.refresh) pendingAction.refresh = parsed.refresh
+              if (parsed.theme) pendingAction.theme = parsed.theme
+              if (parsed.navigate) pendingAction.navigate = parsed.navigate
+              currentEvent = 'message'
+              continue
+            }
+
             if (parsed.content) {
               accumulated += parsed.content
               if (firstChunk) {
-                // Switch from loading dots to streaming text
                 firstChunk = false
                 setMessages(prev => prev.map(m =>
                   m.localId === streamId ? { ...m, loading: false, streaming: true, content: accumulated } : m
@@ -130,19 +151,22 @@ export default function ChatPanel({ onClose }: Props) {
         }
       }
 
-      // Finalize: parse markers, strip them from display
-      const { clean, theme, navigate: navPath } = parseMarkers(accumulated)
+      // Strip any legacy markers that may appear in old DB messages
+      const { clean } = parseMarkers(accumulated)
       setMessages(prev => prev.map(m =>
         m.localId === streamId ? { ...m, content: clean, streaming: false } : m
       ))
 
-      if (theme) {
-        setTheme(theme)
-        showToast(`เปลี่ยนเป็น ${theme === 'dark' ? 'Dark' : 'Light'} mode แล้ว`)
+      if (pendingAction.theme) {
+        setTheme(pendingAction.theme as 'light' | 'dark')
+        showToast(`เปลี่ยนเป็น ${pendingAction.theme === 'dark' ? 'Dark' : 'Light'} mode แล้ว`)
       }
-      if (navPath) {
-        showToast(`กำลังพาไปที่ ${navPath}...`)
-        setTimeout(() => { navigate(navPath); onClose() }, 800)
+      if (pendingAction.navigate) {
+        showToast(`กำลังพาไปที่ ${pendingAction.navigate}...`)
+        setTimeout(() => { navigate(pendingAction.navigate!); onClose() }, 800)
+      }
+      if (pendingAction.refresh && pendingAction.refresh.length > 0) {
+        window.dispatchEvent(new CustomEvent('moneyflow:refresh', { detail: { types: pendingAction.refresh } }))
       }
     } catch {
       setMessages(prev => prev.map(m =>

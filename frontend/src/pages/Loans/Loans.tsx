@@ -42,6 +42,15 @@ export default function Loans() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('loans') || types.includes('dashboard')) load()
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [load])
+
   const visible = loans.filter(l => l.direction === tab)
 
   const handleCreate = async () => {

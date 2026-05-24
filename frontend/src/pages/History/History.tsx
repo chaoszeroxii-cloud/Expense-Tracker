@@ -29,6 +29,15 @@ export default function History() {
     setConfirmState({ open: true, message, onConfirm })
   const closeConfirm = () => setConfirmState(s => ({ ...s, open: false }))
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('transactions') || types.includes('dashboard')) refetch()
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [refetch])
+
   // Scroll to current month on mount
   useEffect(() => {
     const button = monthRefs.current[month]

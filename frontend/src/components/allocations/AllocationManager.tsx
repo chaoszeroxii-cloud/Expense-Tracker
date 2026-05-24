@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Icon from '@mdi/react'
 import {
   mdiPlus, mdiTrashCan, mdiPencil, mdiCheck,
@@ -24,6 +24,15 @@ export default function AllocationManager() {
   const t = useT()
   const { data: allocations, loading: loadingA, refetch } = useAllocations()
   const { data: categories,  loading: loadingC }          = useCategories()
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('wallets') || types.includes('dashboard')) refetch()
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [refetch])
 
   const [editId,   setEditId]   = useState<string|null>(null)
   const [showAdd,  setShowAdd]  = useState(false)

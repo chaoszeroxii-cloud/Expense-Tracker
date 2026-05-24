@@ -98,7 +98,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          taxYear: { type: 'number', description: 'ปีภาษี เช่น 2568' },
+          taxYear: { type: 'number', description: 'ปีภาษี ค.ศ. เช่น 2025 (ห้ามใช้ พ.ศ.)' },
         },
         required: [],
       },
@@ -112,7 +112,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          taxYear: { type: 'number', description: 'ปีภาษี default ปีปัจจุบัน' },
+          taxYear: { type: 'number', description: 'ปีภาษี ค.ศ. default ปีปัจจุบัน (ห้ามใช้ พ.ศ.)' },
         },
         required: [],
       },
@@ -146,7 +146,7 @@ const TOOLS = [
           amount: { type: 'number' },
           categoryName: { type: 'string', description: 'ชื่อหมวดหมู่ (ใกล้เคียง)' },
           note: { type: 'string' },
-          occurredAt: { type: 'string', description: 'ISO datetime ถ้าไม่ระบุใช้ตอนนี้' },
+          occurredAt: { type: 'string', description: 'ISO datetime ค.ศ. เช่น 2026-05-24T10:00:00Z ถ้าไม่ระบุใช้ตอนนี้' },
         },
         required: ['type', 'amount'],
       },
@@ -307,6 +307,21 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'delete_budget',
+      description: 'ลบงบประมาณของหมวดหมู่ที่ระบุออกจากเดือนนั้น',
+      parameters: {
+        type: 'object',
+        properties: {
+          categoryName: { type: 'string', description: 'ชื่อหมวดหมู่ (ใกล้เคียง)' },
+          month: { type: 'string', description: 'YYYY-MM' },
+        },
+        required: ['categoryName', 'month'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'set_budget_plan',
       description: 'ตั้งงบประมาณหลายหมวดพร้อมกัน อิงจาก spending pattern ต้อง confirm ก่อน',
       parameters: {
@@ -334,7 +349,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'add_investment',
-      description: 'เพิ่มกองทุน/หุ้นใหม่ในพอร์ต ต้อง confirm ก่อน',
+      description: 'เพิ่มกองทุน/หุ้นใหม่ในพอร์ต ถ้าจะซื้อด้วยให้ call add_investment_transaction ต่อเนื่องในรอบเดียวกัน',
       parameters: {
         type: 'object',
         properties: {
@@ -351,7 +366,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'add_investment_transaction',
-      description: 'บันทึก ซื้อ/ขาย/ปันผล ของกองทุน ต้อง confirm ก่อน',
+      description: 'บันทึก ซื้อ/ขาย/ปันผล ของกองทุน ถ้ากองทุนยังไม่มีให้ call add_investment ก่อนแล้ว call tool นี้ในรอบเดียวกัน',
       parameters: {
         type: 'object',
         properties: {
@@ -360,7 +375,7 @@ const TOOLS = [
           amount: { type: 'number', description: 'มูลค่าเงิน (บาท)' },
           units: { type: 'number', description: 'จำนวนหน่วย (ถ้ามี)' },
           navPrice: { type: 'number', description: 'NAV ต่อหน่วย (ถ้ามี)' },
-          occurredAt: { type: 'string', description: 'YYYY-MM-DD' },
+          occurredAt: { type: 'string', description: 'YYYY-MM-DD ค.ศ. เช่น 2026-05-24 (ห้ามใช้ พ.ศ.)' },
           note: { type: 'string' },
         },
         required: ['investmentName', 'type', 'amount', 'occurredAt'],
@@ -376,7 +391,7 @@ const TOOLS = [
       parameters: {
         type: 'object',
         properties: {
-          taxYear: { type: 'number', description: 'ปีภาษี เช่น 2568' },
+          taxYear: { type: 'number', description: 'ปีภาษี ค.ศ. เช่น 2025 (ห้ามใช้ พ.ศ. เช่น ห้ามใส่ 2568)' },
           type: { type: 'string', description: 'ประเภท เช่น ssf, rmf, life_insurance, health_insurance, personal_allowance' },
           name: { type: 'string', description: 'ชื่อ เช่น SSF กรุงไทย' },
           amount: { type: 'number' },
@@ -514,11 +529,15 @@ export class ChatService {
     res.write(`data: ${JSON.stringify({ content })}\n\n`)
   }
 
+  private sendSSEAction(res: any, action: Record<string, any>) {
+    res.write(`event: action\ndata: ${JSON.stringify(action)}\n\n`)
+  }
+
   // ── Stream from OpenRouter, forwarding content chunks ─────
   private async streamFromOpenRouter(
     messages: any[],
     onChunk: (text: string) => void,
-    includeTools = true,
+    toolChoice: 'auto' | 'none' = 'auto',
   ): Promise<{ content: string; toolCalls: any[] | null }> {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured')
@@ -526,11 +545,12 @@ export class ChatService {
     const body: any = {
       model: this.CHAT_MODEL,
       messages,
+      tools: TOOLS,
+      tool_choice: toolChoice,
       max_tokens: 3000,
       temperature: 0.7,
       stream: true,
     }
-    if (includeTools) { body.tools = TOOLS; body.tool_choice = 'auto' }
 
     const response = await axios.post(
       `${this.OPENROUTER_BASE}/chat/completions`,
@@ -599,10 +619,13 @@ export class ChatService {
 
   // ── Streaming chat (SSE endpoint) ─────────────────────────
   async chatStream(userId: string, userMessage: string, context: Record<string, any>, res: any) {
+    const MAX_TOOL_ROUNDS = 5
+
     await this.saveMessage(userId, 'user', userMessage)
     const history = await this.getHistory(userId)
     const systemPrompt = this.buildSystemPrompt(context)
-    const messages = [
+
+    let currentMessages: any[] = [
       { role: 'system', content: systemPrompt },
       ...history.slice(-this.MAX_HISTORY).map((m: any) => ({ role: m.role, content: m.content })),
     ]
@@ -611,46 +634,67 @@ export class ChatService {
     const uiMarkers: string[] = []
 
     try {
-      const { content: firstContent, toolCalls } = await this.streamFromOpenRouter(
-        messages,
-        chunk => this.sendSSEChunk(res, chunk),
-      )
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        const { content, toolCalls } = await this.streamFromOpenRouter(
+          currentMessages,
+          chunk => this.sendSSEChunk(res, chunk),
+          'auto',
+        )
 
-      if (toolCalls && toolCalls.length > 0) {
-        // Execute all tools
+        if (!toolCalls || toolCalls.length === 0) {
+          // No tool calls — this is the final text response
+          fullResponse = content
+          break
+        }
+
+        // Execute all tools for this round
         const toolResults: any[] = []
         for (const call of toolCalls) {
           let args: any
           try { args = JSON.parse(call.function.arguments || '{}') } catch { args = {} }
           let result: any
           try { result = await this.executeTool(userId, call.function.name, args) }
-          catch (err: any) { result = { error: err.message } }
+          catch (err: any) {
+            this.logger.error(`[tool:${call.function.name}] error: ${err.message}`)
+            result = { error: err.message }
+          }
+          if (result?.error) this.logger.warn(`[tool:${call.function.name}] returned error: ${result.error}`)
           if (result?.marker) uiMarkers.push(result.marker)
           toolResults.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) })
         }
 
-        const updatedMessages = [
-          ...messages,
-          { role: 'assistant', content: firstContent || null, tool_calls: toolCalls },
+        // Append assistant tool-call message + results to message chain
+        currentMessages = [
+          ...currentMessages,
+          { role: 'assistant', content: content || null, tool_calls: toolCalls },
           ...toolResults,
         ]
 
-        // Second call: stream the final response (no tools to avoid recursion)
-        const { content: secondContent } = await this.streamFromOpenRouter(
-          updatedMessages,
-          chunk => this.sendSSEChunk(res, chunk),
-          false,
-        )
-        fullResponse = secondContent
-      } else {
-        fullResponse = firstContent
+        // If this was the last allowed round, force a final text response
+        if (round === MAX_TOOL_ROUNDS - 1) {
+          const { content: finalContent } = await this.streamFromOpenRouter(
+            currentMessages,
+            chunk => this.sendSSEChunk(res, chunk),
+            'none',
+          )
+          fullResponse = finalContent
+        }
       }
 
-      // Append UI action markers
+      // Send UI actions as a separate SSE event (never mixed into text content)
       if (uiMarkers.length > 0) {
-        const markersStr = ' ' + uiMarkers.join(' ')
-        this.sendSSEChunk(res, markersStr)
-        fullResponse += markersStr
+        const action: Record<string, any> = {}
+        const refreshPages = new Set<string>()
+        for (const marker of uiMarkers) {
+          const rm = marker.match(/\[REFRESH:([^\]]+)\]/i)
+          if (rm) rm[1].split(',').forEach(p => refreshPages.add(p.trim()))
+          const tm = marker.match(/\[THEME:([^\]]+)\]/i)
+          if (tm) action.theme = tm[1]
+          const nm = marker.match(/\[NAVIGATE:([^\]]+)\]/i)
+          if (nm) action.navigate = nm[1]
+        }
+        if (refreshPages.size > 0) action.refresh = [...refreshPages]
+        this.sendSSEAction(res, action)
       }
 
       await this.saveMessage(userId, 'assistant', fullResponse)
@@ -663,21 +707,21 @@ export class ChatService {
   }
 
   // ── DeepSeek with tool calling ─────────────────────────────
-  private async callDeepSeek(userId: string, messages: any[]): Promise<string> {
+  private async callDeepSeek(userId: string, messages: any[], toolChoice: 'auto' | 'none' = 'auto'): Promise<string> {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) return 'ยังไม่ได้ตั้งค่า OPENROUTER_API_KEY กรุณาเพิ่มใน .env'
 
     try {
       const res = await axios.post(
         `${this.OPENROUTER_BASE}/chat/completions`,
-        { model: this.CHAT_MODEL, messages, tools: TOOLS, tool_choice: 'auto', max_tokens: 3000, temperature: 0.7 },
+        { model: this.CHAT_MODEL, messages, tools: TOOLS, tool_choice: toolChoice, max_tokens: 3000, temperature: 0.7 },
         { headers: this.openRouterHeaders(), timeout: 60000 },
       )
 
       const choice = res.data.choices[0]
       const msg = choice.message
 
-      if (msg.tool_calls?.length > 0) {
+      if (toolChoice === 'auto' && msg.tool_calls?.length > 0) {
         return this.handleToolCalls(userId, messages, msg)
       }
       return msg.content ?? 'ไม่มีการตอบกลับ'
@@ -699,7 +743,6 @@ export class ChatService {
       } catch (err: any) {
         result = { error: err.message }
       }
-      // Collect UI action markers — inject them into final response ourselves
       if (result?.marker) uiMarkers.push(result.marker)
       toolResults.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) })
     }
@@ -709,7 +752,8 @@ export class ChatService {
       { role: 'assistant', content: null, tool_calls: assistantMsg.tool_calls },
       ...toolResults,
     ]
-    const response = await this.callDeepSeek(userId, updatedMessages)
+    // Use tool_choice:'none' so the model reads tool results but won't call tools again
+    const response = await this.callDeepSeek(userId, updatedMessages, 'none')
     return uiMarkers.length > 0 ? `${response} ${uiMarkers.join(' ')}` : response
   }
 
@@ -940,7 +984,10 @@ export class ChatService {
           c.name.toLowerCase().includes((args.categoryName ?? '').toLowerCase()),
         ) ?? cats[0]
 
-        const occurredAt = args.occurredAt ?? now.toISOString()
+        const rawOccurredAt = args.occurredAt ?? now.toISOString()
+        const occurredAt = rawOccurredAt.replace(/^(\d{4})/, (y: string) =>
+          parseInt(y) > 2500 ? String(parseInt(y) - 543) : y
+        )
         await db.query(
           `INSERT INTO expenses (id, user_id, category_id, amount, type, note, occurred_at)
            VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)`,
@@ -963,6 +1010,7 @@ export class ChatService {
         return {
           success: true,
           message: `บันทึก${args.type === 'income' ? 'รายรับ' : 'รายจ่าย'} ฿${args.amount} หมวด "${cat?.name ?? 'ไม่ระบุ'}" แล้ว`,
+          marker: '[REFRESH:transactions,dashboard,wallets]',
         }
       }
 
@@ -981,6 +1029,7 @@ export class ChatService {
         return {
           success: true,
           message: `ลบรายการ "${tx.note ?? tx.category_name}" ฿${tx.amount} แล้ว`,
+          marker: '[REFRESH:transactions,dashboard,wallets]',
         }
       }
 
@@ -993,7 +1042,7 @@ export class ChatService {
           note: args.note,
           lentAt: args.lentAt,
         })
-        return { success: true, loanId: loan.id, message: `บันทึก${args.direction === 'lent' ? 'การให้ยืม' : 'การยืมเงิน'} ฿${args.amount} กับ ${args.borrower} แล้ว` }
+        return { success: true, loanId: loan.id, message: `บันทึก${args.direction === 'lent' ? 'การให้ยืม' : 'การยืมเงิน'} ฿${args.amount} กับ ${args.borrower} แล้ว`, marker: '[REFRESH:loans,dashboard]' }
       }
 
       // ── record_loan_payment ────────────────────────────────
@@ -1003,13 +1052,13 @@ export class ChatService {
           paidAt: args.paidAt,
           note: args.note,
         })
-        return { success: true, message: `บันทึกการชำระ ฿${args.amount} แล้ว` }
+        return { success: true, message: `บันทึกการชำระ ฿${args.amount} แล้ว`, marker: '[REFRESH:loans,dashboard]' }
       }
 
       // ── delete_loan ────────────────────────────────────────
       case 'delete_loan': {
         await this.loansSvc.remove(userId, args.loanId)
-        return { success: true, message: 'ลบรายการหนี้แล้ว' }
+        return { success: true, message: 'ลบรายการหนี้แล้ว', marker: '[REFRESH:loans,dashboard]' }
       }
 
       // ── create_category ────────────────────────────────────
@@ -1018,7 +1067,7 @@ export class ChatService {
           { name: args.name, type: args.type, icon: args.icon ?? '📦', color: args.color ?? '#94a3b8' },
           userId,
         )
-        return { success: true, categoryId: cat.id, message: `สร้างหมวดหมู่ "${args.name}" แล้ว` }
+        return { success: true, categoryId: cat.id, message: `สร้างหมวดหมู่ "${args.name}" แล้ว`, marker: '[REFRESH:categories]' }
       }
 
       // ── delete_category ────────────────────────────────────
@@ -1030,7 +1079,7 @@ export class ChatService {
         if (!cat) return { error: `ไม่พบหมวดหมู่ "${args.categoryName}"` }
         if (cat.isDefault) return { error: `"${cat.name}" เป็นหมวด default ลบไม่ได้ แต่สามารถเปลี่ยนชื่อหรือไอคอนได้` }
         await this.categoriesSvc.remove(cat.id, userId)
-        return { success: true, message: `ลบหมวดหมู่ "${cat.name}" แล้ว` }
+        return { success: true, message: `ลบหมวดหมู่ "${cat.name}" แล้ว`, marker: '[REFRESH:categories]' }
       }
 
       // ── create_allocation ──────────────────────────────────
@@ -1051,7 +1100,7 @@ export class ChatService {
           },
           userId,
         )
-        return { success: true, allocationId: alloc.id, message: `สร้าง wallet "${args.name}" แล้ว` }
+        return { success: true, allocationId: alloc.id, message: `สร้าง wallet "${args.name}" แล้ว`, marker: '[REFRESH:wallets,dashboard]' }
       }
 
       // ── update_allocation ──────────────────────────────────
@@ -1075,7 +1124,7 @@ export class ChatService {
           categoryIds: args.categoryNames ? resolveCatIds(args.categoryNames, 'expense') : undefined,
           incomeCategoryIds: args.incomeCategoryNames ? resolveCatIds(args.incomeCategoryNames, 'income') : undefined,
         }, userId)
-        return { success: true, message: `อัปเดต wallet "${args.allocationName}" แล้ว` }
+        return { success: true, message: `อัปเดต wallet "${args.allocationName}" แล้ว`, marker: '[REFRESH:wallets,dashboard]' }
       }
 
       // ── move_allocation_funds ──────────────────────────────
@@ -1088,7 +1137,7 @@ export class ChatService {
           const to = findAlloc(args.toAllocationName)
           if (!to) return { error: `ไม่พบ wallet "${args.toAllocationName}"` }
           const result = await this.allocationsSvc.moveToAllocation(to.id, userId, args.amount)
-          return { success: true, message: `ย้าย ฿${args.amount} จาก unallocated ไป "${to.name}" แล้ว`, ...result }
+          return { success: true, message: `ย้าย ฿${args.amount} จาก unallocated ไป "${to.name}" แล้ว`, ...result, marker: '[REFRESH:wallets,dashboard]' }
         }
 
         if (args.action === 'transfer') {
@@ -1096,17 +1145,32 @@ export class ChatService {
           const to = findAlloc(args.toAllocationName)
           if (!from || !to) return { error: 'ไม่พบ wallet ที่ระบุ' }
           await this.allocationsSvc.transferBetweenAllocations(from.id, to.id, userId, args.amount)
-          return { success: true, message: `โอน ฿${args.amount} จาก "${from.name}" ไป "${to.name}" แล้ว` }
+          return { success: true, message: `โอน ฿${args.amount} จาก "${from.name}" ไป "${to.name}" แล้ว`, marker: '[REFRESH:wallets,dashboard]' }
         }
 
         if (args.action === 'unallocate') {
           const from = findAlloc(args.fromAllocationName)
           if (!from) return { error: `ไม่พบ wallet "${args.fromAllocationName}"` }
           await this.allocationsSvc.unallocateFromAllocation(from.id, userId, args.amount)
-          return { success: true, message: `คืน ฿${args.amount} จาก "${from.name}" ไป unallocated แล้ว` }
+          return { success: true, message: `คืน ฿${args.amount} จาก "${from.name}" ไป unallocated แล้ว`, marker: '[REFRESH:wallets,dashboard]' }
         }
 
         return { error: 'action ไม่ถูกต้อง' }
+      }
+
+      // ── delete_budget ──────────────────────────────────────
+      case 'delete_budget': {
+        const month = args.month ?? currentMonth
+        const allCats = await this.categoriesSvc.findAll(userId)
+        const cat = allCats.find((c: any) =>
+          c.name.toLowerCase().includes((args.categoryName ?? '').toLowerCase()),
+        )
+        if (!cat) return { error: `ไม่พบหมวด "${args.categoryName}"` }
+        const budgets = await this.budgetsSvc.findByMonth(userId, month)
+        const budget = budgets.find((b: any) => b.categoryId === cat.id)
+        if (!budget) return { error: `ไม่พบงบประมาณของ "${cat.name}" เดือน ${month}` }
+        await this.budgetsSvc.remove(userId, budget.id)
+        return { success: true, message: `ลบงบประมาณ "${cat.name}" เดือน ${month} แล้ว`, marker: '[REFRESH:budget,dashboard]' }
       }
 
       // ── set_budget_plan ────────────────────────────────────
@@ -1124,7 +1188,7 @@ export class ChatService {
           results.push(`${cat.name}: ฿${b.amount}`)
         }
 
-        return { success: true, month, set: results }
+        return { success: true, month, set: results, marker: '[REFRESH:budget,dashboard]' }
       }
 
       // ── add_investment ─────────────────────────────────────
@@ -1132,38 +1196,48 @@ export class ChatService {
         const inv = await this.investmentsSvc.create(userId, {
           name: args.name, symbol: args.symbol, type: args.type, note: args.note,
         })
-        return { success: true, investmentId: inv.id, message: `เพิ่มกองทุน "${args.name}" แล้ว` }
+        return { success: true, investmentId: inv.id, message: `เพิ่มกองทุน "${args.name}" แล้ว`, marker: '[REFRESH:investments]' }
       }
 
       // ── add_investment_transaction ─────────────────────────
       case 'add_investment_transaction': {
         const investments = await this.investmentsSvc.findAll(userId)
+        const query = (args.investmentName ?? '').toLowerCase()
+        this.logger.log(`[inv_tx] search="${query}" available=${JSON.stringify(investments.map((i: any) => ({ name: i.name, symbol: i.symbol })))}`)
         const inv = investments.find((i: any) =>
-          i.name.toLowerCase().includes(args.investmentName.toLowerCase()),
+          i.name.toLowerCase().includes(query) ||
+          (i.symbol && i.symbol.toLowerCase().includes(query))
         )
-        if (!inv) return { error: `ไม่พบกองทุน "${args.investmentName}"` }
+        if (!inv) return { error: `ไม่พบกองทุน "${args.investmentName}" — available: ${investments.map((i: any) => i.symbol || i.name).join(', ')}` }
+
+        // Normalize BE date to CE (e.g. "2569-05-24" → "2026-05-24")
+        const occurredAt = (args.occurredAt ?? new Date().toISOString().slice(0, 10)).replace(/^(\d{4})/, (y: string) =>
+          parseInt(y) > 2500 ? String(parseInt(y) - 543) : y
+        )
+        this.logger.log(`[inv_tx] found="${inv.name}" id=${inv.id} occurredAt=${occurredAt} args=${JSON.stringify(args)}`)
 
         await this.investmentsSvc.addTransaction(userId, inv.id, {
           type: args.type,
           amount: args.amount,
           units: args.units,
           navPrice: args.navPrice,
-          occurredAt: args.occurredAt,
+          occurredAt,
           note: args.note,
         })
-        return { success: true, message: `บันทึก${args.type === 'buy' ? 'การซื้อ' : args.type === 'sell' ? 'การขาย' : 'เงินปันผล'} ฿${args.amount} ให้ "${inv.name}" แล้ว` }
+        return { success: true, message: `บันทึก${args.type === 'buy' ? 'การซื้อ' : args.type === 'sell' ? 'การขาย' : 'เงินปันผล'} ฿${args.amount} ให้ "${inv.name}" แล้ว`, marker: '[REFRESH:investments]' }
       }
 
       // ── add_tax_deduction ──────────────────────────────────
       case 'add_tax_deduction': {
+        const taxYear = args.taxYear > 2500 ? args.taxYear - 543 : args.taxYear
         await this.taxSvc.upsert(userId, {
-          taxYear: args.taxYear,
+          taxYear,
           type: args.type,
           name: args.name,
           amount: args.amount,
           note: args.note,
         })
-        return { success: true, message: `บันทึกค่าลดหย่อน "${args.name}" ฿${args.amount} ปี ${args.taxYear} แล้ว` }
+        return { success: true, message: `บันทึกค่าลดหย่อน "${args.name}" ฿${args.amount} ปี ${taxYear} แล้ว`, marker: '[REFRESH:tax]' }
       }
 
       // ── change_theme ───────────────────────────────────────
@@ -1189,21 +1263,23 @@ export class ChatService {
     const currentYear = now.getFullYear()
 
     return `คุณเป็น AI ผู้ช่วยการเงินส่วนตัวของ MoneyFlow — ฉลาด เป็นมิตร และทำงานได้อิสระ
-วันที่วันนี้: ${dateStr} | เดือนปัจจุบัน: ${currentMonth} | ปีภาษีปัจจุบัน: ${currentYear}
+วันที่วันนี้: ${dateStr} | เดือนปัจจุบัน: ${currentMonth} | ปีภาษีปัจจุบัน: ${currentYear} (ค.ศ.)
+IMPORTANT: ปี ค.ศ. เท่านั้น — taxYear ใช้ ${currentYear} (ไม่ใช่ ${currentYear + 543}), occurredAt ใช้ ${new Date().toISOString().slice(0, 10)} (ไม่ใช่ ${new Date().getFullYear() + 543}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}) ห้ามใช้ พ.ศ. ในทุก field
 ${context.userName ? `ชื่อ user: ${context.userName}` : ''}
 
 ## ความสามารถของคุณ (25 tools)
 READ: get_financial_summary, get_transactions, analyze_finances, get_loan_status, get_budget_status, get_portfolio, get_tax_summary, calculate_comprehensive_tax, web_search
-WRITE: create/delete_transaction, create/record_payment/delete_loan, create/delete_category, create/update_allocation, move_allocation_funds, set_budget_plan, add_investment, add_investment_transaction, add_tax_deduction
+WRITE: create/delete_transaction, create/record_payment/delete_loan, create/delete_category, create/update_allocation, move_allocation_funds, set_budget_plan, delete_budget, add_investment, add_investment_transaction, add_tax_deduction
 UI: change_theme, navigate_to
 
 ## กฎการทำงาน — สำคัญมาก
 
 ### WRITE operations (ยกเว้น delete)
 1. เรียก tool อ่านข้อมูลที่จำเป็นก่อน (ถ้ายังไม่รู้)
-2. อธิบายการกระทำ + เหตุผลชัดเจน
-3. รอ user พิมพ์ "ยืนยัน" / "ใช่" / "ok" / "ตกลง"
-4. จึงค่อย execute tool
+2. อธิบายสิ่งที่จะทำ + รายละเอียดครบ — แล้วรอ user ยืนยัน
+3. เมื่อ user ยืนยัน ("ยืนยัน" / "ใช่" / "ok" / "ตกลง") → **ต้อง call tool ทันทีในรอบนั้น** ห้ามตอบว่าทำแล้วโดยไม่ได้ call tool จริง
+4. ถ้าต้องทำหลาย tool ต่อเนื่อง (เช่น add_investment แล้ว add_investment_transaction) → call ทั้งหมดพร้อมกันใน round เดียวเมื่อ user ยืนยัน อย่าแยกเป็นหลาย round
+5. ห้าม claim success โดยไม่มี tool result ยืนยัน — ถ้า tool return error ต้องบอก user ตรงๆ
 
 ### DELETE operations (double confirmation)
 1. บอกว่าจะลบอะไร รายละเอียดครบ

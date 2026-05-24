@@ -28,6 +28,15 @@ export default function Tax() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('tax')) load()
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [load])
+
   const handleCalculate = async () => {
     if (!income) return
     setLoading(true)

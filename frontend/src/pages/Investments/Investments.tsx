@@ -2,11 +2,24 @@ import { useState, useEffect, useCallback } from 'react'
 import { investmentsApi } from '../../api'
 import type { Investment } from '../../types'
 import Icon from '@mdi/react'
-import { mdiPlus, mdiTrashCanOutline, mdiTrendingUp, mdiClose } from '@mdi/js'
+import { mdiPlus, mdiTrashCanOutline, mdiTrendingUp, mdiClose, mdiChevronDown, mdiChevronUp } from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function fmtDate(iso: string) {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+const TX_LABEL: Record<string, string> = { buy: 'ซื้อ', sell: 'ขาย', dividend: 'ปันผล' }
+const TX_COLOR: Record<string, string> = {
+  buy: 'text-emerald-500',
+  sell: 'text-red-400',
+  dividend: 'text-amber-400',
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -19,6 +32,7 @@ export default function Investments() {
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [showTx, setShowTx] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [invForm, setInvForm] = useState({ name: '', symbol: '', type: 'mutual_fund', note: '' })
   const [txForm, setTxForm] = useState({ type: 'buy', amount: '', units: '', navPrice: '', occurredAt: new Date().toISOString().slice(0, 10), note: '' })
   const [saving, setSaving] = useState(false)
@@ -30,6 +44,15 @@ export default function Investments() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('investments')) load()
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [load])
 
   const totalNetCost = investments.reduce((s, i) => s + i.netCost, 0)
 
@@ -101,40 +124,92 @@ export default function Investments() {
         </div>
       ) : (
         <div className="space-y-3">
-          {investments.map(inv => (
-            <div key={inv.id} className="bg-card rounded-2xl border border-[var(--border)] p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="font-bold text-base-theme">{inv.name}</div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {inv.symbol && <span className="text-xs bg-[var(--input)] text-muted-theme px-2 py-0.5 rounded-full font-mono">{inv.symbol}</span>}
-                    <span className="text-xs text-muted-theme">{TYPE_LABELS[inv.type] ?? inv.type}</span>
+          {investments.map(inv => {
+            const isExpanded = expanded.has(inv.id)
+            const toggle = () => setExpanded(prev => {
+              const next = new Set(prev)
+              next.has(inv.id) ? next.delete(inv.id) : next.add(inv.id)
+              return next
+            })
+            const sorted = [...inv.transactions].sort(
+              (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+            )
+            return (
+              <div key={inv.id} className="bg-card rounded-2xl border border-[var(--border)] overflow-hidden">
+                {/* Header */}
+                <div className="p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="font-bold text-base-theme">{inv.name}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {inv.symbol && <span className="text-xs bg-[var(--input)] text-muted-theme px-2 py-0.5 rounded-full font-mono">{inv.symbol}</span>}
+                        <span className="text-xs text-muted-theme">{TYPE_LABELS[inv.type] ?? inv.type}</span>
+                      </div>
+                    </div>
+                    <button onClick={() => handleDelete(inv.id)} className="p-1 text-muted-theme hover:text-red-500">
+                      <Icon path={mdiTrashCanOutline} size={0.75} />
+                    </button>
                   </div>
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="text-center bg-[var(--input)] rounded-xl p-2">
+                      <p className="text-[10px] text-muted-theme">ต้นทุนสุทธิ</p>
+                      <p className="text-sm font-bold text-base-theme">฿{fmt(inv.netCost)}</p>
+                    </div>
+                    <div className="text-center bg-[var(--input)] rounded-xl p-2">
+                      <p className="text-[10px] text-muted-theme">จำนวนหน่วย</p>
+                      <p className="text-sm font-bold text-base-theme">{inv.totalUnits.toFixed(4)}</p>
+                    </div>
+                    <button
+                      onClick={toggle}
+                      className="text-center bg-[var(--input)] rounded-xl p-2 cursor-pointer hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors"
+                    >
+                      <p className="text-[10px] text-muted-theme">รายการ</p>
+                      <p className="text-sm font-bold text-base-theme flex items-center justify-center gap-1">
+                        {inv.transactions.length}
+                        {inv.transactions.length > 0 && (
+                          <Icon path={isExpanded ? mdiChevronUp : mdiChevronDown} size={0.6} />
+                        )}
+                      </p>
+                    </button>
+                  </div>
+                  <button onClick={() => setShowTx(inv.id)}
+                    className="w-full py-2 rounded-xl border border-[var(--border)] text-sm font-semibold text-muted-theme hover:text-base-theme transition-colors">
+                    + เพิ่มรายการซื้อ/ขาย
+                  </button>
                 </div>
-                <button onClick={() => handleDelete(inv.id)} className="p-1 text-muted-theme hover:text-red-500">
-                  <Icon path={mdiTrashCanOutline} size={0.75} />
-                </button>
+
+                {/* Transaction history */}
+                {isExpanded && sorted.length > 0 && (
+                  <div className="border-t border-[var(--border)] divide-y divide-[var(--border)]">
+                    {sorted.map(tx => (
+                      <div key={tx.id} className="flex items-center justify-between px-4 py-2.5">
+                        <div className="flex items-center gap-3">
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full bg-[var(--input)] ${TX_COLOR[tx.type]}`}>
+                            {TX_LABEL[tx.type]}
+                          </span>
+                          <div>
+                            <p className="text-xs text-muted-theme">{fmtDate(tx.occurredAt)}</p>
+                            {tx.note && <p className="text-[10px] text-muted-theme/70">{tx.note}</p>}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm font-bold ${TX_COLOR[tx.type]}`}>
+                            {tx.type === 'sell' ? '-' : '+'}฿{fmt(Number(tx.amount))}
+                          </p>
+                          {tx.units != null && Number(tx.units) > 0 && (
+                            <p className="text-[10px] text-muted-theme">
+                              {Number(tx.units).toFixed(4)} หน่วย
+                              {tx.navPrice != null && ` @ ฿${Number(tx.navPrice)}`}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                <div className="text-center bg-[var(--input)] rounded-xl p-2">
-                  <p className="text-[10px] text-muted-theme">ต้นทุนสุทธิ</p>
-                  <p className="text-sm font-bold text-base-theme">฿{fmt(inv.netCost)}</p>
-                </div>
-                <div className="text-center bg-[var(--input)] rounded-xl p-2">
-                  <p className="text-[10px] text-muted-theme">จำนวนหน่วย</p>
-                  <p className="text-sm font-bold text-base-theme">{inv.totalUnits.toFixed(4)}</p>
-                </div>
-                <div className="text-center bg-[var(--input)] rounded-xl p-2">
-                  <p className="text-[10px] text-muted-theme">รายการ</p>
-                  <p className="text-sm font-bold text-base-theme">{inv.transactions.length}</p>
-                </div>
-              </div>
-              <button onClick={() => setShowTx(inv.id)}
-                className="w-full py-2 rounded-xl border border-[var(--border)] text-sm font-semibold text-muted-theme hover:text-base-theme transition-colors">
-                + เพิ่มรายการซื้อ/ขาย
-              </button>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 

@@ -58,8 +58,9 @@ export class LoansService {
       throw new BadRequestException('Payment exceeds remaining balance')
     }
 
-    await this.paymentRepo.save(
-      this.paymentRepo.create({ loanId, amount: dto.amount, paidAt: new Date(dto.paidAt), note: dto.note }),
+    await this.paymentRepo.manager.query(
+      `INSERT INTO loan_payments (id, loan_id, amount, paid_at, note) VALUES (gen_random_uuid(), $1, $2, $3, $4)`,
+      [loanId, dto.amount, new Date(dto.paidAt), dto.note ?? ''],
     )
 
     const newPaid = paid + dto.amount

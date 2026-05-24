@@ -32,6 +32,15 @@ export default function Budget() {
 
   useEffect(() => { load() }, [load])
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('budget') || types.includes('dashboard')) load()
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [load])
+
   const totalBudgeted = budgets.reduce((s, b) => s + b.budgeted, 0)
   const totalActual   = budgets.reduce((s, b) => s + b.actual, 0)
 

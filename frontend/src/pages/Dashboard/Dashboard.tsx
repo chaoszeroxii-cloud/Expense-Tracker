@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
@@ -43,12 +43,25 @@ export default function Dashboard() {
   const [month, setMonth] = useState(currentMonth())
   const isCurrentMonth = month === currentMonth()
 
-  const { data: summary,    loading: loadingSum }   = useSummary(month)
-  const { data: categories, loading: loadingCat }   = useCategoryBreakdown(month, 'expense')
-  const { data: trend,      loading: loadingTrend } = useMonthlyTrend()
-  const { data: budgets,    loading: loadingBudget } = useBudgetSummary(month)
-  const { data: loanData,   loading: loadingLoans }  = useLoanSummary()
-  const { data: efData,     loading: loadingEF }     = useEmergencyFund(6)
+  const { data: summary,    loading: loadingSum,    refetch: refetchSummary }   = useSummary(month)
+  const { data: categories, loading: loadingCat,    refetch: refetchCat }       = useCategoryBreakdown(month, 'expense')
+  const { data: trend,      loading: loadingTrend,  refetch: refetchTrend }     = useMonthlyTrend()
+  const { data: budgets,    loading: loadingBudget, refetch: refetchBudget }    = useBudgetSummary(month)
+  const { data: loanData,   loading: loadingLoans,  refetch: refetchLoans }     = useLoanSummary()
+  const { data: efData,     loading: loadingEF,     refetch: refetchEF }        = useEmergencyFund(6)
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('dashboard') || types.includes('transactions')) {
+        refetchSummary(); refetchCat(); refetchTrend(); refetchEF()
+      }
+      if (types.includes('dashboard') || types.includes('budget')) refetchBudget()
+      if (types.includes('dashboard') || types.includes('loans')) refetchLoans()
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [refetchSummary, refetchCat, refetchTrend, refetchBudget, refetchLoans, refetchEF])
 
   return (
     <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">

@@ -19,7 +19,7 @@ interface LocalMessage extends ChatMessage {
   loading?: boolean
   streaming?: boolean
   imagePreview?: string
-  extractedBill?: any
+  statusText?: string
 }
 
 // Parse [THEME:x], [NAVIGATE:/path], and [REFRESH:page,...] markers from AI response
@@ -58,10 +58,11 @@ export default function ChatPanel({ onClose }: Props) {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(true)
-  const [pendingBill, setPendingBill] = useState<any>(null)
+  const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string; base64: string; mimeType: string } | null>(null)
   const [toast, setToast] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const showToast = (msg: string) => {
     setToast(msg)
@@ -74,7 +75,11 @@ export default function ChatPanel({ onClose }: Props) {
     setLoadingHistory(true)
     try {
       const history = await chatApi.getHistory()
-      setMessages(history.map((m: ChatMessage) => ({ ...m, localId: m.id ?? crypto.randomUUID() })))
+      setMessages(history.map((m: ChatMessage) => ({
+        ...m,
+        localId: m.id ?? crypto.randomUUID(),
+        imagePreview: m.imageAnalysis?.thumbnail ?? undefined,
+      })))
     } finally {
       setLoadingHistory(false)
     }
@@ -82,19 +87,33 @@ export default function ChatPanel({ onClose }: Props) {
 
   useEffect(() => { loadHistory() }, [loadHistory])
   useEffect(() => { scrollBottom() }, [messages])
+  useEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [input])
 
   const sendMessage = async (text: string) => {
-    if (!text.trim() || sending) return
+    if (!text.trim() && !attachedImage) return
+    if (sending) return
     const streamId = crypto.randomUUID()
-    const userMsg: LocalMessage = { localId: crypto.randomUUID(), role: 'user', content: text }
+    const userMsg: LocalMessage = {
+      localId: crypto.randomUUID(),
+      role: 'user',
+      content: text || '📎 แนบรูป',
+      imagePreview: attachedImage?.preview,
+    }
     const placeholder: LocalMessage = { localId: streamId, role: 'assistant', content: '', loading: true }
 
     setMessages(prev => [...prev, userMsg, placeholder])
     setInput('')
+    const imageSnapshot = attachedImage
+    setAttachedImage(null)
     setSending(true)
 
     try {
-      const res = await chatApi.sendMessageStream(text, { userName: user?.name })
+      const res = await chatApi.sendMessageStream(text, { userName: user?.name }, imageSnapshot?.base64, imageSnapshot?.mimeType, imageSnapshot?.preview)
       if (!res.body) throw new Error('No response body')
 
       const reader = res.body.getReader()
@@ -130,6 +149,14 @@ export default function ChatPanel({ onClose }: Props) {
               if (parsed.refresh) pendingAction.refresh = parsed.refresh
               if (parsed.theme) pendingAction.theme = parsed.theme
               if (parsed.navigate) pendingAction.navigate = parsed.navigate
+              currentEvent = 'message'
+              continue
+            }
+
+            if (currentEvent === 'status') {
+              setMessages(prev => prev.map(m =>
+                m.localId === streamId ? { ...m, statusText: parsed.text ?? '' } : m
+              ))
               currentEvent = 'message'
               continue
             }
@@ -177,56 +204,36 @@ export default function ChatPanel({ onClose }: Props) {
     }
   }
 
-  const handleImageUpload = async (file: File) => {
-    const previewUrl = URL.createObjectURL(file)
-    const localId = crypto.randomUUID()
-    const userMsg: LocalMessage = { localId, role: 'user', content: 'อัพโหลดรูปบิล/ใบเสร็จ', imagePreview: previewUrl }
-    const loadingMsg: LocalMessage = { localId: crypto.randomUUID(), role: 'assistant', content: '', loading: true }
+  const handleImageAttach = async (file: File) => {
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+    const base64 = dataUrl.split(',')[1]
 
-    setMessages(prev => [...prev, userMsg, loadingMsg])
-    setSending(true)
+    // Create a small thumbnail for persistent preview in history
+    const thumbnail = await new Promise<string>((resolve) => {
+      const img = new Image()
+      img.onload = () => {
+        const MAX = 200
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.75))
+      }
+      img.src = dataUrl
+    })
 
-    try {
-      const result = await chatApi.analyzeImage(file)
-      const billMsg = formatBillResult(result)
-      setMessages(prev =>
-        prev.map(m => m.loading ? { ...m, content: billMsg, loading: false, extractedBill: result } : m)
-      )
-      if (result.total && result.total > 0) setPendingBill(result)
-    } catch {
-      setMessages(prev =>
-        prev.map(m => m.loading ? { ...m, content: '❌ อ่านรูปไม่ได้ กรุณาลองใหม่หรือใช้รูปที่ชัดขึ้น', loading: false } : m)
-      )
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const confirmBill = async (bill: any) => {
-    setPendingBill(null)
-    await sendMessage(
-      `บันทึก${bill.category === 'Food & Drink' ? 'ค่าอาหาร' : 'รายจ่าย'} ฿${bill.total} จาก ${bill.shop ?? 'ไม่ระบุร้าน'}`
-    )
+    setAttachedImage({ file, preview: thumbnail, base64, mimeType: file.type })
   }
 
   const handleClear = async () => {
     await chatApi.clearHistory()
     setMessages([])
-  }
-
-  const formatBillResult = (r: any): string => {
-    if (!r || r.error) return `ไม่สามารถอ่านบิลได้: ${r?.error ?? 'unknown'}`
-    let msg = `📄 **อ่านบิลได้แล้ว!**\n\n`
-    if (r.shop) msg += `🏪 ร้าน: ${r.shop}\n`
-    if (r.items?.length > 0) {
-      msg += `📋 รายการ:\n`
-      r.items.forEach((item: any) => { msg += `  • ${item.name} — ฿${item.price}\n` })
-    }
-    if (r.total) msg += `\n💰 **รวม ฿${r.total}**`
-    if (r.date) msg += `\n📅 วันที่: ${r.date}`
-    if (r.category) msg += `\n🏷️ หมวด: ${r.category}`
-    msg += `\n\nต้องการบันทึกรายการนี้ไหม?`
-    return msg
   }
 
   return (
@@ -278,36 +285,32 @@ export default function ChatPanel({ onClose }: Props) {
             ))
           )}
 
-          {/* Pending bill confirmation */}
-          {pendingBill && (
-            <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-3 border border-emerald-200 dark:border-emerald-700">
-              <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-200 mb-2">
-                บันทึก ฿{pendingBill.total} จาก {pendingBill.shop} ไหม?
-              </p>
-              <div className="flex gap-2">
-                <button onClick={() => confirmBill(pendingBill)}
-                  className="flex-1 py-2 rounded-xl bg-emerald-500 text-white text-xs font-bold">
-                  ✓ บันทึก
-                </button>
-                <button onClick={() => setPendingBill(null)}
-                  className="flex-1 py-2 rounded-xl bg-[var(--input)] text-muted-theme text-xs font-semibold">
-                  ยกเลิก
-                </button>
-              </div>
-            </div>
-          )}
           <div ref={bottomRef} />
         </div>
 
         {/* Input area */}
         <div className="px-3 pb-safe pb-3 pt-2 border-t border-[var(--border)] shrink-0">
+          {/* Attached image preview */}
+          {attachedImage && (
+            <div className="mb-2 flex items-center gap-2">
+              <div className="relative">
+                <img src={attachedImage.preview} alt="attached" className="h-14 w-14 rounded-xl object-cover border border-[var(--border)]" />
+                <button
+                  onClick={() => setAttachedImage(null)}
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center leading-none"
+                >✕</button>
+              </div>
+              <p className="text-[11px] text-muted-theme">รูปจะถูกส่งพร้อมข้อความ</p>
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
-            {/* Image upload button */}
+            {/* Image attach button */}
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={sending}
-              className="p-2.5 rounded-xl bg-[var(--input)] text-muted-theme hover:text-base-theme transition-colors shrink-0 disabled:opacity-40"
-              title="อัพโหลดรูปบิล"
+              className={`p-2.5 rounded-xl transition-colors shrink-0 disabled:opacity-40 ${attachedImage ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' : 'bg-[var(--input)] text-muted-theme hover:text-base-theme'}`}
+              title="แนบรูป"
             >
               <Icon path={mdiImage} size={0.85} />
             </button>
@@ -316,11 +319,12 @@ export default function ChatPanel({ onClose }: Props) {
               type="file"
               accept="image/jpeg,image/png,image/webp"
               className="hidden"
-              onChange={e => e.target.files?.[0] && handleImageUpload(e.target.files[0])}
+              onChange={e => { if (e.target.files?.[0]) { handleImageAttach(e.target.files[0]); e.target.value = '' } }}
             />
 
             {/* Text input */}
             <textarea
+              ref={textareaRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={e => {
@@ -329,18 +333,18 @@ export default function ChatPanel({ onClose }: Props) {
                   sendMessage(input)
                 }
               }}
-              placeholder="พิมพ์ข้อความ หรืออัพโหลดรูปบิล..."
+              placeholder={attachedImage ? 'พิมพ์ข้อความประกอบรูป (ไม่บังคับ)...' : 'พิมพ์ข้อความ หรือแนบรูป...'}
               rows={1}
               className="flex-1 px-3 py-2.5 rounded-xl bg-[var(--input)] text-base-theme text-sm
                          border border-[var(--border)] outline-none resize-none
                          max-h-28 overflow-y-auto placeholder:text-muted-theme"
-              style={{ scrollbarWidth: 'none' }}
+              style={{ scrollbarWidth: 'none', height: 'auto', overflowY: 'auto' }}
             />
 
             {/* Send button */}
             <button
               onClick={() => sendMessage(input)}
-              disabled={!input.trim() || sending}
+              disabled={(!input.trim() && !attachedImage) || sending}
               className="p-2.5 rounded-xl bg-emerald-500 text-white shrink-0
                          disabled:opacity-40 active:scale-95 transition-transform"
             >
@@ -378,12 +382,16 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
 
         {/* Message bubble */}
         {msg.loading ? (
-          <div className="bg-[var(--input)] rounded-2xl rounded-tl-sm px-4 py-2.5">
-            <div className="flex gap-1 items-center h-4">
-              <span className="w-1.5 h-1.5 bg-muted-theme rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1.5 h-1.5 bg-muted-theme rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1.5 h-1.5 bg-muted-theme rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
+          <div className="bg-[var(--input)] rounded-2xl rounded-tl-sm px-4 py-2.5 min-w-[100px]">
+            {msg.statusText ? (
+              <p className="text-xs text-muted-theme animate-pulse">{msg.statusText}</p>
+            ) : (
+              <div className="flex gap-1 items-center h-4">
+                <span className="w-1.5 h-1.5 bg-muted-theme rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-1.5 h-1.5 bg-muted-theme rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-1.5 h-1.5 bg-muted-theme rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            )}
           </div>
         ) : (
           <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
@@ -418,6 +426,7 @@ function FormattedMessage({ content }: { content: string }) {
 
 function WelcomeMessage({ userName, onSuggest }: { userName?: string | null; onSuggest: (t: string) => void }) {
   const suggestions = [
+    'ทำอะไรได้บ้าง?',
     'สรุปการเงินเดือนนี้ให้หน่อย',
     'ใช้เงินเกินงบหมวดไหนบ้าง?',
     'ใครยังค้างเงินอยู่บ้าง?',

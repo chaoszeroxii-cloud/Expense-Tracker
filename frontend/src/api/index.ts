@@ -209,7 +209,13 @@ export const chatApi = {
   sendMessage: (message: string, context?: Record<string, any>) =>
     http.post<{ message: string }>('/chat', { message, context }).then(r => r.data),
 
-  sendMessageStream: (message: string, context?: Record<string, any>): Promise<Response> => {
+  sendMessageStream: (
+    message: string,
+    context?: Record<string, any>,
+    imageBase64?: string,
+    mimeType?: string,
+    imageThumbnail?: string,
+  ): Promise<Response> => {
     const token = useAuthStore.getState().token
     return fetch(`${chatBase()}/chat/stream`, {
       method: 'POST',
@@ -217,14 +223,8 @@ export const chatApi = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ message, context }),
+      body: JSON.stringify({ message, context, imageBase64, mimeType, imageThumbnail }),
     })
-  },
-
-  analyzeImage: (file: File) => {
-    const form = new FormData()
-    form.append('image', file)
-    return http.post('/chat/vision', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
   },
 
   getHistory: () =>

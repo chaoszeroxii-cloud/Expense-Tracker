@@ -210,6 +210,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   createdAt?: string
+  imageAnalysis?: { thumbnail?: string; [key: string]: any } | null
 }
 
 // ── Admin ─────────────────────────────────────────────────────

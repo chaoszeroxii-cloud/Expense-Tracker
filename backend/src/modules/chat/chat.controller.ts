@@ -1,10 +1,7 @@
 import {
-  Controller, Post, Get, Delete, Body, UploadedFile,
-  UseInterceptors, MaxFileSizeValidator, ParseFilePipe,
-  FileTypeValidator, Res,
+  Controller, Post, Get, Delete, Body, Res,
 } from '@nestjs/common'
 import { Response } from 'express'
-import { FileInterceptor } from '@nestjs/platform-express'
 import { ChatService } from './chat.service'
 import { TavilyService } from './tavily.service'
 import { CurrentUser } from '../auth/current-user.decorator'
@@ -28,11 +25,11 @@ export class ChatController {
     })
   }
 
-  // POST /api/chat/stream  — SSE streaming chat
+  // POST /api/chat/stream  — SSE streaming chat (with optional image as base64)
   @Post('stream')
   async streamMessage(
     @CurrentUser() user,
-    @Body() body: { message: string; context?: Record<string, any> },
+    @Body() body: { message?: string; imageBase64?: string; mimeType?: string; imageThumbnail?: string; context?: Record<string, any> },
     @Res() res: Response,
   ) {
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
@@ -41,31 +38,17 @@ export class ChatController {
     res.setHeader('X-Accel-Buffering', 'no')
     res.flushHeaders()
 
-    await this.svc.chatStream(user.id, body.message, {
-      ...body.context,
-      userName: user.name,
-    }, res)
+    await this.svc.chatStream(
+      user.id,
+      body.message ?? '',
+      { ...body.context, userName: user.name },
+      res,
+      body.imageBase64,
+      body.mimeType,
+      body.imageThumbnail,
+    )
 
     if (!res.writableEnded) res.end()
-  }
-
-  // POST /api/chat/vision  — upload image for bill reading
-  @Post('vision')
-  @UseInterceptors(FileInterceptor('image'))
-  async analyzeImage(
-    @CurrentUser() user,
-    @UploadedFile(
-      new ParseFilePipe({
-        validators: [
-          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }), // 10MB
-          new FileTypeValidator({ fileType: /image\/(jpeg|png|webp|gif)/ }),
-        ],
-      }),
-    )
-    file: Express.Multer.File,
-  ) {
-    const base64 = file.buffer.toString('base64')
-    return this.svc.analyzeImage(user.id, base64, file.mimetype)
   }
 
   // GET /api/chat/history  — load chat history

@@ -52,7 +52,7 @@ export default function Layout() {
 
       {/* ── Content area ── */}
       <div className="flex-1 flex flex-col min-w-0 relative">
-        <main className="flex-1 overflow-y-auto pb-safe lg:pb-0 pb-24">
+        <main className="flex-1 overflow-y-auto pb-24 lg:pb-0">
           <div className="max-w-2xl mx-auto w-full">
             <Outlet />
           </div>

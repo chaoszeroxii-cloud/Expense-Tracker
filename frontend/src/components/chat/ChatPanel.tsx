@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
@@ -394,12 +396,12 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
             )}
           </div>
         ) : (
-          <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap
+          <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed
             ${isUser
-              ? 'bg-brand-600 text-white rounded-tr-sm'
+              ? 'bg-brand-600 text-white rounded-tr-sm whitespace-pre-wrap'
               : 'bg-[var(--input)] text-base-theme rounded-tl-sm'
             }`}>
-            <FormattedMessage content={msg.content} />
+            {isUser ? msg.content : <AiMessage content={msg.content} />}
             {msg.streaming && (
               <span className="inline-block w-0.5 h-3.5 bg-emerald-400 align-middle ml-0.5 animate-pulse" />
             )}
@@ -410,17 +412,45 @@ function MessageBubble({ msg }: { msg: LocalMessage }) {
   )
 }
 
-function FormattedMessage({ content }: { content: string }) {
-  // Simple markdown: **bold**, newlines
-  const parts = content.split(/(\*\*[^*]+\*\*)/g)
+function AiMessage({ content }: { content: string }) {
   return (
-    <>
-      {parts.map((part, i) =>
-        part.startsWith('**') && part.endsWith('**')
-          ? <strong key={i}>{part.slice(2, -2)}</strong>
-          : <span key={i}>{part}</span>
-      )}
-    </>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+        ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-0.5">{children}</ul>,
+        ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-0.5">{children}</ol>,
+        li: ({ children }) => <li>{children}</li>,
+        h1: ({ children }) => <h1 className="font-semibold text-base mb-1 mt-2">{children}</h1>,
+        h2: ({ children }) => <h2 className="font-semibold mb-1 mt-2">{children}</h2>,
+        h3: ({ children }) => <h3 className="font-semibold mb-1 mt-1">{children}</h3>,
+        table: ({ children }) => (
+          <div className="overflow-x-auto my-2">
+            <table className="min-w-full text-xs border-collapse">{children}</table>
+          </div>
+        ),
+        tr: ({ children }) => (
+          <tr className="even:bg-black/5 dark:even:bg-white/5">{children}</tr>
+        ),
+        th: ({ children }) => (
+          <th className="text-left font-semibold py-1.5 px-2 border-b border-current/20 whitespace-nowrap">{children}</th>
+        ),
+        td: ({ children }) => (
+          <td className="py-1.5 px-2 border-b border-current/10 whitespace-nowrap">{children}</td>
+        ),
+        pre: ({ children }) => (
+          <pre className="bg-black/10 dark:bg-white/10 p-2 rounded mb-2 overflow-x-auto">{children}</pre>
+        ),
+        code: ({ children, className, ...props }) => (
+          className
+            ? <code className={`font-mono text-xs ${className}`} {...props}>{children}</code>
+            : <code className="font-mono bg-black/10 dark:bg-white/10 px-1 py-0.5 rounded text-xs" {...props}>{children}</code>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   )
 }
 

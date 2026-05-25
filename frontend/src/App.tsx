@@ -57,8 +57,10 @@ export default function App() {
           </Route>
           <Route path="/add" element={
             <Lazy>
-              <div className="flex flex-col h-dvh max-w-md mx-auto bg-app">
-                <AddExpense />
+              <div className="min-h-dvh bg-app">
+                <div className="flex flex-col h-dvh max-w-md mx-auto bg-app">
+                  <AddExpense />
+                </div>
               </div>
             </Lazy>
           } />

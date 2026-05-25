@@ -25,6 +25,9 @@ export class ChatMessage {
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>
 
+  @Column({ name: 'image_analysis', type: 'jsonb', nullable: true })
+  imageAnalysis: Record<string, any> | null
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date
 }

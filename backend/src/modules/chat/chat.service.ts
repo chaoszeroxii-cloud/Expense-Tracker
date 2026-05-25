@@ -469,27 +469,26 @@ export class ChatService {
     return { message: reply }
   }
 
-  // ── Vision: read bill/receipt image ────────────────────────
-  async analyzeImage(userId: string, imageBase64: string, mimeType: string) {
+  // ── Vision: analyze any image via Gemini ───────────────────
+  async analyzeImage(imageBase64: string, mimeType: string): Promise<Record<string, any>> {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured')
 
-    const prompt = `คุณเป็นผู้ช่วยอ่านบิลและใบเสร็จ กรุณาอ่านรูปนี้และ extract ข้อมูลดังนี้:
-1. ชื่อร้าน/สถานที่
-2. รายการสินค้า/บริการ (ถ้ามี)
-3. ราคารวมทั้งหมด
-4. วันที่ (ถ้ามี)
-5. หมวดหมู่ที่เหมาะสม (Food & Drink / Transport / Shopping / Health / Entertainment / Utilities / Other)
+    const prompt = `วิเคราะห์รูปนี้และตอบเป็น JSON เท่านั้น ห้ามมีข้อความอื่น:
 
-ตอบเป็น JSON format:
 {
-  "shop": "ชื่อร้าน",
-  "items": [{"name": "รายการ", "price": 0}],
-  "total": 0,
-  "date": "YYYY-MM-DD หรือ null",
-  "category": "หมวดหมู่",
-  "confidence": "high/medium/low"
-}`
+  "description": "อธิบายรูปโดยละเอียดเป็นภาษาไทย",
+  "isFinancialDoc": true หรือ false (true ถ้าเป็น บิล/ใบเสร็จ/สลิปโอน/invoice/ใบแจ้งหนี้),
+  "extractedData": {
+    "shop": "ชื่อร้านหรือแหล่งที่มา หรือ null",
+    "items": [{"name": "รายการ", "price": 0}],
+    "total": 0,
+    "date": "YYYY-MM-DD หรือ null",
+    "category": "Food & Drink / Transport / Shopping / Health / Entertainment / Utilities / Other"
+  }
+}
+
+ถ้า isFinancialDoc เป็น false ให้ extractedData เป็น null`
 
     try {
       const res = await axios.post(
@@ -507,7 +506,7 @@ export class ChatService {
       const content = res.data.choices[0]?.message?.content ?? ''
       const jsonMatch = content.match(/\{[\s\S]*\}/)
       if (jsonMatch) return JSON.parse(jsonMatch[0])
-      return { raw: content, error: 'Could not parse JSON' }
+      return { description: content, isFinancialDoc: false, extractedData: null }
     } catch (err: any) {
       this.logger.error(`Vision error: ${err.message}`)
       throw err
@@ -618,17 +617,52 @@ export class ChatService {
   }
 
   // ── Streaming chat (SSE endpoint) ─────────────────────────
-  async chatStream(userId: string, userMessage: string, context: Record<string, any>, res: any) {
+  async chatStream(
+    userId: string,
+    userMessage: string,
+    context: Record<string, any>,
+    res: any,
+    imageBase64?: string,
+    mimeType?: string,
+    imageThumbnail?: string,
+  ) {
     const MAX_TOOL_ROUNDS = 5
 
-    await this.saveMessage(userId, 'user', userMessage)
+    let imageAnalysis: Record<string, any> | undefined
+    let messageForAI = userMessage || 'ผู้ใช้แนบรูปมาโดยไม่มีข้อความเพิ่มเติม'
+
+    if (imageBase64 && mimeType) {
+      res.write(`event: status\ndata: ${JSON.stringify({ text: 'กำลังอ่านรูป...' })}\n\n`)
+      res.flush?.()
+      try {
+        imageAnalysis = await this.analyzeImage(imageBase64, mimeType)
+        if (imageThumbnail) imageAnalysis.thumbnail = imageThumbnail
+        messageForAI = `[ข้อมูลจากรูปที่แนบมา (วิเคราะห์โดย Gemini)]\n${JSON.stringify(imageAnalysis, null, 2)}\n\n${userMessage || 'ผู้ใช้แนบรูปมาโดยไม่มีข้อความเพิ่มเติม'}`
+      } catch {
+        imageAnalysis = imageThumbnail ? { thumbnail: imageThumbnail } : undefined
+        messageForAI = `[ไม่สามารถอ่านรูปได้]\n\n${userMessage || 'ผู้ใช้แนบรูปมาแต่อ่านไม่ได้'}`
+      }
+    }
+
+    await this.saveMessage(userId, 'user', userMessage || '📎 แนบรูป', imageAnalysis)
     const history = await this.getHistory(userId)
     const systemPrompt = this.buildSystemPrompt(context)
 
     let currentMessages: any[] = [
       { role: 'system', content: systemPrompt },
-      ...history.slice(-this.MAX_HISTORY).map((m: any) => ({ role: m.role, content: m.content })),
+      ...history.slice(-this.MAX_HISTORY).map((m: any) => ({
+        role: m.role,
+        content: m.imageAnalysis
+          ? `[ข้อมูลจากรูปที่แนบมา (วิเคราะห์โดย Gemini)]\n${JSON.stringify(m.imageAnalysis, null, 2)}\n\n${m.content}`
+          : m.content,
+      })),
     ]
+
+    // Replace the last user message with the AI-enriched version (has image context)
+    if (imageBase64) {
+      const lastUserIdx = [...currentMessages].map(m => m.role).lastIndexOf('user')
+      if (lastUserIdx !== -1) currentMessages[lastUserIdx] = { role: 'user', content: messageForAI }
+    }
 
     let fullResponse = ''
     const uiMarkers: string[] = []
@@ -1312,8 +1346,8 @@ UI: change_theme, navigate_to
     }
   }
 
-  private async saveMessage(userId: string, role: string, content: string) {
-    await this.msgRepo.save(this.msgRepo.create({ userId, role, content }))
+  private async saveMessage(userId: string, role: string, content: string, imageAnalysis?: Record<string, any>) {
+    await this.msgRepo.save(this.msgRepo.create({ userId, role, content, imageAnalysis: imageAnalysis ?? null }))
     await this.msgRepo.manager.query(
       `DELETE FROM chat_messages WHERE user_id=$1 AND id NOT IN (
         SELECT id FROM chat_messages WHERE user_id=$1 ORDER BY created_at DESC LIMIT $2

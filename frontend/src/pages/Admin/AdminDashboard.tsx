@@ -45,7 +45,8 @@ export default function AdminDashboard() {
   )
 
   return (
-    <div className="min-h-dvh bg-app px-4 py-6 max-w-4xl mx-auto">
+    <div className="min-h-dvh bg-app">
+    <div className="max-w-4xl mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => navigate('/')} className="p-2 rounded-xl bg-card border border-[var(--border)] text-muted-theme">
@@ -152,6 +153,7 @@ export default function AdminDashboard() {
           <p>ไม่พบ user ที่ตรงกับการค้นหา</p>
         </div>
       )}
+    </div>
     </div>
   )
 }

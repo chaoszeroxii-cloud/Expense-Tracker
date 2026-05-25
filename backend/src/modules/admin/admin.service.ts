@@ -45,12 +45,12 @@ export class AdminService {
       email: u.u_email,
       name: u.u_name,
       role: u.u_role,
-      onboardingCompleted: u.u_onboardingCompleted,
+      onboardingCompleted: u.u_onboarding_completed,
       currency: u.u_currency,
-      totalBalance: parseFloat(u.u_totalBalance) || 0,
+      totalBalance: parseFloat(u.u_total_balance) || 0,
       transactionCount: parseInt(u.u_txCount) || 0,
-      createdAt: u.u_createdAt,
-      updatedAt: u.u_updatedAt,
+      createdAt: u.u_created_at,
+      updatedAt: u.u_updated_at,
     }))
   }
 

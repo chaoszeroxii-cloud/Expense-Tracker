@@ -3,7 +3,7 @@ import { IsOptional, IsString } from 'class-validator'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { User } from '../users/user.entity'
-import { AnalyticsService } from './analytics.service'
+import { AnalyticsService, AiRecommendation } from './analytics.service'
 
 class AnalyticsQueryDto {
   @IsOptional() @IsString() month?: string
@@ -61,5 +61,11 @@ export class AnalyticsController {
   @Get('emergency-fund')
   getEmergencyFund(@CurrentUser() user: User, @Query('months') months?: string) {
     return this.service.getEmergencyFundSummary(user.id, parseInt(months ?? '6'))
+  }
+
+  // GET /api/analytics/recommendations
+  @Get('recommendations')
+  getRecommendations(@CurrentUser() user: User): Promise<AiRecommendation[]> {
+    return this.service.getRecommendations(user.id)
   }
 }

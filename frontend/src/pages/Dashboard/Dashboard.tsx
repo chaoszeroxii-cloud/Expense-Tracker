@@ -12,12 +12,14 @@ import SpendingPieChart from '../../components/charts/SpendingPieChart'
 import AllocationWallets from '../../components/allocations/AllocationWallets'
 import {
   useSummary, useCategoryBreakdown, useMonthlyTrend, currentMonth,
-  useBudgetSummary, useLoanSummary, useEmergencyFund,
+  useBudgetSummary, useLoanSummary, useEmergencyFund, useRecommendations,
 } from '../../hooks'
 import { useT } from '../../store/i18n.store'
 
-// Lazy-loaded heavy chart section (pulls in recharts)
-const TrendSection = lazy(() => import('../../components/charts/TrendSection'))
+// Lazy-loaded heavy chart sections (pull in recharts)
+const TrendSection      = lazy(() => import('../../components/charts/TrendSection'))
+const MonthlyBarSection = lazy(() => import('../../components/charts/MonthlyBarSection'))
+const AiInsightsSection = lazy(() => import('../../components/charts/AiInsightsSection'))
 
 function monthOffset(base: string, offset: number): string {
   const [y, m] = base.split('-').map(Number)
@@ -49,6 +51,7 @@ export default function Dashboard() {
   const { data: budgets,    loading: loadingBudget, refetch: refetchBudget }    = useBudgetSummary(month)
   const { data: loanData,   loading: loadingLoans,  refetch: refetchLoans }     = useLoanSummary()
   const { data: efData,     loading: loadingEF,     refetch: refetchEF }        = useEmergencyFund(6)
+  const { data: aiRecs,     loading: loadingAiRecs, refetch: refetchAiRecs }    = useRecommendations()
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -175,6 +178,25 @@ export default function Dashboard() {
           trend={trend}
           loadingTrend={loadingTrend}
           categories={categories}
+          lang={lang}
+        />
+      </Suspense>
+
+      {/* ── 12-Month Bar Comparison (collapsible) ── */}
+      <Suspense fallback={<Skeleton className="h-14 w-full rounded-3xl" />}>
+        <MonthlyBarSection
+          trend={trend}
+          loadingTrend={loadingTrend}
+          lang={lang}
+        />
+      </Suspense>
+
+      {/* ── AI Personalized Insights (collapsible) ── */}
+      <Suspense fallback={<Skeleton className="h-14 w-full rounded-3xl" />}>
+        <AiInsightsSection
+          data={aiRecs}
+          loading={loadingAiRecs}
+          onRefresh={refetchAiRecs}
           lang={lang}
         />
       </Suspense>

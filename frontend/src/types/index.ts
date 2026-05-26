@@ -204,6 +204,13 @@ export interface EmergencyFundSummary {
   walletName: string | null
 }
 
+// ── AI Recommendations ────────────────────────────────────────
+export interface AiRecommendation {
+  type: 'warning' | 'tip' | 'good'
+  title: string
+  body: string
+}
+
 // ── Chat ──────────────────────────────────────────────────────
 export interface ChatMessage {
   id?: string

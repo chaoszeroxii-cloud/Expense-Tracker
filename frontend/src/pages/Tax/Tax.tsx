@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 import { taxApi } from '../../api'
 import type { TaxDeduction, TaxCalculationResult, TaxDeductionType } from '../../types'
 import Icon from '@mdi/react'
-import { mdiPlus, mdiTrashCanOutline, mdiClose, mdiLightbulbOutline, mdiReceiptTextOutline } from '@mdi/js'
+import { mdiPlus, mdiTrashCanOutline, mdiClose, mdiLightbulbOutline, mdiReceiptTextOutline, mdiDownload } from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
 import { useT, useI18n } from '../../store/i18n.store'
 
@@ -22,12 +24,49 @@ export default function Tax() {
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState({ type: '', amount: '', note: '' })
   const [saving, setSaving] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const exportRef = useRef<HTMLDivElement>(null)
+
+  const handleExportPDF = async () => {
+    if (!exportRef.current || !result) return
+    setExporting(true)
+    try {
+      const canvas = await html2canvas(exportRef.current, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        onclone: (doc) => {
+          doc.documentElement.classList.remove('dark')
+          const el = doc.getElementById('tax-export-root')
+          if (el) {
+            el.style.background = '#f0fdf4'
+            el.style.color = '#14532d'
+          }
+          doc.querySelectorAll<HTMLElement>('[class*="dark:"]').forEach(node => {
+            node.className = node.className
+              .split(' ')
+              .filter(c => !c.startsWith('dark:'))
+              .join(' ')
+          })
+        },
+      })
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+      const pageW = pdf.internal.pageSize.getWidth()
+      const imgW = pageW - 20
+      const imgH = (canvas.height * imgW) / canvas.width
+      pdf.addImage(imgData, 'PNG', 10, 10, imgW, imgH)
+      pdf.save(`tax-report-${lang === 'th' ? year + 543 : year}.pdf`)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const load = useCallback(async () => {
-    const [d, tp] = await Promise.all([taxApi.findByYear(year), taxApi.getTypes()])
+    const [d, tp] = await Promise.all([taxApi.findByYear(year), taxApi.getTypes(lang)])
     setDeductions(d)
     setTypes(tp)
-  }, [year])
+  }, [year, lang])
 
   useEffect(() => { load() }, [load])
 
@@ -43,7 +82,7 @@ export default function Tax() {
   const handleCalculate = async () => {
     if (!income) return
     setLoading(true)
-    const r = await taxApi.calculate(parseFloat(income), year)
+    const r = await taxApi.calculate(parseFloat(income), year, lang)
     setResult(r)
     setLoading(false)
   }
@@ -108,10 +147,20 @@ export default function Tax() {
 
       {/* Tax result */}
       {result && (
-        <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <Icon path={mdiReceiptTextOutline} size={0.9} color="#10b981" />
-            <span className="font-bold text-emerald-800 dark:text-emerald-200 text-sm">{t('tax_result_title')}</span>
+        <div ref={exportRef} id="tax-export-root" className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl border border-emerald-200 dark:border-emerald-800 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Icon path={mdiReceiptTextOutline} size={0.9} color="#10b981" />
+              <span className="font-bold text-emerald-800 dark:text-emerald-200 text-sm">{t('tax_result_title')}</span>
+            </div>
+            <button
+              onClick={handleExportPDF}
+              disabled={exporting}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-semibold disabled:opacity-50 active:scale-95 transition-transform"
+            >
+              <Icon path={mdiDownload} size={0.6} />
+              {exporting ? '...' : (lang === 'th' ? 'Export PDF' : 'Export PDF')}
+            </button>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {[

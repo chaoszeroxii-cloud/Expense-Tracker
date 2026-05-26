@@ -1,9 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import axios from 'axios';
 import { Expense } from '../expenses/expense.entity';
 import { Allocation } from '../allocations/allocation.entity';
 import { User } from '../users/user.entity';
+
+export interface AiRecommendation {
+  type: 'warning' | 'tip' | 'good';
+  title: string;
+  body: string;
+}
 
 export interface CategoryBreakdown {
   categoryId: string;
@@ -274,6 +281,116 @@ export class AnalyticsService {
       walletId: efWallet?.id ?? null,
       walletName: efWallet?.name ?? null,
     }
+  }
+
+  // ─── 9. AI Recommendations ────────────────────────────────────────────────
+  async getRecommendations(userId: string): Promise<AiRecommendation[]> {
+    const now = new Date()
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const prevMonth = (() => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    })()
+
+    const [summary, prevSummary, categories, trend] = await Promise.all([
+      this.getPeriodSummary(userId, month),
+      this.getPeriodSummary(userId, prevMonth),
+      this.getCategoryBreakdown(userId, month, undefined, 'expense'),
+      this.getMonthlyTrend(userId),
+    ])
+
+    const topCats = categories.slice(0, 5).map(c =>
+      `${c.categoryIcon} ${c.categoryName}: ฿${c.total.toLocaleString()} (${c.percentage}%)`
+    ).join(', ')
+
+    const trendSummary = trend.slice(-3).map(t =>
+      `${t.label}: รายจ่าย ฿${t.expense.toLocaleString()} รายรับ ฿${t.income.toLocaleString()}`
+    ).join(' | ')
+
+    const expenseChange = prevSummary.totalExpense > 0
+      ? Math.round(((summary.totalExpense - prevSummary.totalExpense) / prevSummary.totalExpense) * 100)
+      : 0
+
+    const prompt = `คุณเป็นที่ปรึกษาการเงินส่วนตัว วิเคราะห์ข้อมูลนี้และให้คำแนะนำ 3 ข้อ
+
+ข้อมูลเดือนนี้:
+- รายจ่าย: ฿${summary.totalExpense.toLocaleString()} (${expenseChange > 0 ? '+' : ''}${expenseChange}% จากเดือนที่แล้ว)
+- รายรับ: ฿${summary.totalIncome.toLocaleString()}
+- คงเหลือสุทธิ: ฿${summary.net.toLocaleString()}
+- จำนวนรายการ: ${summary.transactionCount}
+- หมวดใช้จ่ายหลัก: ${topCats || 'ไม่มีข้อมูล'}
+- แนวโน้ม 3 เดือนล่าสุด: ${trendSummary || 'ไม่มีข้อมูล'}
+
+ตอบเป็น JSON เท่านั้น รูปแบบ:
+{"recommendations":[{"type":"warning|tip|good","title":"หัวข้อสั้น","body":"คำแนะนำ 1-2 ประโยค"}]}`
+
+    const apiKey = process.env.OPENROUTER_API_KEY
+    if (!apiKey) return this.fallbackRecommendations(summary, prevSummary, categories)
+
+    try {
+      const res = await axios.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        {
+          model: 'deepseek/deepseek-v4-flash',
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 800,
+          temperature: 0.5,
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://moneyflow.app',
+            'X-Title': 'MoneyFlow',
+          },
+          timeout: 20000,
+        },
+      )
+
+      const content: string = res.data.choices[0]?.message?.content ?? ''
+      const match = content.match(/\{[\s\S]*\}/)
+      if (!match) return this.fallbackRecommendations(summary, prevSummary, categories)
+      const parsed = JSON.parse(match[0])
+      return (parsed.recommendations ?? []).slice(0, 3) as AiRecommendation[]
+    } catch {
+      return this.fallbackRecommendations(summary, prevSummary, categories)
+    }
+  }
+
+  private fallbackRecommendations(
+    summary: PeriodSummary,
+    prevSummary: PeriodSummary,
+    categories: CategoryBreakdown[],
+  ): AiRecommendation[] {
+    const recs: AiRecommendation[] = []
+    const expChange = prevSummary.totalExpense > 0
+      ? Math.round(((summary.totalExpense - prevSummary.totalExpense) / prevSummary.totalExpense) * 100)
+      : 0
+
+    if (expChange > 20) {
+      recs.push({ type: 'warning', title: 'รายจ่ายเพิ่มสูง', body: `รายจ่ายเดือนนี้เพิ่มขึ้น ${expChange}% จากเดือนที่แล้ว ลองตรวจสอบหมวดที่ใช้จ่ายมากผิดปกติ` })
+    } else if (expChange < -10) {
+      recs.push({ type: 'good', title: 'ควบคุมค่าใช้จ่ายได้ดี', body: `รายจ่ายลดลง ${Math.abs(expChange)}% เทียบกับเดือนที่แล้ว ทำได้ดีมาก!` })
+    }
+
+    if (summary.totalIncome > 0) {
+      const savingsRate = Math.round(((summary.totalIncome - summary.totalExpense) / summary.totalIncome) * 100)
+      if (savingsRate < 10) {
+        recs.push({ type: 'warning', title: 'อัตราการออมต่ำ', body: `ออมได้เพียง ${savingsRate}% ของรายรับ ตั้งเป้าไว้ที่ 20% เพื่อความมั่นคงระยะยาว` })
+      } else if (savingsRate >= 20) {
+        recs.push({ type: 'good', title: 'ออมได้ดีเยี่ยม', body: `อัตราการออม ${savingsRate}% สูงกว่าเป้าหมาย 20% ลองพิจารณานำเงินส่วนเกินไปลงทุน` })
+      }
+    }
+
+    if (categories.length > 0 && categories[0].percentage >= 40) {
+      recs.push({ type: 'tip', title: `${categories[0].categoryIcon} กระจายการใช้จ่าย`, body: `"${categories[0].categoryName}" คิดเป็น ${categories[0].percentage}% ของรายจ่ายทั้งหมด ลองตั้งงบประมาณให้หมวดนี้` })
+    }
+
+    if (recs.length === 0) {
+      recs.push({ type: 'tip', title: 'บันทึกต่อเนื่อง', body: 'บันทึกรายรับ-รายจ่ายสม่ำเสมอเพื่อให้ระบบวิเคราะห์และแนะนำได้แม่นยำขึ้น' })
+    }
+
+    return recs.slice(0, 3)
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────

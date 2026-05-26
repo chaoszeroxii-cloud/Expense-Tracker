@@ -5,7 +5,7 @@ import type {
   Expense, Category, CreateExpensePayload, BalanceSummary,
   BudgetItem, Loan, LoanSummary, Investment, InvestmentTransaction,
   TaxDeduction, TaxCalculationResult, TaxDeductionType,
-  EmergencyFundSummary, AdminUser, AdminStats,
+  EmergencyFundSummary, AdminUser, AdminStats, AiRecommendation,
 } from '../types'
 
 const http = axios.create({
@@ -72,6 +72,9 @@ export const analyticsApi = {
 
   getEmergencyFund: (months = 6) =>
     http.get<EmergencyFundSummary>('/analytics/emergency-fund', { params: { months } }).then(r => r.data),
+
+  getRecommendations: () =>
+    http.get<AiRecommendation[]>('/analytics/recommendations').then(r => r.data),
 }
 
 // ── Expenses ─────────────────────────────────────────────────
@@ -185,8 +188,8 @@ export const investmentsApi = {
 
 // ── Tax ───────────────────────────────────────────────────────
 export const taxApi = {
-  getTypes: () =>
-    http.get<TaxDeductionType[]>('/tax/types').then(r => r.data),
+  getTypes: (lang = 'th') =>
+    http.get<TaxDeductionType[]>('/tax/types', { params: { lang } }).then(r => r.data),
 
   findByYear: (year: number) =>
     http.get<TaxDeduction[]>('/tax/deductions', { params: { year } }).then(r => r.data),
@@ -197,8 +200,8 @@ export const taxApi = {
   remove: (id: string) =>
     http.delete(`/tax/deductions/${id}`).then(r => r.data),
 
-  calculate: (income: number, year: number) =>
-    http.get<TaxCalculationResult>('/tax/calculate', { params: { income, year } }).then(r => r.data),
+  calculate: (income: number, year: number, lang = 'th') =>
+    http.get<TaxCalculationResult>('/tax/calculate', { params: { income, year, lang } }).then(r => r.data),
 }
 
 // ── Chat ─────────────────────────────────────────────────────

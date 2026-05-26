@@ -3,7 +3,7 @@ import { analyticsApi, expensesApi, categoriesApi, allocationsApi, budgetsApi, l
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
-  BudgetItem, LoanSummary, EmergencyFundSummary,
+  BudgetItem, LoanSummary, EmergencyFundSummary, AiRecommendation,
 } from '../types'
 
 // Current month helper — returns "YYYY-MM"
@@ -79,4 +79,8 @@ export function useLoanSummary() {
 
 export function useEmergencyFund(months = 6) {
   return useFetch<EmergencyFundSummary>(() => analyticsApi.getEmergencyFund(months), [months])
+}
+
+export function useRecommendations() {
+  return useFetch<AiRecommendation[]>(() => analyticsApi.getRecommendations())
 }

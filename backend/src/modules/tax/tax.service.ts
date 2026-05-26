@@ -17,25 +17,29 @@ const TAX_BRACKETS = [
 ]
 
 // Standard deduction limits for common types
-export const DEDUCTION_LIMITS: Record<string, { name: string; max: number; description: string }> = {
-  personal_allowance:   { name: 'ค่าลดหย่อนส่วนตัว', max: 60000, description: 'ลดหย่อนส่วนตัว 60,000 บาท' },
-  employment_income:    { name: 'ค่าใช้จ่ายเงินเดือน', max: 100000, description: '50% ของเงินได้ ไม่เกิน 100,000 บาท' },
-  spouse_allowance:     { name: 'ค่าลดหย่อนคู่สมรส', max: 60000, description: 'คู่สมรสไม่มีรายได้' },
-  child_allowance:      { name: 'ค่าลดหย่อนบุตร', max: 180000, description: 'บุตรคนละ 30,000 บาท สูงสุด 3 คน' },
-  parent_allowance:     { name: 'ค่าลดหย่อนบิดามารดา', max: 120000, description: 'บิดา/มารดาคนละ 30,000 บาท' },
-  life_insurance:       { name: 'ประกันชีวิต', max: 100000, description: 'เบี้ยประกันชีวิตทั่วไป' },
-  health_insurance:     { name: 'ประกันสุขภาพ', max: 25000, description: 'เบี้ยประกันสุขภาพตัวเอง' },
-  parent_health_ins:    { name: 'ประกันสุขภาพบิดามารดา', max: 15000, description: 'เบี้ยประกันสุขภาพบิดามารดา' },
-  ssf:                  { name: 'กองทุน SSF', max: 200000, description: 'ซื้อ SSF สูงสุด 30% ของเงินได้ ไม่เกิน 200,000 บาท' },
-  rmf:                  { name: 'กองทุน RMF', max: 500000, description: 'ซื้อ RMF สูงสุด 30% ของเงินได้' },
-  pvd:                  { name: 'กองทุนสำรองเลี้ยงชีพ', max: 500000, description: 'กองทุนสำรองเลี้ยงชีพ' },
-  gpf:                  { name: 'กองทุนบำเหน็จบำนาญ', max: 500000, description: 'กบข.' },
-  nsf:                  { name: 'กองทุนการออมแห่งชาติ', max: 13200, description: 'NSF' },
-  mortgage_interest:    { name: 'ดอกเบี้ยบ้าน', max: 100000, description: 'ดอกเบี้ยเงินกู้ซื้อบ้าน' },
-  donation_general:     { name: 'บริจาคทั่วไป', max: 0, description: 'บริจาคทั่วไป ลดหย่อนได้ 2 เท่า แต่ไม่เกิน 10% ของเงินได้หลังหักค่าใช้จ่าย' },
-  donation_education:   { name: 'บริจาคเพื่อการศึกษา', max: 0, description: 'บริจาคเพื่อการศึกษา ลดหย่อนได้ 2 เท่า' },
-  easy_e_receipt:       { name: 'Easy E-Receipt', max: 50000, description: 'ช้อปสินค้า Easy E-Receipt' },
-  social_security:      { name: 'ประกันสังคม', max: 9000, description: 'เงินสมทบประกันสังคม' },
+export const DEDUCTION_LIMITS: Record<string, {
+  name: string; name_en: string;
+  max: number;
+  description: string; description_en: string;
+}> = {
+  personal_allowance: { name: 'ค่าลดหย่อนส่วนตัว',         name_en: 'Personal Allowance',          max: 60000,  description: 'ลดหย่อนส่วนตัว 60,000 บาท',                                              description_en: 'Personal allowance ฿60,000' },
+  employment_income:  { name: 'ค่าใช้จ่ายเงินเดือน',        name_en: 'Employment Expense',          max: 100000, description: '50% ของเงินได้ ไม่เกิน 100,000 บาท',                                    description_en: '50% of income, capped at ฿100,000' },
+  spouse_allowance:   { name: 'ค่าลดหย่อนคู่สมรส',          name_en: 'Spouse Allowance',            max: 60000,  description: 'คู่สมรสไม่มีรายได้',                                                    description_en: 'Spouse with no income' },
+  child_allowance:    { name: 'ค่าลดหย่อนบุตร',             name_en: 'Child Allowance',             max: 180000, description: 'บุตรคนละ 30,000 บาท สูงสุด 3 คน',                                       description_en: '฿30,000 per child, up to 3 children' },
+  parent_allowance:   { name: 'ค่าลดหย่อนบิดามารดา',        name_en: 'Parent Allowance',            max: 120000, description: 'บิดา/มารดาคนละ 30,000 บาท',                                             description_en: '฿30,000 per parent' },
+  life_insurance:     { name: 'ประกันชีวิต',                 name_en: 'Life Insurance',              max: 100000, description: 'เบี้ยประกันชีวิตทั่วไป',                                                description_en: 'General life insurance premium' },
+  health_insurance:   { name: 'ประกันสุขภาพ',                name_en: 'Health Insurance',            max: 25000,  description: 'เบี้ยประกันสุขภาพตัวเอง',                                               description_en: 'Personal health insurance premium' },
+  parent_health_ins:  { name: 'ประกันสุขภาพบิดามารดา',       name_en: 'Parent Health Insurance',     max: 15000,  description: 'เบี้ยประกันสุขภาพบิดามารดา',                                            description_en: 'Parent health insurance premium' },
+  ssf:                { name: 'กองทุน SSF',                  name_en: 'SSF Fund',                    max: 200000, description: 'ซื้อ SSF สูงสุด 30% ของเงินได้ ไม่เกิน 200,000 บาท',                    description_en: 'Buy SSF up to 30% of income, max ฿200,000' },
+  rmf:                { name: 'กองทุน RMF',                  name_en: 'RMF Fund',                    max: 500000, description: 'ซื้อ RMF สูงสุด 30% ของเงินได้',                                        description_en: 'Buy RMF up to 30% of income' },
+  pvd:                { name: 'กองทุนสำรองเลี้ยงชีพ',        name_en: 'Provident Fund (PVD)',        max: 500000, description: 'กองทุนสำรองเลี้ยงชีพ',                                                  description_en: 'Provident fund contribution' },
+  gpf:                { name: 'กองทุนบำเหน็จบำนาญ',          name_en: 'Government Pension Fund',     max: 500000, description: 'กบข.',                                                                   description_en: 'GPF contribution' },
+  nsf:                { name: 'กองทุนการออมแห่งชาติ',        name_en: 'National Savings Fund',       max: 13200,  description: 'NSF',                                                                    description_en: 'NSF contribution' },
+  mortgage_interest:  { name: 'ดอกเบี้ยบ้าน',               name_en: 'Mortgage Interest',           max: 100000, description: 'ดอกเบี้ยเงินกู้ซื้อบ้าน',                                               description_en: 'Home loan interest' },
+  donation_general:   { name: 'บริจาคทั่วไป',               name_en: 'General Donation',            max: 0,      description: 'บริจาคทั่วไป ลดหย่อนได้ 2 เท่า แต่ไม่เกิน 10% ของเงินได้หลังหักค่าใช้จ่าย', description_en: 'General donation, 2x deduction, max 10% of net income' },
+  donation_education: { name: 'บริจาคเพื่อการศึกษา',        name_en: 'Education Donation',          max: 0,      description: 'บริจาคเพื่อการศึกษา ลดหย่อนได้ 2 เท่า',                                  description_en: 'Education donation, 2x deduction' },
+  easy_e_receipt:     { name: 'Easy E-Receipt',              name_en: 'Easy E-Receipt',              max: 50000,  description: 'ช้อปสินค้า Easy E-Receipt',                                              description_en: 'Easy E-Receipt shopping' },
+  social_security:    { name: 'ประกันสังคม',                 name_en: 'Social Security',             max: 9000,   description: 'เงินสมทบประกันสังคม',                                                   description_en: 'Social security contribution' },
 }
 
 @Injectable()
@@ -66,11 +70,17 @@ export class TaxService {
     await this.repo.remove(item)
   }
 
-  getDeductionTypes() {
-    return Object.entries(DEDUCTION_LIMITS).map(([type, info]) => ({ type, ...info }))
+  getDeductionTypes(lang = 'th') {
+    return Object.entries(DEDUCTION_LIMITS).map(([type, info]) => ({
+      type,
+      name: lang === 'en' ? info.name_en : info.name,
+      name_en: info.name_en,
+      max: info.max,
+      description: lang === 'en' ? info.description_en : info.description,
+    }))
   }
 
-  async calculate(userId: string, annualIncome: number, taxYear: number) {
+  async calculate(userId: string, annualIncome: number, taxYear: number, lang = 'th') {
     const deductions = await this.findByYear(userId, taxYear)
     const totalDeductions = deductions.reduce((s, d) => {
       const limit = DEDUCTION_LIMITS[d.type]?.max
@@ -82,7 +92,7 @@ export class TaxService {
     const netIncome = Math.max(0, annualIncome - employmentDeduction - totalDeductions)
     const tax = this.calculateTax(netIncome)
 
-    const optimizations = this.suggestOptimizations(deductions, annualIncome, tax)
+    const optimizations = this.suggestOptimizations(deductions, annualIncome, tax, lang)
 
     return {
       annualIncome,
@@ -106,7 +116,7 @@ export class TaxService {
     return Math.round(tax * 100) / 100
   }
 
-  private suggestOptimizations(deductions: TaxDeduction[], income: number, currentTax: number) {
+  private suggestOptimizations(deductions: TaxDeduction[], income: number, currentTax: number, lang = 'th') {
     const suggestions: any[] = []
     const usedTypes = new Set(deductions.map((d) => d.type))
 
@@ -119,10 +129,10 @@ export class TaxService {
         if (taxSaving > 0) {
           suggestions.push({
             type,
-            name: info.name,
+            name: lang === 'en' ? info.name_en : info.name,
             maxAmount: info.max,
             estimatedTaxSaving: Math.round(taxSaving),
-            description: info.description,
+            description: lang === 'en' ? info.description_en : info.description,
           })
         }
       }

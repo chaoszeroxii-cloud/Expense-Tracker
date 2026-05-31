@@ -40,8 +40,8 @@ export class AuthController {
   // POST /api/auth/onboarding  (protected)
   @Post('onboarding')
   @HttpCode(HttpStatus.OK)
-  completeOnboarding(@CurrentUser() user: User, @Body() body: { wallets: string[] }) {
-    return this.service.completeOnboarding(user.id, body.wallets ?? [])
+  completeOnboarding(@CurrentUser() user: User, @Body() body: { wallets: string[]; lang?: 'th' | 'en' }) {
+    return this.service.completeOnboarding(user.id, body.wallets ?? [], body.lang ?? 'th')
   }
 
   // GET /api/auth/onboarding/wallets  (public reference)

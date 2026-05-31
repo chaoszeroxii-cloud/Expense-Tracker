@@ -1,16 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { adminApi } from '../../api'
-import type { AdminUser, AdminStats } from '../../types'
+import type { AdminUser, AdminStats, AiUsageStats } from '../../types'
 import Icon from '@mdi/react'
-import { mdiArrowLeft, mdiTrashCanOutline, mdiShieldAccountOutline, mdiAccountOutline, mdiChevronDown, mdiChevronUp, mdiMagnify } from '@mdi/js'
+import { mdiArrowLeft, mdiTrashCanOutline, mdiShieldAccountOutline, mdiAccountOutline, mdiChevronDown, mdiChevronUp, mdiMagnify, mdiRobotOutline } from '@mdi/js'
 
 function fmt(n: number) { return n.toLocaleString('th-TH') }
+function fmtThb(n: number) { return n === 0 ? '฿0.00' : n < 0.01 ? '<฿0.01' : `฿${n.toFixed(2)}` }
+function fmtTokens(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n) }
 
 export default function AdminDashboard() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [aiUsage, setAiUsage] = useState<AiUsageStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -18,9 +21,10 @@ export default function AdminDashboard() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, u] = await Promise.all([adminApi.getStats(), adminApi.getUsers()])
+    const [s, u, ai] = await Promise.all([adminApi.getStats(), adminApi.getUsers(), adminApi.getAiUsage()])
     setStats(s)
     setUsers(u)
+    setAiUsage(ai)
     setLoading(false)
   }, [])
 
@@ -73,6 +77,37 @@ export default function AdminDashboard() {
           ))}
         </div>
       )}
+
+      {/* AI Usage */}
+      <div className="bg-card rounded-2xl border border-[var(--border)] p-4 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Icon path={mdiRobotOutline} size={0.85} className="text-brand-600" />
+          <h2 className="font-bold text-base-theme text-sm">AI Usage</h2>
+          <span className="ml-auto text-xs text-muted-theme">
+            รวม {fmtThb(aiUsage?.totalCostThb ?? 0)}
+          </span>
+        </div>
+        {loading ? (
+          <div className="h-12 bg-[var(--input)] rounded-xl animate-pulse" />
+        ) : !aiUsage || aiUsage.users.length === 0 ? (
+          <p className="text-xs text-muted-theme text-center py-3">ยังไม่มีการใช้งาน AI</p>
+        ) : (
+          <div className="space-y-2">
+            {aiUsage.users.map(u => (
+              <div key={u.userId} className="flex items-center gap-3 py-2 border-t border-[var(--border)] first:border-0 first:pt-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-base-theme truncate">{u.name}</p>
+                  <p className="text-[10px] text-muted-theme truncate">{u.email}</p>
+                </div>
+                <div className="text-right shrink-0 space-y-0.5">
+                  <p className="text-xs font-bold text-brand-600">{fmtThb(u.totalCostThb)}</p>
+                  <p className="text-[10px] text-muted-theme">{fmtTokens(u.totalTokens)} tokens · {u.callCount} ครั้ง</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Search */}
       <div className="relative mb-4">

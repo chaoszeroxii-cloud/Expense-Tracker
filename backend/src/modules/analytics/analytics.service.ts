@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import axios from 'axios';
 import { Expense } from '../expenses/expense.entity';
+import { AllocationMovement } from '../allocations/allocation-movement.entity';
 import { Allocation } from '../allocations/allocation.entity';
 import { User } from '../users/user.entity';
 
@@ -56,6 +57,8 @@ export class AnalyticsService {
   constructor(
     @InjectRepository(Expense)
     private readonly repo: Repository<Expense>,
+    @InjectRepository(AllocationMovement)
+    private readonly movementRepo: Repository<AllocationMovement>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -195,28 +198,44 @@ export class AnalyticsService {
 
   // ─── 6. Allocation monthly summary (per wallet) ───────────────────────────
   async getAllocationSummary(userId: string) {
-    // Total spent per allocation this month via its linked categories
     const now = new Date()
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
-    const rows = await this.repo
-      .createQueryBuilder('e')
-      .select([
-        'e.allocation_id AS "allocationId"',
-        'SUM(CASE WHEN e.type = \'expense\' THEN e.amount ELSE 0 END) AS "spentThisMonth"',
-        'SUM(CASE WHEN e.type = \'income\'  THEN e.amount ELSE 0 END) AS "receivedThisMonth"',
-      ])
-      .where('e.user_id = :userId', { userId })
-      .andWhere('e.allocation_id IS NOT NULL')
-      .andWhere("TO_CHAR(e.occurred_at, 'YYYY-MM') = :month", { month })
-      .groupBy('e.allocation_id')
-      .getRawMany()
+    const [txRows, movRows] = await Promise.all([
+      // Spending from linked categories
+      this.repo
+        .createQueryBuilder('e')
+        .select([
+          'e.allocation_id AS "allocationId"',
+          'SUM(CASE WHEN e.type = \'expense\' THEN e.amount ELSE 0 END) AS "spentThisMonth"',
+        ])
+        .where('e.user_id = :userId', { userId })
+        .andWhere('e.allocation_id IS NOT NULL')
+        .andWhere("TO_CHAR(e.occurred_at, 'YYYY-MM') = :month", { month })
+        .groupBy('e.allocation_id')
+        .getRawMany(),
+      // Manual inflows: fund from unallocated + transfers in
+      this.movementRepo
+        .createQueryBuilder('m')
+        .select(['m.allocation_id AS "allocationId"', 'SUM(m.amount) AS "fundedThisMonth"'])
+        .where('m.user_id = :userId', { userId })
+        .andWhere('m.type IN (:...types)', { types: ['fund', 'transfer_in'] })
+        .andWhere("TO_CHAR(m.created_at, 'YYYY-MM') = :month", { month })
+        .groupBy('m.allocation_id')
+        .getRawMany(),
+    ])
 
-    return rows.map(r => ({
-      allocationId:      r.allocationId,
-      spentThisMonth:    parseFloat(r.spentThisMonth)    || 0,
-      receivedThisMonth: parseFloat(r.receivedThisMonth) || 0,
-    }))
+    const allIds = [...new Set([...txRows.map(r => r.allocationId), ...movRows.map(r => r.allocationId)])]
+
+    return allIds.map(allocationId => {
+      const tx  = txRows.find(r => r.allocationId === allocationId)
+      const mov = movRows.find(r => r.allocationId === allocationId)
+      return {
+        allocationId,
+        spentThisMonth:  parseFloat(tx?.spentThisMonth)   || 0,
+        fundedThisMonth: parseFloat(mov?.fundedThisMonth) || 0,
+      }
+    })
   }
 
   // ─── 7. Global balance summary ─────────────────────────────────────────────

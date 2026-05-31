@@ -187,8 +187,8 @@ export default function AddExpense() {
                         ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20 shadow-sm'
                         : 'border-transparent',
                     )}>
-                    <div className="w-8 h-8 flex items-center justify-center">
-                      <IconDisplay icon={cat.icon} size="lg" />
+                    <div className="w-8 h-8 flex items-center justify-center rounded-xl">
+                      <IconDisplay icon={cat.icon} color={cat.color} size="lg" />
                     </div>
                     <span className="text-[10px] font-semibold text-muted-theme leading-tight text-center px-1 truncate w-full">
                       {cat.name}

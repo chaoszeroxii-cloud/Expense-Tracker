@@ -225,7 +225,7 @@ export default function Loans() {
 
       {/* Add Modal */}
       {showAdd && (
-        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-black/40">
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base-theme">{form.direction === 'lent' ? t('record_lend_modal') : t('record_borrow_modal')}</h2>
@@ -288,7 +288,7 @@ export default function Loans() {
 
       {/* Payment Modal */}
       {showPayment && (
-        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-black/40">
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base-theme">{t('record_payment_modal')}</h2>

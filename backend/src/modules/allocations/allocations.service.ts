@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, In, DataSource, EntityManager } from 'typeorm'
 import { Allocation } from './allocation.entity'
+import { AllocationMovement } from './allocation-movement.entity'
 import { Category } from '../categories/category.entity'
 import { User } from '../users/user.entity'
 import { CreateAllocationDto, UpdateAllocationDto } from './allocation.dto'
@@ -11,6 +12,9 @@ export class AllocationsService {
   constructor(
     @InjectRepository(Allocation)
     private readonly repo: Repository<Allocation>,
+
+    @InjectRepository(AllocationMovement)
+    private readonly movementRepo: Repository<AllocationMovement>,
 
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
@@ -92,6 +96,7 @@ export class AllocationsService {
 
     // Credit the wallet — no totalBalance change needed
     await this.credit(allocationId, userId, amount)
+    await this.movementRepo.save(this.movementRepo.create({ userId, allocationId, amount, type: 'fund' }))
 
     const newUnallocated = unallocated - amount
     return { unallocatedBalance: newUnallocated }
@@ -114,6 +119,10 @@ export class AllocationsService {
       .execute()
 
     await this.credit(targetId, userId, amount)
+    await this.movementRepo.save([
+      this.movementRepo.create({ userId, allocationId: sourceId, amount, type: 'transfer_out' }),
+      this.movementRepo.create({ userId, allocationId: targetId, amount, type: 'transfer_in' }),
+    ])
   }
 
   // ── Return wallet funds to unallocated pool ───────────────────
@@ -130,6 +139,7 @@ export class AllocationsService {
       .set({ balance: () => `balance - ${amount}` })
       .where('id = :id AND user_id = :userId', { id: allocationId, userId })
       .execute()
+    await this.movementRepo.save(this.movementRepo.create({ userId, allocationId, amount, type: 'unallocate' }))
   }
 
   // ── Balance mutations (called from ExpensesService) ───────────

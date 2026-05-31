@@ -49,8 +49,8 @@ export const authApi = {
   getOnboardingWallets: () =>
     http.get('/auth/onboarding/wallets').then(r => r.data),
 
-  completeOnboarding: (wallets: string[]) =>
-    http.post('/auth/onboarding', { wallets }).then(r => r.data),
+  completeOnboarding: (wallets: string[], lang: 'th' | 'en' = 'th') =>
+    http.post('/auth/onboarding', { wallets, lang }).then(r => r.data),
 }
 
 // ── Analytics ────────────────────────────────────────────────
@@ -256,4 +256,7 @@ export const adminApi = {
 
   deleteUser: (id: string) =>
     http.delete(`/admin/users/${id}`).then(r => r.data),
+
+  getAiUsage: () =>
+    http.get('/admin/ai-usage').then(r => r.data),
 }

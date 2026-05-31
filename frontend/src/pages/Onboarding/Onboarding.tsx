@@ -2,20 +2,22 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authApi } from '../../api'
 import { useAuthStore } from '../../store/auth.store'
+import { useI18n } from '../../store/i18n.store'
 
 const WALLETS = [
-  { key: 'emergency',  name: 'เงินสำรองฉุกเฉิน', icon: '🏦', color: '#f59e0b', pct: 10, desc: 'เก็บไว้ 3–6 เดือน' },
-  { key: 'fixed',      name: 'ค่าใช้จ่ายคงที่',   icon: '🏠', color: '#3b82f6', pct: 30, desc: 'ค่าเช่า, ค่าน้ำไฟ' },
-  { key: 'daily',      name: 'ค่าใช้จ่ายประจำวัน', icon: '🍚', color: '#10b981', pct: 20, desc: 'อาหาร, เดินทาง' },
-  { key: 'savings',    name: 'เป้าหมายการออม',     icon: '🎯', color: '#6366f1', pct: 10, desc: 'ซื้อของ, ท่องเที่ยว' },
-  { key: 'investment', name: 'การลงทุน',           icon: '📈', color: '#06b6d4', pct: 15, desc: 'หุ้น, กองทุน' },
-  { key: 'personal',   name: 'ส่วนตัว/บันเทิง',   icon: '🎉', color: '#ec4899', pct: 10, desc: 'fun money' },
-  { key: 'health',     name: 'สุขภาพ/ประกัน',     icon: '🏥', color: '#ef4444', pct: 5,  desc: 'ค่าหมอ, เบี้ยประกัน' },
+  { key: 'emergency',  name: 'เงินสำรองฉุกเฉิน', nameEn: 'Emergency Fund',     icon: '🏦', color: '#f59e0b', pct: 10, desc: 'เก็บไว้ 3–6 เดือน',   descEn: 'Save 3–6 months' },
+  { key: 'fixed',      name: 'ค่าใช้จ่ายคงที่',   nameEn: 'Fixed Expenses',     icon: '🏠', color: '#3b82f6', pct: 30, desc: 'ค่าเช่า, ค่าน้ำไฟ', descEn: 'Rent, utilities' },
+  { key: 'daily',      name: 'ค่าใช้จ่ายประจำวัน', nameEn: 'Daily Expenses',    icon: '🍚', color: '#10b981', pct: 20, desc: 'อาหาร, เดินทาง',   descEn: 'Food, transport' },
+  { key: 'savings',    name: 'เป้าหมายการออม',     nameEn: 'Savings Goal',      icon: '🎯', color: '#6366f1', pct: 10, desc: 'ซื้อของ, ท่องเที่ยว', descEn: 'Shopping, travel' },
+  { key: 'investment', name: 'การลงทุน',           nameEn: 'Investment',         icon: '📈', color: '#06b6d4', pct: 15, desc: 'หุ้น, กองทุน',    descEn: 'Stocks, funds' },
+  { key: 'personal',   name: 'ส่วนตัว/บันเทิง',   nameEn: 'Personal / Fun',    icon: '🎉', color: '#ec4899', pct: 10, desc: 'fun money',        descEn: 'Fun money' },
+  { key: 'health',     name: 'สุขภาพ/ประกัน',     nameEn: 'Health / Insurance', icon: '🏥', color: '#ef4444', pct: 5,  desc: 'ค่าหมอ, เบี้ยประกัน', descEn: 'Doctor, insurance' },
 ]
 
 export default function Onboarding() {
   const navigate = useNavigate()
   const { user, setAuth, token } = useAuthStore()
+  const { lang } = useI18n()
   const [selected, setSelected] = useState<Set<string>>(new Set(WALLETS.map(w => w.key)))
   const [loading, setLoading] = useState(false)
 
@@ -31,7 +33,7 @@ export default function Onboarding() {
   const handleDone = async () => {
     setLoading(true)
     try {
-      await authApi.completeOnboarding(Array.from(selected))
+      await authApi.completeOnboarding(Array.from(selected), lang)
       if (user && token) {
         setAuth(token, { ...user, onboardingCompleted: true })
       }
@@ -62,8 +64,8 @@ export default function Onboarding() {
               >
                 <span className="text-2xl">{w.icon}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-base-theme text-sm">{w.name}</div>
-                  <div className="text-xs text-muted-theme">{w.desc} · แนะนำ {w.pct}%</div>
+                  <div className="font-semibold text-base-theme text-sm">{lang === 'en' ? w.nameEn : w.name}</div>
+                  <div className="text-xs text-muted-theme">{lang === 'en' ? w.descEn : w.desc} · {lang === 'en' ? 'Recommended' : 'แนะนำ'} {w.pct}%</div>
                 </div>
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
                   ${on ? 'border-brand-500 bg-brand-500' : 'border-[var(--border)]'}`}>

@@ -4,6 +4,7 @@ import type { BudgetItem, Category } from '../../types'
 import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
+import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
 
 function currentMonth() {
@@ -144,7 +145,10 @@ export default function Budget() {
               <div key={b.id} className="bg-card rounded-2xl border border-[var(--border)] p-4">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xl">{b.categoryIcon}</span>
+                    <span className="w-8 h-8 flex items-center justify-center rounded-xl shrink-0"
+                      style={{ backgroundColor: (b.categoryColor ?? '#94a3b8') + '22' }}>
+                      <IconDisplay icon={b.categoryIcon} color={b.categoryColor} size="md" />
+                    </span>
                     <span className="font-semibold text-base-theme text-sm">{b.categoryName}</span>
                   </div>
                   <button onClick={() => handleDelete(b.id)} className="p-1 text-muted-theme hover:text-red-500 transition-colors">
@@ -172,7 +176,7 @@ export default function Budget() {
 
       {/* Add form modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center p-4 bg-black/40">
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40">
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base-theme">{t('set_budget')}</h2>
@@ -184,7 +188,7 @@ export default function Budget() {
               value={form.categoryId}
               onChange={v => setForm(f => ({ ...f, categoryId: v }))}
               placeholder={t('select_category')}
-              options={availableCategories.map(c => ({ value: c.id, label: `${c.icon} ${c.name}` }))}
+              options={availableCategories.map(c => ({ value: c.id, label: c.name, icon: c.icon, color: c.color }))}
             />
             <input
               type="number"

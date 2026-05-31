@@ -1,13 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, Not } from 'typeorm'
+import { Repository } from 'typeorm'
 import { User } from '../users/user.entity'
+import { AiUsageLog } from '../chat/ai-usage-log.entity'
 
 @Injectable()
 export class AdminService {
   constructor(
     @InjectRepository(User)
     private readonly users: Repository<User>,
+    @InjectRepository(AiUsageLog)
+    private readonly usageLogs: Repository<AiUsageLog>,
   ) {}
 
   async getStats() {
@@ -75,5 +78,34 @@ export class AdminService {
     const user = await this.users.findOne({ where: { id } })
     if (!user) throw new NotFoundException('User not found')
     await this.users.remove(user)
+  }
+
+  async getAiUsage() {
+    const rows = await this.usageLogs.manager.query(`
+      SELECT
+        u.id            AS "userId",
+        u.email,
+        u.name,
+        COUNT(l.id)::int                          AS "callCount",
+        COALESCE(SUM(l.total_tokens), 0)::int     AS "totalTokens",
+        COALESCE(SUM(l.prompt_tokens), 0)::int    AS "totalPromptTokens",
+        COALESCE(SUM(l.completion_tokens), 0)::int AS "totalCompletionTokens",
+        COALESCE(SUM(l.cost_usd), 0)::float       AS "totalCostUsd",
+        COALESCE(SUM(l.cost_thb), 0)::float       AS "totalCostThb"
+      FROM users u
+      LEFT JOIN ai_usage_logs l ON l.user_id = u.id
+      GROUP BY u.id, u.email, u.name
+      HAVING COUNT(l.id) > 0
+      ORDER BY "totalCostThb" DESC
+    `)
+
+    const grandTotalUsd = rows.reduce((s: number, r: any) => s + (r.totalCostUsd ?? 0), 0)
+    const grandTotalThb = rows.reduce((s: number, r: any) => s + (r.totalCostThb ?? 0), 0)
+
+    return {
+      users: rows,
+      totalCostUsd: grandTotalUsd,
+      totalCostThb: grandTotalThb,
+    }
   }
 }

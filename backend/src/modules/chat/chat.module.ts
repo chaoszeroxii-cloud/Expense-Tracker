@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { MulterModule } from '@nestjs/platform-express'
 import { memoryStorage } from 'multer'
 import { ChatMessage } from './chat-message.entity'
+import { AiUsageLog } from './ai-usage-log.entity'
 import { ChatService } from './chat.service'
 import { ChatController } from './chat.controller'
 import { TavilyService } from './tavily.service'
@@ -15,7 +16,7 @@ import { TaxModule } from '../tax/tax.module'
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ChatMessage]),
+    TypeOrmModule.forFeature([ChatMessage, AiUsageLog]),
     MulterModule.register({ storage: memoryStorage() }),
     CategoriesModule,
     LoansModule,

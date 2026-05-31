@@ -41,8 +41,12 @@ export default function WorkTimeCalculator({ onClose }: Props) {
   const priceNum = parseFloat(price) || 0
   const totalHours = hourlyRate > 0 && priceNum > 0 ? priceNum / hourlyRate : 0
   const totalSec = Math.floor(totalHours * 3600)
-  const secPerDay = settings.hoursPerDay * 3600
-  const dDays    = Math.floor(totalSec / secPerDay)
+  const secPerDay   = settings.hoursPerDay * 3600
+  const secPerMonth = workDays * settings.hoursPerDay * 3600
+  const secPerYear  = 12 * secPerMonth
+  const dYears   = Math.floor(totalSec / secPerYear)
+  const dMonths  = Math.floor((totalSec % secPerYear) / secPerMonth)
+  const dDays    = Math.floor((totalSec % secPerMonth) / secPerDay)
   const dHours   = Math.floor((totalSec % secPerDay) / 3600)
   const dMinutes = Math.floor((totalSec % 3600) / 60)
   const dSeconds = totalSec % 60
@@ -147,6 +151,19 @@ export default function WorkTimeCalculator({ onClose }: Props) {
                 <p className="text-xs text-muted-theme mb-3 text-center font-medium">
                   ฿{priceNum.toLocaleString()} ต้องทำงาน...
                 </p>
+                {(dYears > 0 || dMonths > 0) && (
+                  <div className="grid grid-cols-2 gap-2 text-center mb-2">
+                    {[
+                      { value: dYears,  label: 'ปี' },
+                      { value: dMonths, label: 'เดือน' },
+                    ].map(({ value, label }) => (
+                      <div key={label} className="bg-white/70 dark:bg-white/10 rounded-xl py-2.5">
+                        <p className="text-xl font-extrabold text-brand-600 leading-none tabular-nums">{value.toLocaleString()}</p>
+                        <p className="text-[10px] text-muted-theme mt-0.5">{label}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="grid grid-cols-4 gap-2 text-center mb-3">
                   {[
                     { value: dDays,    label: 'วัน' },
@@ -156,7 +173,7 @@ export default function WorkTimeCalculator({ onClose }: Props) {
                   ].map(({ value, label }) => (
                     <div key={label}
                       className="bg-white/70 dark:bg-white/10 rounded-xl py-2.5">
-                      <p className="text-2xl font-extrabold text-brand-600 leading-none">{value}</p>
+                      <p className="text-xl font-extrabold text-brand-600 leading-none tabular-nums">{value.toLocaleString()}</p>
                       <p className="text-[10px] text-muted-theme mt-0.5">{label}</p>
                     </div>
                   ))}

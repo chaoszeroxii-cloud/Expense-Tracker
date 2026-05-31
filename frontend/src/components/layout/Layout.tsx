@@ -3,12 +3,13 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
   mdiViewDashboard, mdiHistory, mdiWallet,
-  mdiCog, mdiPlus, mdiFinance, mdiRobot,
+  mdiCog, mdiPlus, mdiFinance, mdiRobot, mdiClockMinusOutline,
 } from '@mdi/js'
 import clsx from 'clsx'
 import { useT } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
 import ChatPanel from '../chat/ChatPanel'
+import WorkTimeCalculator from '../calculator/WorkTimeCalculator'
 
 const NAV = [
   { to: '/',         icon: mdiViewDashboard, labelKey: 'nav_dashboard' },
@@ -22,6 +23,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const t = useT()
   const [chatOpen, setChatOpen] = useState(false)
+  const [calcOpen, setCalcOpen] = useState(false)
 
   return (
     <div className="flex h-dvh bg-app">
@@ -85,6 +87,18 @@ export default function Layout() {
           </div>
         </nav>
 
+        {/* ── Floating work-time calculator button ── */}
+        <button
+          onClick={() => setCalcOpen(true)}
+          className="fixed bottom-40 right-4 lg:bottom-24 lg:right-6 z-40
+                     w-[52px] h-[52px] rounded-full bg-violet-500 text-white
+                     shadow-lg shadow-violet-500/40 flex items-center justify-center
+                     active:scale-95 transition-transform duration-150"
+          aria-label="Work Time Calculator"
+        >
+          <Icon path={mdiClockMinusOutline} size={1} color="white" />
+        </button>
+
         {/* ── Floating chat button ── */}
         <button
           onClick={() => setChatOpen(true)}
@@ -98,9 +112,10 @@ export default function Layout() {
         </button>
 
         {/* ── Chat panel ── */}
-        {chatOpen && (
-          <ChatPanel onClose={() => setChatOpen(false)} />
-        )}
+        {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+
+        {/* ── Work time calculator panel ── */}
+        {calcOpen && <WorkTimeCalculator onClose={() => setCalcOpen(false)} />}
       </div>
     </div>
   )

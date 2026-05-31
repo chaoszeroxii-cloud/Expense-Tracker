@@ -30,7 +30,10 @@ export default function Layout() {
       {/* ── Sidebar — desktop only ── */}
       <aside className="hidden lg:flex flex-col w-60 shrink-0 border-r border-[var(--border)] bg-card">
         <div className="px-6 py-5 border-b border-[var(--border)]">
-          <span className="text-xl font-extrabold text-brand-600">MoneyFlow</span>
+          <div className="flex items-center gap-2.5">
+            <img src="/icon.svg" alt="" className="w-7 h-auto" />
+            <span className="text-xl font-extrabold text-brand-600">MoneyFlow</span>
+          </div>
         </div>
         <div className="px-3 pt-4 pb-2">
           <button

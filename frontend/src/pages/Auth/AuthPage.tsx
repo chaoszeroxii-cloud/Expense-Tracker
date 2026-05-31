@@ -57,7 +57,7 @@ export default function AuthPage() {
       {/* Brand */}
       <div className="flex flex-col items-center gap-3 mb-10 animate-fade-up">
         <div className="w-16 h-16 rounded-3xl bg-white/15 backdrop-blur-sm flex items-center justify-center shadow-xl">
-          <Icon path={mdiWallet} size={1.4} color="white" />
+          <img src="/icon.svg" alt="" className="w-10 h-auto" style={{ filter: 'brightness(0) invert(1)' }} />
         </div>
         <h1 className="text-3xl font-extrabold text-white tracking-tight">MoneyFlow</h1>
         <p className="text-brand-200 text-sm font-medium">{t('tagline')}</p>

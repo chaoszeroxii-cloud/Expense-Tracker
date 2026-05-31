@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
-  mdiTrendingDown, mdiTrendingUp, mdiWallet,
+  mdiTrendingDown, mdiTrendingUp,
   mdiSwapVertical, mdiChevronLeft, mdiChevronRight,
   mdiEmoticonHappy, mdiEmoticonSad,
   mdiChartBar, mdiCashMultiple, mdiShield, mdiChevronRight as mdiChevronRightIcon,
@@ -71,12 +71,12 @@ export default function Dashboard() {
     <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">
       {/* ── Header ── */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-base-theme tracking-tight">MoneyFlow</h1>
-          <p className="text-xs text-muted-theme font-medium mt-0.5">Expense Tracker</p>
-        </div>
-        <div className="w-10 h-10 rounded-full bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center">
-          <Icon path={mdiWallet} size={0.8} color="#4f46e5" />
+        <div className="flex items-center gap-2.5">
+          <img src="/icon.svg" alt="" className="w-16 h-auto" />
+          <div>
+            <h1 className="text-2xl font-extrabold text-base-theme tracking-tight">MoneyFlow</h1>
+            <p className="text-xs text-muted-theme font-medium mt-0.5">Expense Tracker</p>
+          </div>
         </div>
       </div>
 

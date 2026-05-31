@@ -8,6 +8,7 @@ import {
   mdiChartBar, mdiCashMultiple, mdiShield, mdiChevronRight as mdiChevronRightIcon,
 } from '@mdi/js'
 import { Card, Skeleton, Amount } from '../../components/ui'
+import IconDisplay from '../../components/ui/IconDisplay'
 import SpendingPieChart from '../../components/charts/SpendingPieChart'
 import AllocationWallets from '../../components/allocations/AllocationWallets'
 import {
@@ -223,7 +224,13 @@ export default function Dashboard() {
               return (
                 <div key={b.id}>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-base-theme font-medium">{b.categoryIcon} {b.categoryName}</span>
+                    <span className="flex items-center gap-1.5 text-base-theme font-medium">
+                      <span className="w-5 h-5 flex items-center justify-center rounded-md shrink-0"
+                        style={{ backgroundColor: (b.categoryColor ?? '#94a3b8') + '22' }}>
+                        <IconDisplay icon={b.categoryIcon} color={b.categoryColor} size={0.55} />
+                      </span>
+                      {b.categoryName}
+                    </span>
                     <span className={over ? 'text-red-500 font-semibold' : 'text-muted-theme'}>
                       {over ? `เกิน ฿${fmt(b.actual - b.budgeted)}` : `฿${fmt(b.actual)} / ฿${fmt(b.budgeted)}`}
                     </span>

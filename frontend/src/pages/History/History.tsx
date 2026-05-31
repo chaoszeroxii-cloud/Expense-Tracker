@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Icon from '@mdi/react'
-import { mdiTrashCan, mdiTune, mdiCash, mdiWallet } from '@mdi/js'
+import { mdiTrashCan, mdiChevronLeft, mdiChevronRight, mdiCalendarMonth, mdiCash, mdiWallet, mdiClose } from '@mdi/js'
 import clsx from 'clsx'
 import { useExpenses, currentMonth } from '../../hooks'
 import { expensesApi } from '../../api'
@@ -14,13 +14,19 @@ function monthOffset(base: string, offset: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+function parseMonth(m: string) {
+  const [y, mo] = m.split('-').map(Number)
+  return { year: y, month: mo }
+}
+
 export default function History() {
   const t          = useT()
   const { lang }   = useI18n()
   const [month, setMonth]   = useState(currentMonth())
   const [filter, setFilter] = useState<'all' | 'expense' | 'income'>('all')
+  const [showPicker, setShowPicker] = useState(false)
+  const [pickerYear, setPickerYear] = useState(() => parseMonth(currentMonth()).year)
   const { data, loading, refetch } = useExpenses(month)
-  const monthRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({})
   const [confirmState, setConfirmState] = useState<{
     open: boolean; message: string; onConfirm: () => void
   }>({ open: false, message: '', onConfirm: () => {} })
@@ -38,14 +44,6 @@ export default function History() {
     return () => window.removeEventListener('moneyflow:refresh', handler)
   }, [refetch])
 
-  // Scroll to current month on mount
-  useEffect(() => {
-    const button = monthRefs.current[month]
-    if (button) {
-      button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-    }
-  }, [month])
-
   const filtered = data?.filter(e => filter === 'all' || e.type === filter) ?? []
 
   const grouped = filtered.reduce<Record<string, typeof filtered>>((acc, e) => {
@@ -62,34 +60,61 @@ export default function History() {
     })
   }
 
+  const handlePickerSelect = (year: number, mo: number) => {
+    const m = `${year}-${String(mo).padStart(2, '0')}`
+    setMonth(m)
+    setShowPicker(false)
+  }
+
+  const { year: curYear, month: curMo } = parseMonth(month)
+  const { year: nowYear, month: nowMo } = parseMonth(currentMonth())
+
+  const MONTH_NAMES_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+  const MONTH_NAMES_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const monthNames = lang === 'th' ? MONTH_NAMES_TH : MONTH_NAMES_EN
+
+  const displayLabel = new Date(month + '-01').toLocaleDateString(
+    lang === 'th' ? 'th-TH' : 'en-US',
+    { month: 'long', year: 'numeric' },
+  )
+
+  const isFutureMonth = (y: number, mo: number) =>
+    y > nowYear || (y === nowYear && mo > nowMo)
+
   return (
     <div className="px-4 pt-6 pb-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-extrabold text-base-theme tracking-tight">{t('history')}</h1>
-        <Icon path={mdiTune} size={0.8} className="text-muted-theme" />
+        <Icon path={mdiCalendarMonth} size={0.85} className="text-muted-theme" />
       </div>
 
-      {/* Month pills */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        {Array.from({ length: 12 }, (_, i) => monthOffset(currentMonth(), -i)).reverse().map(m => (
-          <button
-            ref={el => { if (el) monthRefs.current[m] = el }}
-            key={m}
-            onClick={() => setMonth(m)}
-            className={clsx(
-              'flex-shrink-0 px-8 py-2 rounded-full text-xs font-semibold transition-colors',
-              month === m
-                ? 'bg-brand-600 text-white'
-                : 'bg-card text-muted-theme border border-theme',
-            )}
-          >
-            {new Date(m + '-01').toLocaleDateString(
-              lang === 'th' ? 'th-TH' : 'en-US',
-              { month: 'short', year: '2-digit' },
-            )}
-          </button>
-        ))}
+      {/* Month navigator */}
+      <div className="flex items-center justify-between bg-card border border-theme rounded-2xl px-3 py-2 mb-4">
+        <button
+          onClick={() => setMonth(m => monthOffset(m, -1))}
+          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-[var(--input)] text-muted-theme transition-colors"
+        >
+          <Icon path={mdiChevronLeft} size={1} />
+        </button>
+
+        <button
+          onClick={() => {
+            setPickerYear(curYear)
+            setShowPicker(true)
+          }}
+          className="flex-1 text-center font-bold text-sm text-base-theme hover:text-brand-600 transition-colors py-1"
+        >
+          {displayLabel}
+        </button>
+
+        <button
+          onClick={() => setMonth(m => monthOffset(m, 1))}
+          disabled={curYear === nowYear && curMo >= nowMo}
+          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-[var(--input)] text-muted-theme disabled:opacity-30 transition-colors"
+        >
+          <Icon path={mdiChevronRight} size={1} />
+        </button>
       </div>
 
       {/* Type filter */}
@@ -124,14 +149,13 @@ export default function History() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <Empty icon="�" title={t('no_transactions')} sub={t('try_filter')} />
+        <Empty icon="📭" title={t('no_transactions')} sub={t('try_filter')} />
       ) : (
         <div className="space-y-5 animate-fade-in">
           {Object.entries(grouped)
             .sort(([a], [b]) => b.localeCompare(a))
             .map(([date, items]) => (
               <div key={date}>
-                {/* Date header */}
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-bold text-muted-theme uppercase tracking-wide">
                     {new Date(date + 'T00:00:00').toLocaleDateString(
@@ -144,7 +168,6 @@ export default function History() {
                   </p>
                 </div>
 
-                {/* Items */}
                 <div className="bg-card rounded-2xl border border-theme shadow-sm overflow-hidden">
                   {items.map((e, idx) => (
                     <div
@@ -195,6 +218,71 @@ export default function History() {
             ))}
         </div>
       )}
+
+      {/* Month/Year Picker Modal */}
+      {showPicker && (
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40"
+          onClick={() => setShowPicker(false)}>
+          <div className="w-full max-w-sm bg-card rounded-3xl p-5 animate-fade-up"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Picker header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-base-theme">{t('select_month') ?? 'เลือกเดือน'}</h3>
+              <button onClick={() => setShowPicker(false)} className="p-1 text-muted-theme">
+                <Icon path={mdiClose} size={0.9} />
+              </button>
+            </div>
+
+            {/* Year navigation */}
+            <div className="flex items-center justify-between mb-4 bg-[var(--input)] rounded-xl px-3 py-2">
+              <button
+                onClick={() => setPickerYear(y => y - 1)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-card text-muted-theme transition-colors"
+              >
+                <Icon path={mdiChevronLeft} size={0.9} />
+              </button>
+              <span className="font-bold text-base-theme text-sm">
+                {lang === 'th' ? pickerYear + 543 : pickerYear}
+              </span>
+              <button
+                onClick={() => setPickerYear(y => y + 1)}
+                disabled={pickerYear >= nowYear}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-card text-muted-theme disabled:opacity-30 transition-colors"
+              >
+                <Icon path={mdiChevronRight} size={0.9} />
+              </button>
+            </div>
+
+            {/* Month grid */}
+            <div className="grid grid-cols-3 gap-2">
+              {monthNames.map((name, idx) => {
+                const mo = idx + 1
+                const isSelected = pickerYear === curYear && mo === curMo
+                const isFuture = isFutureMonth(pickerYear, mo)
+                return (
+                  <button
+                    key={mo}
+                    onClick={() => !isFuture && handlePickerSelect(pickerYear, mo)}
+                    disabled={isFuture}
+                    className={clsx(
+                      'py-2.5 rounded-xl text-xs font-semibold transition-all',
+                      isSelected
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : isFuture
+                          ? 'text-muted-theme opacity-30 cursor-not-allowed'
+                          : 'bg-[var(--input)] text-base-theme hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-900/20',
+                    )}
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         open={confirmState.open}
         message={confirmState.message}

@@ -30,7 +30,7 @@ import type {
 // ── Types ─────────────────────────────────────────────────────
 interface Enriched extends Allocation {
   spentThisMonth: number;
-  receivedThisMonth: number;
+  fundedThisMonth: number;
   usagePercent: number;
 }
 
@@ -55,7 +55,7 @@ function enrich(
     return {
       ...a,
       spentThisMonth: spent,
-      receivedThisMonth: s?.receivedThisMonth ?? 0,
+      fundedThisMonth: s?.fundedThisMonth ?? 0,
       usagePercent:
         inflow > 0 ? Math.min(100, Math.round((spent / inflow) * 100)) : 0,
     };
@@ -428,13 +428,21 @@ function WalletRow({
               style={{ width: `${wallet.usagePercent}%`, backgroundColor: barColor }} />
           </div>
           <div className="flex items-center justify-between mt-0.5">
-            <span className="text-[10px] text-muted-theme">
+            <span className="text-[10px] text-muted-theme truncate">
               {getCombinedCategories(wallet).slice(0, 3).map((c) => c.name).join(", ")}
               {getCombinedCategories(wallet).length > 3 && ` +${getCombinedCategories(wallet).length - 3}`}
             </span>
-            {wallet.spentThisMonth > 0 && (
-              <span className="text-[10px] text-rose-400 font-medium">
-                −฿{fmt(wallet.spentThisMonth)} {t("this_month")}
+            {(wallet.fundedThisMonth > 0 || wallet.spentThisMonth > 0) && (
+              <span className="text-[10px] font-medium flex items-center gap-1 flex-shrink-0 ml-1">
+                {wallet.fundedThisMonth > 0 && (
+                  <span className="text-emerald-500">+฿{fmt(wallet.fundedThisMonth)}</span>
+                )}
+                {wallet.fundedThisMonth > 0 && wallet.spentThisMonth > 0 && (
+                  <span className="text-muted-theme">·</span>
+                )}
+                {wallet.spentThisMonth > 0 && (
+                  <span className="text-rose-400">−฿{fmt(wallet.spentThisMonth)}</span>
+                )}
               </span>
             )}
           </div>
@@ -493,7 +501,7 @@ function WalletRow({
                            text-sm font-semibold text-base-theme outline-none focus:border-brand-400 transition-all" />
             </div>
             <button type="button" onClick={() => setFundAmt(String(unallocated))}
-              className="px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-xs font-bold text-muted-theme">
+              className="px-2.5 py-1 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-xs font-bold text-brand-600 dark:text-brand-300 border border-brand-200 dark:border-brand-700">
               Max
             </button>
             <button onClick={handleFund} disabled={fundBusy || fundDone || !fundAmt || Number(fundAmt) <= 0}
@@ -585,7 +593,7 @@ function WalletRow({
                                text-sm font-semibold text-base-theme outline-none focus:border-indigo-400 transition-all" />
                 </div>
                 <button type="button" onClick={() => setAdjAmt(String(walletBalance))}
-                  className="px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-xs font-bold text-muted-theme">
+                  className="px-2.5 py-1 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-xs font-bold text-brand-600 dark:text-brand-300 border border-brand-200 dark:border-brand-700">
                   Max
                 </button>
                 <button onClick={handleAdjust}
@@ -628,7 +636,7 @@ function WalletRow({
                                text-sm font-semibold text-base-theme outline-none focus:border-amber-400 transition-all" />
                 </div>
                 <button type="button" onClick={() => setAdjAmt(String(walletBalance))}
-                  className="px-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-xs font-bold text-muted-theme">
+                  className="px-2.5 py-1 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-xs font-bold text-brand-600 dark:text-brand-300 border border-brand-200 dark:border-brand-700">
                   Max
                 </button>
                 <button onClick={handleAdjust}

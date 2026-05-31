@@ -71,7 +71,7 @@ export interface Allocation {
 export interface AllocationSummary {
   allocationId: string
   spentThisMonth: number
-  receivedThisMonth: number
+  fundedThisMonth: number
 }
 
 // ── Balance Summary ───────────────────────────────────────────
@@ -238,4 +238,22 @@ export interface AdminStats {
   totalUsers: number
   adminUsers: number
   newThisMonth: number
+}
+
+export interface AiUsageUser {
+  userId: string
+  email: string
+  name: string
+  callCount: number
+  totalTokens: number
+  totalPromptTokens: number
+  totalCompletionTokens: number
+  totalCostUsd: number
+  totalCostThb: number
+}
+
+export interface AiUsageStats {
+  users: AiUsageUser[]
+  totalCostUsd: number
+  totalCostThb: number
 }

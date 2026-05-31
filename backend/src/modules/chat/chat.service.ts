@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import axios from 'axios'
 import { ChatMessage } from './chat-message.entity'
+import { AiUsageLog } from './ai-usage-log.entity'
 import { TavilyService } from './tavily.service'
 import { CategoriesService } from '../categories/categories.service'
 import { LoansService } from '../loans/loans.service'
@@ -442,10 +443,18 @@ export class ChatService {
   private readonly CHAT_MODEL = 'deepseek/deepseek-v4-flash'
   private readonly VISION_MODEL = 'google/gemini-2.5-flash-lite'
   private readonly MAX_HISTORY = 50
+  // Approximate model pricing per 1M tokens (USD) — used as fallback when OpenRouter doesn't return cost
+  private readonly MODEL_PRICING: Record<string, { input: number; output: number }> = {
+    'deepseek/deepseek-v4-flash': { input: 0.10, output: 0.30 },
+    'google/gemini-2.5-flash-lite': { input: 0.075, output: 0.30 },
+  }
+  private readonly THB_PER_USD = 36
 
   constructor(
     @InjectRepository(ChatMessage)
     private readonly msgRepo: Repository<ChatMessage>,
+    @InjectRepository(AiUsageLog)
+    private readonly usageRepo: Repository<AiUsageLog>,
     private readonly tavily: TavilyService,
     private readonly categoriesSvc: CategoriesService,
     private readonly loansSvc: LoansService,
@@ -470,7 +479,7 @@ export class ChatService {
   }
 
   // ── Vision: analyze any image via Gemini ───────────────────
-  async analyzeImage(imageBase64: string, mimeType: string): Promise<Record<string, any>> {
+  async analyzeImage(imageBase64: string, mimeType: string, userId?: string): Promise<Record<string, any>> {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured')
 
@@ -503,6 +512,8 @@ export class ChatService {
         },
         { headers: this.openRouterHeaders(), timeout: 30000 },
       )
+      const genId = res.data.id
+      if (genId && userId) this.fetchAndLogUsage(userId, this.VISION_MODEL, [genId]).catch(() => {})
       const content = res.data.choices[0]?.message?.content ?? ''
       const jsonMatch = content.match(/\{[\s\S]*\}/)
       if (jsonMatch) return JSON.parse(jsonMatch[0])
@@ -537,7 +548,7 @@ export class ChatService {
     messages: any[],
     onChunk: (text: string) => void,
     toolChoice: 'auto' | 'none' = 'auto',
-  ): Promise<{ content: string; toolCalls: any[] | null }> {
+  ): Promise<{ content: string; toolCalls: any[] | null; generationId: string | null }> {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured')
 
@@ -560,6 +571,7 @@ export class ChatService {
     let fullContent = ''
     const toolCallsMap: Record<number, any> = {}
     let isToolCallResponse = false
+    let generationId: string | null = null
 
     await new Promise<void>((resolve, reject) => {
       let buffer = ''
@@ -577,6 +589,8 @@ export class ChatService {
 
           try {
             const parsed = JSON.parse(data)
+            // Capture OpenRouter generation ID (appears in every chunk as `id`)
+            if (parsed.id && !generationId) generationId = parsed.id
             const choice = parsed.choices?.[0]
             if (!choice) continue
             const delta = choice.delta
@@ -613,7 +627,31 @@ export class ChatService {
     })
 
     const toolCalls = Object.keys(toolCallsMap).length > 0 ? Object.values(toolCallsMap) : null
-    return { content: fullContent, toolCalls }
+    return { content: fullContent, toolCalls, generationId }
+  }
+
+  // ── Fetch accurate cost from OpenRouter generation endpoint ─
+  private async fetchAndLogUsage(userId: string, model: string, generationIds: string[]) {
+    if (generationIds.length === 0) return
+    // OpenRouter needs time to finalize generation cost data
+    await new Promise(r => setTimeout(r, 8000))
+    let totalPrompt = 0, totalCompletion = 0, totalCostUsd = 0
+    for (const id of generationIds) {
+      try {
+        const res = await axios.get(`${this.OPENROUTER_BASE}/generation?id=${id}`, {
+          headers: this.openRouterHeaders(), timeout: 10000,
+        })
+        const d = res.data?.data
+        if (d) {
+          totalPrompt += d.tokens_prompt ?? d.native_tokens_prompt ?? 0
+          totalCompletion += d.tokens_completion ?? d.native_tokens_completion ?? 0
+          totalCostUsd += d.total_cost ?? 0
+        }
+      } catch (err: any) {
+        this.logger.warn(`[usage] generation ${id} fetch failed: ${err.message}`)
+      }
+    }
+    await this.saveUsageLog(userId, model, totalPrompt, totalCompletion, totalCostUsd)
   }
 
   // ── Streaming chat (SSE endpoint) ─────────────────────────
@@ -635,7 +673,7 @@ export class ChatService {
       res.write(`event: status\ndata: ${JSON.stringify({ text: 'กำลังอ่านรูป...' })}\n\n`)
       res.flush?.()
       try {
-        imageAnalysis = await this.analyzeImage(imageBase64, mimeType)
+        imageAnalysis = await this.analyzeImage(imageBase64, mimeType, userId)
         if (imageThumbnail) imageAnalysis.thumbnail = imageThumbnail
         messageForAI = `[ข้อมูลจากรูปที่แนบมา (วิเคราะห์โดย Gemini)]\n${JSON.stringify(imageAnalysis, null, 2)}\n\n${userMessage || 'ผู้ใช้แนบรูปมาโดยไม่มีข้อความเพิ่มเติม'}`
       } catch {
@@ -666,14 +704,16 @@ export class ChatService {
 
     let fullResponse = ''
     const uiMarkers: string[] = []
+    const generationIds: string[] = []
 
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const { content, toolCalls } = await this.streamFromOpenRouter(
+        const { content, toolCalls, generationId } = await this.streamFromOpenRouter(
           currentMessages,
           chunk => this.sendSSEChunk(res, chunk),
           'auto',
         )
+        if (generationId) generationIds.push(generationId)
 
         if (!toolCalls || toolCalls.length === 0) {
           // No tool calls — this is the final text response
@@ -706,11 +746,12 @@ export class ChatService {
 
         // If this was the last allowed round, force a final text response
         if (round === MAX_TOOL_ROUNDS - 1) {
-          const { content: finalContent } = await this.streamFromOpenRouter(
+          const { content: finalContent, generationId: finalGenId } = await this.streamFromOpenRouter(
             currentMessages,
             chunk => this.sendSSEChunk(res, chunk),
             'none',
           )
+          if (finalGenId) generationIds.push(finalGenId)
           fullResponse = finalContent
         }
       }
@@ -732,6 +773,7 @@ export class ChatService {
       }
 
       await this.saveMessage(userId, 'assistant', fullResponse)
+      this.fetchAndLogUsage(userId, this.CHAT_MODEL, generationIds).catch(() => {})
       res.write('data: [DONE]\n\n')
     } catch (err: any) {
       this.logger.error(`chatStream error: ${err.message}`)
@@ -751,6 +793,9 @@ export class ChatService {
         { model: this.CHAT_MODEL, messages, tools: TOOLS, tool_choice: toolChoice, max_tokens: 3000, temperature: 0.7 },
         { headers: this.openRouterHeaders(), timeout: 60000 },
       )
+
+      const genId = res.data.id
+      if (genId) this.fetchAndLogUsage(userId, this.CHAT_MODEL, [genId]).catch(() => {})
 
       const choice = res.data.choices[0]
       const msg = choice.message
@@ -1354,5 +1399,29 @@ UI: change_theme, navigate_to
       )`,
       [userId, this.MAX_HISTORY],
     )
+  }
+
+  private async saveUsageLog(
+    userId: string,
+    model: string,
+    promptTokens: number,
+    completionTokens: number,
+    costUsdFromApi: number,
+  ) {
+    if (promptTokens === 0 && completionTokens === 0) return
+    const pricing = this.MODEL_PRICING[model] ?? { input: 0.20, output: 0.60 }
+    const costUsd = costUsdFromApi > 0
+      ? costUsdFromApi
+      : (promptTokens * pricing.input + completionTokens * pricing.output) / 1_000_000
+    const costThb = costUsd * this.THB_PER_USD
+    await this.usageRepo.save(this.usageRepo.create({
+      userId,
+      model,
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+      costUsd,
+      costThb,
+    }))
   }
 }

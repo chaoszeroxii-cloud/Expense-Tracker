@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Icon from '@mdi/react'
 import { mdiClose, mdiContentSave, mdiCog, mdiPencilOutline, mdiClockMinusOutline  } from '@mdi/js'
+import { useT } from '../../store/i18n.store'
 
 interface WorkSettings {
   salary: number
@@ -27,6 +28,7 @@ function load(): WorkSettings {
 interface Props { onClose: () => void }
 
 export default function WorkTimeCalculator({ onClose }: Props) {
+  const t = useT()
   const [tab, setTab] = useState<'calc' | 'settings'>('calc')
   const [settings, setSettings] = useState<WorkSettings>(load)
   const [draft, setDraft] = useState<WorkSettings>(load)
@@ -75,8 +77,8 @@ export default function WorkTimeCalculator({ onClose }: Props) {
               <Icon path={mdiClockMinusOutline} size={0.8} color="#8b5cf6" />
             </div>
             <div>
-              <h2 className="font-bold text-base-theme leading-tight">ของชิ้นนี้กี่ชั่วโมง?</h2>
-              <p className="text-[10px] text-muted-theme">แปลงราคาเป็นเวลาทำงาน</p>
+              <h2 className="font-bold text-base-theme leading-tight">{t('wt_title')}</h2>
+              <p className="text-[10px] text-muted-theme">{t('wt_subtitle')}</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -104,9 +106,9 @@ export default function WorkTimeCalculator({ onClose }: Props) {
             {!isReady && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
                 <span>⚙️</span>
-                <span>กรุณาตั้งค่าเงินเดือนก่อน</span>
+                <span>{t('wt_setup_warn')}</span>
                 <button onClick={() => setTab('settings')} className="ml-auto font-bold underline shrink-0">
-                  ตั้งค่า
+                  {t('settings')}
                 </button>
               </div>
             )}
@@ -116,26 +118,26 @@ export default function WorkTimeCalculator({ onClose }: Props) {
               <div className="bg-input rounded-2xl px-4 py-3 grid grid-cols-3 gap-1 text-center">
                 <div>
                   <p className="text-xs font-bold text-base-theme">฿{settings.salary.toLocaleString()}</p>
-                  <p className="text-[10px] text-muted-theme">เดือน</p>
+                  <p className="text-[10px] text-muted-theme">{t('wt_month')}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-base-theme">{settings.hoursPerDay} ชม.</p>
-                  <p className="text-[10px] text-muted-theme">ต่อวัน</p>
+                  <p className="text-xs font-bold text-base-theme">{settings.hoursPerDay} {t('wt_hr')}</p>
+                  <p className="text-[10px] text-muted-theme">{t('wt_per_day')}</p>
                 </div>
                 <div>
                   <p className="text-xs font-bold text-emerald-500">฿{hourlyRate.toFixed(2)}</p>
-                  <p className="text-[10px] text-muted-theme">ต่อชั่วโมง</p>
+                  <p className="text-[10px] text-muted-theme">{t('wt_per_hour')}</p>
                 </div>
               </div>
             )}
 
             {/* Price input */}
             <div>
-              <label className="text-xs text-muted-theme mb-1.5 block font-medium">ราคาของที่อยากซื้อ (บาท)</label>
+              <label className="text-xs text-muted-theme mb-1.5 block font-medium">{t('wt_price_label')}</label>
               <input
                 type="number"
                 inputMode="decimal"
-                placeholder="เช่น 35000"
+                placeholder={t('wt_price_ph')}
                 value={price}
                 onChange={e => setPrice(e.target.value)}
                 className="w-full px-4 py-3 rounded-2xl bg-input border border-theme
@@ -149,13 +151,13 @@ export default function WorkTimeCalculator({ onClose }: Props) {
               <div className="bg-gradient-to-br from-brand-50 to-violet-50 dark:from-brand-950/60 dark:to-violet-950/40
                               border border-brand-200 dark:border-brand-800/50 rounded-2xl p-4">
                 <p className="text-xs text-muted-theme mb-3 text-center font-medium">
-                  ฿{priceNum.toLocaleString()} ต้องทำงาน...
+                  ฿{priceNum.toLocaleString()} {t('wt_must_work')}
                 </p>
                 {(dYears > 0 || dMonths > 0) && (
                   <div className="grid grid-cols-2 gap-2 text-center mb-2">
                     {[
-                      { value: dYears,  label: 'ปี' },
-                      { value: dMonths, label: 'เดือน' },
+                      { value: dYears,  label: t('wt_year') },
+                      { value: dMonths, label: t('wt_month') },
                     ].map(({ value, label }) => (
                       <div key={label} className="bg-white/70 dark:bg-white/10 rounded-xl py-2.5">
                         <p className="text-xl font-extrabold text-brand-600 leading-none tabular-nums">{value.toLocaleString()}</p>
@@ -166,10 +168,10 @@ export default function WorkTimeCalculator({ onClose }: Props) {
                 )}
                 <div className="grid grid-cols-4 gap-2 text-center mb-3">
                   {[
-                    { value: dDays,    label: 'วัน' },
-                    { value: dHours,   label: 'ชม.' },
-                    { value: dMinutes, label: 'นาที' },
-                    { value: dSeconds, label: 'วิ.' },
+                    { value: dDays,    label: t('wt_day') },
+                    { value: dHours,   label: t('wt_hr') },
+                    { value: dMinutes, label: t('wt_min') },
+                    { value: dSeconds, label: t('wt_sec') },
                   ].map(({ value, label }) => (
                     <div key={label}
                       className="bg-white/70 dark:bg-white/10 rounded-xl py-2.5">
@@ -179,7 +181,7 @@ export default function WorkTimeCalculator({ onClose }: Props) {
                   ))}
                 </div>
                 <p className="text-center text-[10px] text-muted-theme">
-                  รวม {totalHours.toFixed(2)} ชั่วโมง · คิดเป็น {(priceNum / settings.salary * 100).toFixed(1)}% ของเงินเดือน
+                  {t('wt_total_prefix')} {totalHours.toFixed(2)} {t('wt_hours_unit')} · {(priceNum / settings.salary * 100).toFixed(1)}% {t('wt_of_salary')}
                 </p>
               </div>
             )}
@@ -188,12 +190,12 @@ export default function WorkTimeCalculator({ onClose }: Props) {
         ) : (
           /* ── SETTINGS TAB ── */
           <div className="space-y-3">
-            <p className="text-xs text-muted-theme">ตั้งค่าข้อมูลการทำงาน — บันทึกไว้ในเครื่องของคุณ</p>
+            <p className="text-xs text-muted-theme">{t('wt_settings_desc')}</p>
 
             {([
-              { label: 'เงินเดือน (บาท/เดือน)',   key: 'salary'           as const, placeholder: '30000', min: 1 },
-              { label: 'ชั่วโมงทำงาน / วัน',       key: 'hoursPerDay'      as const, placeholder: '8',     min: 1 },
-              { label: 'วันทำงาน / เดือน',           key: 'workDaysPerMonth' as const, placeholder: '22',    min: 1 },
+              { label: t('wt_salary_label'), key: 'salary'           as const, placeholder: '30000', min: 1 },
+              { label: t('wt_hours_label'),  key: 'hoursPerDay'      as const, placeholder: '8',     min: 1 },
+              { label: t('wt_days_label'),   key: 'workDaysPerMonth' as const, placeholder: '22',    min: 1 },
             ] as const).map(({ label, key, placeholder, min }) => (
               <div key={key}>
                 <label className="text-xs text-muted-theme mb-1.5 block font-medium">{label}</label>
@@ -213,8 +215,8 @@ export default function WorkTimeCalculator({ onClose }: Props) {
             {/* Preview */}
             {draft.salary > 0 && draft.hoursPerDay > 0 && (
               <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl px-4 py-2.5 text-xs text-emerald-700 dark:text-emerald-300">
-                อัตรา: ฿{(draft.salary / (Math.max(1, draft.workDaysPerMonth) * draft.hoursPerDay)).toFixed(2)} / ชม.
-                · {Math.max(1, draft.workDaysPerMonth)} วันทำงาน/เดือน
+                {t('wt_rate_label')} ฿{(draft.salary / (Math.max(1, draft.workDaysPerMonth) * draft.hoursPerDay)).toFixed(2)} / {t('wt_hr')}
+                · {Math.max(1, draft.workDaysPerMonth)} {t('wt_work_days_month')}
               </div>
             )}
 
@@ -224,7 +226,7 @@ export default function WorkTimeCalculator({ onClose }: Props) {
                          active:scale-95 transition-transform flex items-center justify-center gap-2 mt-1"
             >
               <Icon path={mdiContentSave} size={0.8} color="white" />
-              บันทึกการตั้งค่า
+              {t('wt_save_settings')}
             </button>
           </div>
         )}

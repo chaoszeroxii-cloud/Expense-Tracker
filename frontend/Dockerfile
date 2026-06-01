@@ -10,7 +10,11 @@ CMD ["npm", "run", "dev"]
 # ── Builder ───────────────────────────────────────────────────
 FROM development AS builder
 ARG VITE_API_URL
+ARG VITE_GOOGLE_CLIENT_ID
+ARG VITE_FACEBOOK_APP_ID
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_FACEBOOK_APP_ID=$VITE_FACEBOOK_APP_ID
 RUN npm run build
 
 # ── Production (nginx) ────────────────────────────────────────

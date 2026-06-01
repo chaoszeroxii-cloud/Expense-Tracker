@@ -44,10 +44,12 @@ const DEFAULT_CATEGORIES = [
 @Injectable()
 export class AuthService {
   private readonly mailer = nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp-relay.brevo.com',
+    port: 587,
+    secure: false,
     auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
+      user: 'ad2d25001@smtp-brevo.com',
+      pass: process.env.BREVO_SMTP_PASSWORD,
     },
   })
 

@@ -57,6 +57,11 @@ export const authApi = {
 
   facebookVerify: (accessToken: string, email?: string) =>
     http.post('/auth/facebook/verify', { accessToken, ...(email ? { email } : {}) }).then(r => r.data),
+  forgotPassword: (email: string) =>
+    http.post('/auth/forgot-password', { email }).then(r => r.data),
+
+  resetPassword: (token: string, password: string) =>
+    http.post('/auth/reset-password', { token, password }).then(r => r.data),
 }
 
 // ── Analytics ────────────────────────────────────────────────

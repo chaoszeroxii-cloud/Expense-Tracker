@@ -7,6 +7,7 @@ import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiClose, mdiLightbulbOutline, mdiReceiptTextOutline, mdiDownload } from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
 import { useT, useI18n } from '../../store/i18n.store'
+import ConfirmModal from '../../components/ui/ConfirmModal'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -25,6 +26,7 @@ export default function Tax() {
   const [form, setForm] = useState({ type: '', amount: '', note: '' })
   const [saving, setSaving] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [confirmState, setConfirmState] = useState<{ open: boolean; onConfirm: () => void }>({ open: false, onConfirm: () => {} })
   const exportRef = useRef<HTMLDivElement>(null)
 
   const handleExportPDF = async () => {
@@ -105,10 +107,16 @@ export default function Tax() {
     setSaving(false)
   }
 
-  const handleDelete = async (id: string) => {
-    await taxApi.remove(id)
-    await load()
-    if (income) await handleCalculate()
+  const handleDelete = (id: string) => {
+    setConfirmState({
+      open: true,
+      onConfirm: async () => {
+        setConfirmState(s => ({ ...s, open: false }))
+        await taxApi.remove(id)
+        await load()
+        if (income) await handleCalculate()
+      },
+    })
   }
 
   const selectedType = types.find(tp => tp.type === form.type)
@@ -245,6 +253,13 @@ export default function Tax() {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmState.open}
+        message={t('delete_confirm')}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(s => ({ ...s, open: false }))}
+      />
 
       {/* Add deduction modal */}
       {showAdd && (

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { APP_GUARD, Reflector } from '@nestjs/core'
+import { ThrottlerModule } from '@nestjs/throttler'
 import { databaseConfig } from './config/database.config'
 import { AuthModule } from './modules/auth/auth.module'
 import { ExpensesModule } from './modules/expenses/expenses.module'
@@ -22,6 +23,7 @@ import { HealthController } from './health.controller'
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     TypeOrmModule.forRootAsync({ useFactory: databaseConfig }),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     AuthModule,
     AllocationsModule,
     ExpensesModule,

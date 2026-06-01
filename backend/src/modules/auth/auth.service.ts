@@ -1,6 +1,8 @@
 import {
-  Injectable, ConflictException, UnauthorizedException,
+  Injectable, ConflictException, UnauthorizedException, BadRequestException,
 } from '@nestjs/common'
+import { randomBytes } from 'crypto'
+import * as nodemailer from 'nodemailer'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { JwtService } from '@nestjs/jwt'
@@ -9,7 +11,7 @@ import axios from 'axios'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { Allocation } from '../allocations/allocation.entity'
-import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto } from './auth.dto'
+import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto, ChangePasswordDto } from './auth.dto'
 
 const SALT_ROUNDS = 12
 
@@ -41,6 +43,14 @@ const DEFAULT_CATEGORIES = [
 
 @Injectable()
 export class AuthService {
+  private readonly mailer = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: process.env.GMAIL_APP_PASSWORD,
+    },
+  })
+
   constructor(
     @InjectRepository(User)
     private readonly users: Repository<User>,
@@ -178,8 +188,23 @@ export class AuthService {
 
   // ── Me ──────────────────────────────────────────────────────
   me(user: User) {
-    const { passwordHash: _, ...safe } = user as any
-    return safe
+    return this.toProfile(user)
+  }
+
+  // ── Change Password ──────────────────────────────────────────
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.users.findOne({ where: { id: userId } })
+    if (!user) throw new UnauthorizedException()
+
+    if (user.passwordHash) {
+      if (!dto.currentPassword) throw new BadRequestException('กรุณากรอกรหัสผ่านปัจจุบัน')
+      const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash)
+      if (!valid) throw new BadRequestException('รหัสผ่านปัจจุบันไม่ถูกต้อง')
+    }
+
+    const hash = await bcrypt.hash(dto.newPassword, SALT_ROUNDS)
+    await this.users.update(userId, { passwordHash: hash })
+    return { message: 'เปลี่ยนรหัสผ่านสำเร็จ' }
   }
 
   // ── Onboarding ──────────────────────────────────────────────
@@ -204,12 +229,50 @@ export class AuthService {
     return { success: true, created: wallets.length }
   }
 
+  // ── Forgot Password ─────────────────────────────────────────
+  async forgotPassword(email: string) {
+    const user = await this.users.findOne({ where: { email } })
+    if (user) {
+      const token = randomBytes(32).toString('hex')
+      const expiry = new Date(Date.now() + 30 * 60 * 1000)
+      await this.users.update(user.id, { resetToken: token, resetTokenExpiry: expiry })
+      const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173'
+      const resetUrl = `${frontendUrl}/reset-password?token=${token}`
+      try {
+        await this.mailer.sendMail({
+          from: `"MoneyFlow" <${process.env.GMAIL_USER}>`,
+          to: email,
+          subject: 'ตั้งรหัสผ่านใหม่ - MoneyFlow',
+          html: `<!DOCTYPE html><html lang="th"><body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"><div style="max-width:480px;margin:40px auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.1);"><div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:32px 40px;text-align:center;"><h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">💸 MoneyFlow</h1></div><div style="padding:40px;"><h2 style="color:#1e293b;font-size:20px;font-weight:700;margin:0 0 16px;">ตั้งรหัสผ่านใหม่</h2><p style="color:#64748b;margin:0 0 8px;line-height:1.6;">เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชี <strong style="color:#1e293b;">${email}</strong></p><p style="color:#64748b;margin:0 0 28px;line-height:1.6;">คลิกปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ ลิงก์จะหมดอายุใน <strong style="color:#1e293b;">30 นาที</strong></p><div style="text-align:center;margin-bottom:32px;"><a href="${resetUrl}" style="display:inline-block;background:#4f46e5;color:#fff;padding:16px 40px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">ตั้งรหัสผ่านใหม่ →</a></div><div style="border-top:1px solid #e2e8f0;padding-top:24px;"><p style="color:#94a3b8;font-size:13px;margin:0;line-height:1.6;">ถ้าคุณไม่ได้ขอเปลี่ยนรหัสผ่าน ไม่ต้องทำอะไร รหัสผ่านเดิมของคุณจะไม่มีการเปลี่ยนแปลง</p></div></div></div></body></html>`,
+        })
+      } catch (_err) {
+        // swallow email errors — don't leak failures to caller
+      }
+    }
+    return { message: 'เราได้ส่งลิงก์ไปยังบัญชีอีเมลของคุณแล้ว' }
+  }
+
+  // ── Reset Password ───────────────────────────────────────────
+  async resetPassword(token: string, newPassword: string) {
+    const user = await this.users.findOne({ where: { resetToken: token } })
+    if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+      throw new BadRequestException('ลิงก์หมดอายุหรือไม่ถูกต้อง')
+    }
+    const hash = await bcrypt.hash(newPassword, SALT_ROUNDS)
+    await this.users.update(user.id, { passwordHash: hash, resetToken: null, resetTokenExpiry: null })
+    return { message: 'ตั้งรหัสผ่านใหม่สำเร็จแล้ว' }
+  }
+
   // ── Helpers ─────────────────────────────────────────────────
+  private toProfile(user: User) {
+    const { passwordHash, ...rest } = user as any
+    return { ...rest, hasPassword: passwordHash !== null }
+  }
+
   private signToken(user: User) {
-    const { passwordHash: _, ...profile } = user as any
     return {
       accessToken: this.jwt.sign({ sub: user.id, email: user.email }),
-      user: profile,
+      user: this.toProfile(user),
     }
   }
 }

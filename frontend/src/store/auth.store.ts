@@ -7,6 +7,7 @@ interface AuthUser {
   currency: string
   role: string
   onboardingCompleted: boolean
+  hasPassword: boolean
 }
 
 interface AuthState {

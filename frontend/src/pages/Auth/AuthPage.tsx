@@ -1,5 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useGoogleLogin } from '@react-oauth/google'
 import Icon from '@mdi/react'
 import { mdiWallet, mdiEye, mdiEyeOff, mdiAlertCircle } from '@mdi/js'
@@ -240,37 +240,44 @@ export default function AuthPage() {
                 placeholder="you@example.com"
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600
                            bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100
-                           font-medium text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all placeholder:text-slate-300" />
+                           font-medium text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all" />
             </div>
-            <div>
-              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 block mb-1.5 uppercase tracking-wide">
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
                 {t('password')} {tab === 'register' && <span className="text-slate-300 normal-case font-normal">{t('min_chars')}</span>}
               </label>
-              <div className="relative">
-                <input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-                  required minLength={tab === 'register' ? 8 : 1} placeholder="••••••••"
-                  autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
-                  className="w-full px-4 py-3 pr-12 rounded-xl border border-slate-200 dark:border-slate-600
-                             bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100
-                             font-medium text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all placeholder:text-slate-300" />
-                <button type="button" onClick={() => setShowPw(v => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600">
-                  <Icon path={showPw ? mdiEyeOff : mdiEye} size={0.7} />
-                </button>
-              </div>
+              {tab === 'login' && (
+                <Link to="/forgot-password" className="text-xs text-brand-500 hover:underline">
+                  {t('forgot_password_link')}
+                </Link>
+              )}
             </div>
-            {error && (
-              <div className="flex items-center gap-2 bg-rose-50 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800
-                              text-rose-600 rounded-xl px-4 py-3 text-sm animate-fade-in">
-                <Icon path={mdiAlertCircle} size={0.7} className="flex-shrink-0" />
-                <span>{error}</span>
-              </div>
-            )}
-            <button type="submit" disabled={loading || !!socialLoading}
-              className="w-full py-3.5 rounded-xl bg-brand-600 text-white font-bold text-sm
-                         shadow-lg shadow-brand-500/30 active:scale-[0.98] transition-all disabled:opacity-60 mt-2">
-              {loading ? t('please_wait') : tab === 'login' ? t('sign_in') : t('create_account')}
-            </button>
+            <div className="relative">
+              <input type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                required minLength={tab === 'register' ? 8 : 1} placeholder="••••••••"
+                autoComplete={tab === 'login' ? 'current-password' : 'new-password'}
+                className="w-full px-4 py-3 pr-12 rounded-xl border border-slate-200 dark:border-slate-600
+                           bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100
+                           font-medium text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all placeholder:text-slate-300" />
+              <button type="button" onClick={() => setShowPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-600">
+                <Icon path={showPw ? mdiEyeOff : mdiEye} size={0.7} />
+              </button>
+            </div>
+          </div>
+          {error && (
+            <div className="flex items-center gap-2 bg-rose-50 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800
+                            text-rose-600 rounded-xl px-4 py-3 text-sm animate-fade-in">
+              <Icon path={mdiAlertCircle} size={0.7} className="flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+          <button type="submit" disabled={loading || !!socialLoading}
+            className="w-full py-3.5 rounded-xl bg-brand-600 text-white font-bold text-sm
+                       shadow-lg shadow-brand-500/30 active:scale-[0.98] transition-all disabled:opacity-60 mt-2">
+            {loading ? t('please_wait') : tab === 'login' ? t('sign_in') : t('create_account')}
+          </button>
           </form>
         </div>
       </div>

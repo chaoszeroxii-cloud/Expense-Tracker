@@ -54,6 +54,12 @@ export class User {
   @OneToMany(() => Expense, (e) => e.user)
   expenses: Expense[]
 
+  @Column({ name: 'reset_token', nullable: true, type: 'varchar', length: 64 })
+  resetToken: string | null
+
+  @Column({ name: 'reset_token_expiry', nullable: true, type: 'timestamptz' })
+  resetTokenExpiry: Date | null
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date
 

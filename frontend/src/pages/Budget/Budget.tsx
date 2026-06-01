@@ -6,6 +6,7 @@ import { mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } fro
 import CustomSelect from '../../components/ui/CustomSelect'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
+import ConfirmModal from '../../components/ui/ConfirmModal'
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7)
@@ -26,6 +27,7 @@ export default function Budget() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ categoryId: '', amount: '' })
   const [saving, setSaving] = useState(false)
+  const [confirmState, setConfirmState] = useState<{ open: boolean; onConfirm: () => void }>({ open: false, onConfirm: () => {} })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -59,9 +61,15 @@ export default function Budget() {
     setSaving(false)
   }
 
-  const handleDelete = async (id: string) => {
-    await budgetsApi.remove(id)
-    await load()
+  const handleDelete = (id: string) => {
+    setConfirmState({
+      open: true,
+      onConfirm: async () => {
+        setConfirmState(s => ({ ...s, open: false }))
+        await budgetsApi.remove(id)
+        await load()
+      },
+    })
   }
 
   const changeMonth = (dir: number) => {
@@ -173,6 +181,13 @@ export default function Budget() {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmState.open}
+        message={t('delete_confirm')}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(s => ({ ...s, open: false }))}
+      />
 
       {/* Add form modal */}
       {showForm && (

@@ -5,7 +5,9 @@ import PrivateRoute, { AdminRoute } from './components/layout/PrivateRoute'
 import Dashboard from './pages/Dashboard/Dashboard'
 
 // ── Lazy-loaded pages ──────────────────────────────────
-const AuthPage      = lazy(() => import('./pages/Auth/AuthPage'))
+const AuthPage         = lazy(() => import('./pages/Auth/AuthPage'))
+const ForgotPassword   = lazy(() => import('./pages/Auth/ForgotPasswordPage'))
+const ResetPassword    = lazy(() => import('./pages/Auth/ResetPasswordPage'))
 const AddExpense    = lazy(() => import('./pages/AddExpense/AddExpense'))
 const History       = lazy(() => import('./pages/History/History'))
 const Settings      = lazy(() => import('./pages/Settings/Settings'))
@@ -36,6 +38,8 @@ export default function App() {
       <Routes>
         {/* Public */}
         <Route path="/login" element={<Lazy><AuthPage /></Lazy>} />
+        <Route path="/forgot-password" element={<Lazy><ForgotPassword /></Lazy>} />
+        <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
 
         {/* Onboarding — auth required but not onboarding-gated */}
         <Route element={<OnboardingRoute />}>

@@ -16,8 +16,17 @@ export class User {
   @Column({ length: 100 })
   name: string
 
-  @Column({ name: 'password_hash' })
-  passwordHash: string
+  @Column({ name: 'password_hash', nullable: true, default: null })
+  passwordHash: string | null
+
+  @Column({ name: 'google_id', nullable: true, default: null })
+  googleId: string | null
+
+  @Column({ name: 'facebook_id', nullable: true, default: null })
+  facebookId: string | null
+
+  @Column({ name: 'auth_provider', length: 10, default: 'local' })
+  authProvider: 'local' | 'google' | 'facebook'
 
   @Column({ length: 3, default: 'THB' })
   currency: string

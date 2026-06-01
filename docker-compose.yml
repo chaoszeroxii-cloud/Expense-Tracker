@@ -67,7 +67,9 @@ services:
     restart: unless-stopped
     command: npm run dev
     environment:
-      VITE_API_URL: http://localhost:3001
+      VITE_API_URL:            http://localhost:3001
+      VITE_GOOGLE_CLIENT_ID:   ${VITE_GOOGLE_CLIENT_ID}
+      VITE_FACEBOOK_APP_ID:    ${VITE_FACEBOOK_APP_ID}
     volumes:
       - ./frontend:/app          # hot reload in dev
       - /app/node_modules        # hot reload in dev

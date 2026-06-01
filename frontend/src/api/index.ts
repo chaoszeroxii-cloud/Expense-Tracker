@@ -51,6 +51,12 @@ export const authApi = {
 
   completeOnboarding: (wallets: string[], lang: 'th' | 'en' = 'th') =>
     http.post('/auth/onboarding', { wallets, lang }).then(r => r.data),
+
+  googleVerify: (token: string, email?: string) =>
+    http.post('/auth/google/verify', { token, ...(email ? { email } : {}) }).then(r => r.data),
+
+  facebookVerify: (accessToken: string, email?: string) =>
+    http.post('/auth/facebook/verify', { accessToken, ...(email ? { email } : {}) }).then(r => r.data),
 }
 
 // ── Analytics ────────────────────────────────────────────────

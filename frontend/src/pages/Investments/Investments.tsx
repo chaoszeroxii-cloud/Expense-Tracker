@@ -5,6 +5,7 @@ import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiTrendingUp, mdiClose, mdiChevronDown, mdiChevronUp } from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
 import { useT, useI18n } from '../../store/i18n.store'
+import ConfirmModal from '../../components/ui/ConfirmModal'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -35,6 +36,7 @@ export default function Investments() {
   const [invForm, setInvForm] = useState({ name: '', symbol: '', type: 'mutual_fund', note: '' })
   const [txForm, setTxForm] = useState({ type: 'buy', amount: '', units: '', navPrice: '', occurredAt: new Date().toISOString().slice(0, 10), note: '' })
   const [saving, setSaving] = useState(false)
+  const [confirmState, setConfirmState] = useState<{ open: boolean; onConfirm: () => void }>({ open: false, onConfirm: () => {} })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -88,14 +90,26 @@ export default function Investments() {
     setSaving(false)
   }
 
-  const handleDelete = async (id: string) => {
-    await investmentsApi.remove(id)
-    await load()
+  const handleDelete = (id: string) => {
+    setConfirmState({
+      open: true,
+      onConfirm: async () => {
+        setConfirmState(s => ({ ...s, open: false }))
+        await investmentsApi.remove(id)
+        await load()
+      },
+    })
   }
 
-  const handleDeleteTx = async (txId: string) => {
-    await investmentsApi.removeTransaction(txId)
-    await load()
+  const handleDeleteTx = (txId: string) => {
+    setConfirmState({
+      open: true,
+      onConfirm: async () => {
+        setConfirmState(s => ({ ...s, open: false }))
+        await investmentsApi.removeTransaction(txId)
+        await load()
+      },
+    })
   }
 
   return (
@@ -230,6 +244,13 @@ export default function Investments() {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmState.open}
+        message={t('delete_confirm')}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(s => ({ ...s, open: false }))}
+      />
 
       {/* Add Investment Modal */}
       {showAdd && (

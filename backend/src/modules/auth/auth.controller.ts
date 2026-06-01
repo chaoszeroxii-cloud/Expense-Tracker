@@ -1,7 +1,7 @@
 import { Controller, Post, Get, Patch, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
 import { AuthService, DEFAULT_WALLETS } from './auth.service'
-import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto, ForgotPasswordDto, ResetPasswordDto } from './auth.dto'
+import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto, ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto } from './auth.dto'
 import { JwtAuthGuard } from './jwt-auth.guard'
 import { Public } from './jwt-auth.guard'
 import { CurrentUser } from './current-user.decorator'
@@ -59,6 +59,13 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   completeOnboarding(@CurrentUser() user: User, @Body() body: { wallets: string[]; lang?: 'th' | 'en' }) {
     return this.service.completeOnboarding(user.id, body.wallets ?? [], body.lang ?? 'th')
+  }
+
+  // PATCH /api/auth/change-password  (protected)
+  @Patch('change-password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(@CurrentUser() user: User, @Body() dto: ChangePasswordDto) {
+    return this.service.changePassword(user.id, dto)
   }
 
   // POST /api/auth/forgot-password  (public, rate-limited)

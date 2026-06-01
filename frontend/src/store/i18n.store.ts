@@ -98,6 +98,7 @@ const dict = {
     send_reset_link:      'Send Reset Link',
     sending:              'Sending…',
     reset_link_sent:      'We have sent a reset link to your email account.',
+    check_spam:           "Don't see it? Check your spam or junk folder.",
     reset_password:       'Reset Password',
     new_password:         'New Password',
     confirm_password:     'Confirm Password',
@@ -105,6 +106,14 @@ const dict = {
     password_reset_success: 'Password reset! Please sign in.',
     back_to_login:        'Back to Sign In',
     invalid_reset_link:   'Invalid or expired reset link',
+
+    // Settings — password
+    security:              'Security',
+    change_password:       'Change Password',
+    set_password:          'Set Password',
+    current_password_label:'Current Password',
+    pw_changed:            'Password changed!',
+    pw_wrong_current:      'Wrong current password',
 
     // Settings
     settings:          'Settings',
@@ -386,6 +395,7 @@ const dict = {
     send_reset_link:      'ส่งลิงก์',
     sending:              'กำลังส่ง…',
     reset_link_sent:      'เราได้ส่งลิงก์ไปยังบัญชีอีเมลของคุณแล้ว',
+    check_spam:           'ไม่เห็นอีเมล? ลองเช็คโฟลเดอร์ Spam หรือ Junk',
     reset_password:       'ตั้งรหัสผ่านใหม่',
     new_password:         'รหัสผ่านใหม่',
     confirm_password:     'ยืนยันรหัสผ่าน',
@@ -393,6 +403,14 @@ const dict = {
     password_reset_success: 'ตั้งรหัสผ่านใหม่สำเร็จ! กรุณาเข้าสู่ระบบ',
     back_to_login:        'กลับไปเข้าสู่ระบบ',
     invalid_reset_link:   'ลิงก์หมดอายุหรือไม่ถูกต้อง',
+
+    // Settings — password
+    security:              'ความปลอดภัย',
+    change_password:       'เปลี่ยนรหัสผ่าน',
+    set_password:          'ตั้งรหัสผ่าน',
+    current_password_label:'รหัสผ่านปัจจุบัน',
+    pw_changed:            'เปลี่ยนรหัสผ่านสำเร็จ!',
+    pw_wrong_current:      'รหัสผ่านปัจจุบันไม่ถูกต้อง',
 
     // Settings
     settings:          'ตั้งค่า',

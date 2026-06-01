@@ -59,7 +59,10 @@ export default function ForgotPasswordPage() {
             <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-100 dark:border-emerald-800
                             text-emerald-700 dark:text-emerald-300 rounded-xl px-4 py-4 text-sm animate-fade-in">
               <Icon path={mdiCheckCircle} size={0.8} className="flex-shrink-0 mt-0.5" />
-              <span>{t('reset_link_sent')}</span>
+              <div className="flex flex-col gap-1">
+                <span>{t('reset_link_sent')}</span>
+                <span className="text-emerald-600 dark:text-emerald-400 opacity-80">{t('check_spam')}</span>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">

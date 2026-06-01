@@ -11,7 +11,7 @@ import axios from 'axios'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { Allocation } from '../allocations/allocation.entity'
-import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto } from './auth.dto'
+import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto, ChangePasswordDto } from './auth.dto'
 
 const SALT_ROUNDS = 12
 
@@ -188,8 +188,23 @@ export class AuthService {
 
   // ── Me ──────────────────────────────────────────────────────
   me(user: User) {
-    const { passwordHash: _, ...safe } = user as any
-    return safe
+    return this.toProfile(user)
+  }
+
+  // ── Change Password ──────────────────────────────────────────
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.users.findOne({ where: { id: userId } })
+    if (!user) throw new UnauthorizedException()
+
+    if (user.passwordHash) {
+      if (!dto.currentPassword) throw new BadRequestException('กรุณากรอกรหัสผ่านปัจจุบัน')
+      const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash)
+      if (!valid) throw new BadRequestException('รหัสผ่านปัจจุบันไม่ถูกต้อง')
+    }
+
+    const hash = await bcrypt.hash(dto.newPassword, SALT_ROUNDS)
+    await this.users.update(userId, { passwordHash: hash })
+    return { message: 'เปลี่ยนรหัสผ่านสำเร็จ' }
   }
 
   // ── Onboarding ──────────────────────────────────────────────
@@ -249,11 +264,15 @@ export class AuthService {
   }
 
   // ── Helpers ─────────────────────────────────────────────────
+  private toProfile(user: User) {
+    const { passwordHash, ...rest } = user as any
+    return { ...rest, hasPassword: passwordHash !== null }
+  }
+
   private signToken(user: User) {
-    const { passwordHash: _, ...profile } = user as any
     return {
       accessToken: this.jwt.sign({ sub: user.id, email: user.email }),
-      user: profile,
+      user: this.toProfile(user),
     }
   }
 }

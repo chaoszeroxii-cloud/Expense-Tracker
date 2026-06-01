@@ -4,6 +4,7 @@ import type { Loan } from '../../types'
 import Icon from '@mdi/react'
 import { mdiPlus, mdiTrashCanOutline, mdiCashMultiple, mdiClose, mdiCheck, mdiArrowTopRight, mdiArrowBottomLeft } from '@mdi/js'
 import { useT, useI18n } from '../../store/i18n.store'
+import ConfirmModal from '../../components/ui/ConfirmModal'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
@@ -27,6 +28,7 @@ export default function Loans() {
   })
   const [payForm, setPayForm] = useState({ amount: '', paidAt: new Date().toISOString().slice(0, 10), note: '' })
   const [saving, setSaving] = useState(false)
+  const [confirmState, setConfirmState] = useState<{ open: boolean; onConfirm: () => void }>({ open: false, onConfirm: () => {} })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -72,9 +74,15 @@ export default function Loans() {
     setSaving(false)
   }
 
-  const handleDelete = async (id: string) => {
-    await loansApi.remove(id)
-    await load()
+  const handleDelete = (id: string) => {
+    setConfirmState({
+      open: true,
+      onConfirm: async () => {
+        setConfirmState(s => ({ ...s, open: false }))
+        await loansApi.remove(id)
+        await load()
+      },
+    })
   }
 
   const openAdd = (dir: 'lent' | 'borrowed') => {
@@ -222,6 +230,13 @@ export default function Loans() {
           })}
         </div>
       )}
+
+      <ConfirmModal
+        open={confirmState.open}
+        message={t('delete_confirm')}
+        onConfirm={confirmState.onConfirm}
+        onCancel={() => setConfirmState(s => ({ ...s, open: false }))}
+      />
 
       {/* Add Modal */}
       {showAdd && (

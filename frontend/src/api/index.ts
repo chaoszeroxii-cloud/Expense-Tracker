@@ -57,6 +57,9 @@ export const authApi = {
 
   facebookVerify: (accessToken: string, email?: string) =>
     http.post('/auth/facebook/verify', { accessToken, ...(email ? { email } : {}) }).then(r => r.data),
+  changePassword: (payload: { currentPassword?: string; newPassword: string }) =>
+    http.patch('/auth/change-password', payload).then(r => r.data),
+
   forgotPassword: (email: string) =>
     http.post('/auth/forgot-password', { email }).then(r => r.data),
 

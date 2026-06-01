@@ -1,9 +1,10 @@
-import { useState, FormEvent, useRef } from 'react'
+import { useState, FormEvent, useRef, useEffect } from 'react'
 import Icon from '@mdi/react'
 import {
   mdiAccount, mdiLogout, mdiPlus, mdiTrashCan,
   mdiPencil, mdiCheck, mdiClose, mdiWeatherNight,
   mdiWeatherSunny, mdiTranslate, mdiWallet, mdiCash,
+  mdiLock, mdiEye, mdiEyeOff,
 } from '@mdi/js'
 import clsx from 'clsx'
 import { authApi, categoriesApi } from '../../api'
@@ -26,10 +27,16 @@ const PRESET_ICONS_INCOME  = MDI_ICON_CATEGORIES.income
 
 export default function Settings() {
   const t = useT()
-  const { user, clearAuth, setAuth } = useAuthStore()
+  const { user, token, clearAuth, setAuth } = useAuthStore()
   const { theme, toggle: toggleTheme } = useThemeStore()
   const { lang, setLang } = useI18n()
   const formRef = useRef<HTMLDivElement>(null)
+
+  // Refresh user data on mount to get up-to-date hasPassword
+  useEffect(() => {
+    if (!token) return
+    authApi.me().then(fresh => setAuth(token, fresh)).catch(() => {})
+  }, [])
 
   // ── Profile ────────────────────────────────────────────────
   const [name, setName]           = useState(user?.name ?? '')
@@ -46,6 +53,42 @@ export default function Settings() {
   const [catColor, setCatColor] = useState('#6366f1')
   const [savingCat, setSavingCat] = useState(false)
 
+  // ── Password ───────────────────────────────────────────────
+  const [pwOpen, setPwOpen]           = useState(false)
+  const [currentPw, setCurrentPw]     = useState('')
+  const [newPw, setNewPw]             = useState('')
+  const [confirmPw, setConfirmPw]     = useState('')
+  const [showCurrentPw, setShowCurrentPw] = useState(false)
+  const [showNewPw, setShowNewPw]         = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
+  const [pwSaving, setPwSaving]       = useState(false)
+  const [pwError, setPwError]         = useState('')
+  const [pwOk, setPwOk]               = useState(false)
+
+  const closePwModal = () => {
+    setPwOpen(false); setCurrentPw(''); setNewPw(''); setConfirmPw('')
+    setPwError(''); setPwOk(false); setShowCurrentPw(false); setShowNewPw(false); setShowConfirmPw(false)
+  }
+
+  const handleChangePassword = async () => {
+    setPwError('')
+    if (newPw !== confirmPw) { setPwError(t('password_mismatch')); return }
+    if (newPw.length < 8) { setPwError(t('min_chars')); return }
+    setPwSaving(true)
+    try {
+      await authApi.changePassword({
+        ...(user?.hasPassword ? { currentPassword: currentPw } : {}),
+        newPassword: newPw,
+      })
+      setPwOk(true)
+      setTimeout(closePwModal, 1500)
+    } catch (err: any) {
+      const msg = err?.response?.data?.message
+      setPwError(typeof msg === 'string' ? msg : t('pw_wrong_current'))
+    } finally { setPwSaving(false) }
+  }
+
+  // ── Confirm ────────────────────────────────────────────────
   const [confirmState, setConfirmState] = useState<{
     open: boolean; message: string; onConfirm: () => void
   }>({ open: false, message: '', onConfirm: () => {} })
@@ -136,6 +179,22 @@ export default function Settings() {
             {profileOk ? t('saved_') : savingProfile ? t('saving_') : t('save_changes')}
           </button>
         </form>
+      </Card>
+
+      {/* ── Security ── */}
+      <Card>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Icon path={mdiLock} size={0.85} className="text-muted-theme" />
+            <span className="text-sm font-medium text-base-theme">{t('security')}</span>
+          </div>
+          <button
+            onClick={() => setPwOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-900/30
+                       text-xs font-semibold text-brand-600 transition-colors">
+            {user?.hasPassword ? t('change_password') : t('set_password')}
+          </button>
+        </div>
       </Card>
 
       {/* ── Appearance ── */}
@@ -300,6 +359,86 @@ export default function Settings() {
         <span>{t('sign_out')}</span>
         <Icon path={mdiLogout} size={0.8} />
       </button>
+      {/* ── Password Modal ── */}
+      {pwOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40"
+             onClick={closePwModal}>
+          <div className="w-full max-w-sm bg-card rounded-3xl p-6 space-y-4 animate-fade-up"
+               onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base-theme">
+                {user?.hasPassword ? t('change_password') : t('set_password')}
+              </h2>
+              <button onClick={closePwModal} className="p-1 text-muted-theme">
+                <Icon path={mdiClose} size={0.9} />
+              </button>
+            </div>
+
+            {user?.hasPassword && (
+              <div className="relative">
+                <input
+                  type={showCurrentPw ? 'text' : 'password'}
+                  placeholder={t('current_password_label')}
+                  value={currentPw}
+                  onChange={e => setCurrentPw(e.target.value)}
+                  className="w-full px-4 py-3 pr-11 rounded-xl border border-theme bg-input
+                             text-sm text-base-theme outline-none focus:border-brand-400 transition-all"
+                />
+                <button type="button" onClick={() => setShowCurrentPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-theme">
+                  <Icon path={showCurrentPw ? mdiEyeOff : mdiEye} size={0.75} />
+                </button>
+              </div>
+            )}
+
+            <div className="relative">
+              <input
+                type={showNewPw ? 'text' : 'password'}
+                placeholder={`${t('new_password')} ${t('min_chars')}`}
+                value={newPw}
+                onChange={e => setNewPw(e.target.value)}
+                className="w-full px-4 py-3 pr-11 rounded-xl border border-theme bg-input
+                           text-sm text-base-theme outline-none focus:border-brand-400 transition-all"
+              />
+              <button type="button" onClick={() => setShowNewPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-theme">
+                <Icon path={showNewPw ? mdiEyeOff : mdiEye} size={0.75} />
+              </button>
+            </div>
+
+            <div className="relative">
+              <input
+                type={showConfirmPw ? 'text' : 'password'}
+                placeholder={t('confirm_password')}
+                value={confirmPw}
+                onChange={e => setConfirmPw(e.target.value)}
+                className="w-full px-4 py-3 pr-11 rounded-xl border border-theme bg-input
+                           text-sm text-base-theme outline-none focus:border-brand-400 transition-all"
+              />
+              <button type="button" onClick={() => setShowConfirmPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-theme">
+                <Icon path={showConfirmPw ? mdiEyeOff : mdiEye} size={0.75} />
+              </button>
+            </div>
+
+            {pwError && (
+              <p className="text-xs text-rose-500 font-medium">{pwError}</p>
+            )}
+
+            <button
+              onClick={handleChangePassword}
+              disabled={pwSaving || !newPw || !confirmPw || (!!user?.hasPassword && !currentPw)}
+              className={clsx(
+                'w-full py-3 rounded-2xl text-sm font-bold text-white transition-colors',
+                pwOk ? 'bg-emerald-500' : 'bg-brand-600 disabled:opacity-40',
+              )}
+            >
+              {pwOk ? `✓ ${t('pw_changed')}` : pwSaving ? t('saving_') : t('save_changes')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         open={confirmState.open}
         message={confirmState.message}

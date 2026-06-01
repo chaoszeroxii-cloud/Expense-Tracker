@@ -86,6 +86,12 @@ const dict = {
     please_wait:       'Please wait…',
     tagline:           'Track every baht, effortlessly',
     privacy_note:      'Your data stays private and secure.',
+    social_or:                'or',
+    continue_google:          'Continue with Google',
+    continue_facebook:        'Continue with Facebook',
+    enter_email_title:        'Enter your email',
+    enter_email_desc:         'Your Google/Facebook account did not include an email. Please enter one to continue.',
+    social_login_failed:      'Social login failed. Please try again.',
 
     // Settings
     settings:          'Settings',
@@ -355,6 +361,12 @@ const dict = {
     please_wait:       'กรุณารอสักครู่…',
     tagline:           'ติดตามทุกบาท ง่ายๆ',
     privacy_note:      'ข้อมูลของคุณปลอดภัยและเป็นส่วนตัว',
+    social_or:                'หรือ',
+    continue_google:          'ดำเนินการต่อด้วย Google',
+    continue_facebook:        'ดำเนินการต่อด้วย Facebook',
+    enter_email_title:        'กรอกอีเมลของคุณ',
+    enter_email_desc:         'บัญชี Google/Facebook ไม่มีอีเมล กรุณากรอกเพื่อดำเนินการต่อ',
+    social_login_failed:      'เข้าสู่ระบบล้มเหลว กรุณาลองอีกครั้ง',
 
     // Settings
     settings:          'ตั้งค่า',

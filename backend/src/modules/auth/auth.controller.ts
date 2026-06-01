@@ -1,6 +1,6 @@
 import { Controller, Post, Get, Patch, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
 import { AuthService, DEFAULT_WALLETS } from './auth.service'
-import { RegisterDto, LoginDto, UpdateProfileDto } from './auth.dto'
+import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto } from './auth.dto'
 import { JwtAuthGuard } from './jwt-auth.guard'
 import { Public } from './jwt-auth.guard'
 import { CurrentUser } from './current-user.decorator'
@@ -23,6 +23,22 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.service.login(dto)
+  }
+
+  // POST /api/auth/google/verify  (public)
+  @Public()
+  @Post('google/verify')
+  @HttpCode(HttpStatus.OK)
+  googleVerify(@Body() dto: GoogleVerifyDto) {
+    return this.service.googleVerify(dto)
+  }
+
+  // POST /api/auth/facebook/verify  (public)
+  @Public()
+  @Post('facebook/verify')
+  @HttpCode(HttpStatus.OK)
+  facebookVerify(@Body() dto: FacebookVerifyDto) {
+    return this.service.facebookVerify(dto)
   }
 
   // GET /api/auth/me  (protected)

@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, MaxLength } from 'class-validator'
+import { IsEmail, IsString, IsOptional, MinLength, MaxLength } from 'class-validator'
 
 export class RegisterDto {
   @IsEmail()
@@ -20,6 +20,24 @@ export class LoginDto {
 
   @IsString()
   password: string
+}
+
+export class GoogleVerifyDto {
+  @IsString()
+  token: string
+
+  @IsOptional()
+  @IsEmail()
+  email?: string
+}
+
+export class FacebookVerifyDto {
+  @IsString()
+  accessToken: string
+
+  @IsOptional()
+  @IsEmail()
+  email?: string
 }
 
 export class UpdateProfileDto {

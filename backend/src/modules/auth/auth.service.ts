@@ -5,10 +5,11 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcrypt'
+import axios from 'axios'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { Allocation } from '../allocations/allocation.entity'
-import { RegisterDto, LoginDto, UpdateProfileDto } from './auth.dto'
+import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto } from './auth.dto'
 
 const SALT_ROUNDS = 12
 
@@ -78,10 +79,95 @@ export class AuthService {
     const user = await this.users.findOne({ where: { email: dto.email } })
     if (!user) throw new UnauthorizedException('Invalid credentials')
 
+    if (!user.passwordHash) throw new UnauthorizedException('Please sign in with Google or Facebook')
+
     const valid = await bcrypt.compare(dto.password, user.passwordHash)
     if (!valid) throw new UnauthorizedException('Invalid credentials')
 
     return this.signToken(user)
+  }
+
+  // ── Google verify ────────────────────────────────────────────
+  async googleVerify(dto: GoogleVerifyDto) {
+    let googleProfile: { sub: string; email?: string; name: string }
+    try {
+      const { data } = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${dto.token}` },
+      })
+      googleProfile = data
+    } catch {
+      throw new UnauthorizedException('Invalid Google token')
+    }
+
+    const email = googleProfile.email || dto.email
+    if (!email) return { requiresEmail: true, name: googleProfile.name }
+
+    return this.handleSocialLogin({
+      providerKey: 'googleId',
+      providerId: googleProfile.sub,
+      email,
+      name: googleProfile.name,
+      authProvider: 'google',
+    })
+  }
+
+  // ── Facebook verify ──────────────────────────────────────────
+  async facebookVerify(dto: FacebookVerifyDto) {
+    let fbProfile: { id: string; email?: string; name: string }
+    try {
+      const { data } = await axios.get(
+        `https://graph.facebook.com/me?fields=id,name,email&access_token=${dto.accessToken}`,
+      )
+      fbProfile = data
+    } catch {
+      throw new UnauthorizedException('Invalid Facebook token')
+    }
+
+    const email = fbProfile.email || dto.email
+    if (!email) return { requiresEmail: true, name: fbProfile.name }
+
+    return this.handleSocialLogin({
+      providerKey: 'facebookId',
+      providerId: fbProfile.id,
+      email,
+      name: fbProfile.name,
+      authProvider: 'facebook',
+    })
+  }
+
+  // ── Social login shared logic ────────────────────────────────
+  private async handleSocialLogin(params: {
+    providerKey: 'googleId' | 'facebookId'
+    providerId: string
+    email: string
+    name: string
+    authProvider: 'google' | 'facebook'
+  }) {
+    const { providerKey, providerId, email, name, authProvider } = params
+
+    // 1. Returning social user
+    let user = await this.users.findOne({ where: { [providerKey]: providerId } as any })
+    if (user) return this.signToken(user)
+
+    // 2. Auto-link: email already exists → link social ID to existing account
+    user = await this.users.findOne({ where: { email } })
+    if (user) {
+      await this.users.update(user.id, { [providerKey]: providerId } as any)
+      user[providerKey] = providerId
+      return this.signToken(user)
+    }
+
+    // 3. Brand new user
+    const partial: Partial<User> = { email, name, authProvider }
+    if (providerKey === 'googleId') partial.googleId = providerId
+    else partial.facebookId = providerId
+    const newUser = await this.users.save(this.users.create(partial as User))
+    await this.categories.save(
+      DEFAULT_CATEGORIES.map(c =>
+        this.categories.create({ ...c, userId: newUser.id, isDefault: true }),
+      ),
+    )
+    return this.signToken(newUser)
   }
 
   // ── Update profile ──────────────────────────────────────────

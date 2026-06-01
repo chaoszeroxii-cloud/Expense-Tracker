@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
   mdiViewDashboard, mdiHistory, mdiWallet,
-  mdiCog, mdiPlus, mdiFinance, mdiRobot, mdiClockMinusOutline,
+  mdiCog, mdiPlus, mdiFinance, mdiRobot, mdiClockMinusOutline, mdiChevronLeft,
 } from '@mdi/js'
 import clsx from 'clsx'
 import { useT } from '../../store/i18n.store'
@@ -24,6 +24,13 @@ export default function Layout() {
   const t = useT()
   const [chatOpen, setChatOpen] = useState(false)
   const [calcOpen, setCalcOpen] = useState(false)
+  const [fabExpanded, setFabExpanded] = useState(false)
+  const [showPulse, setShowPulse] = useState(true)
+
+  useEffect(() => {
+    const timer = setTimeout(() => setShowPulse(false), 6000)
+    return () => clearTimeout(timer)
+  }, [])
 
   return (
     <div className="flex h-dvh bg-app">
@@ -90,24 +97,74 @@ export default function Layout() {
           </div>
         </nav>
 
-        {/* ── Floating work-time calculator button ── */}
+        {/* ── Mobile FABs: peek strip + slide-in buttons ── */}
+        <div className="lg:hidden">
+          {/* Strip toggle — always visible at right edge, large tap zone */}
+          <button
+            onClick={() => setFabExpanded(v => !v)}
+            className="fixed right-0 bottom-28 z-40 flex items-center py-6 pl-2 pr-0"
+            aria-label="Toggle quick actions"
+          >
+            <div className={clsx(
+              'w-3 h-14 rounded-l-full shadow-md',
+              'bg-gradient-to-b from-violet-400 to-emerald-400',
+              'flex items-center justify-center',
+              showPulse && 'animate-pulse',
+            )}>
+              <div className={clsx('transition-transform duration-300', fabExpanded && 'rotate-180')}>
+                <Icon path={mdiChevronLeft} size={0.45} color="white" />
+              </div>
+            </div>
+          </button>
+
+          {/* Violet FAB — slides out from right edge when expanded */}
+          <button
+            onClick={() => setCalcOpen(true)}
+            className={clsx(
+              'fixed bottom-40 right-4 z-40',
+              'w-[52px] h-[52px] rounded-full bg-violet-500 text-white',
+              'shadow-lg shadow-violet-500/40 flex items-center justify-center',
+              'active:scale-95 transition-transform duration-300 ease-in-out',
+              !fabExpanded && 'translate-x-[80px]',
+            )}
+            aria-label="Work Time Calculator"
+          >
+            <Icon path={mdiClockMinusOutline} size={1} color="white" />
+          </button>
+
+          {/* Emerald FAB — slides out from right edge when expanded */}
+          <button
+            onClick={() => setChatOpen(true)}
+            className={clsx(
+              'fixed bottom-24 right-4 z-40',
+              'w-[52px] h-[52px] rounded-full bg-emerald-500 text-white',
+              'shadow-lg shadow-emerald-500/40 flex items-center justify-center',
+              'active:scale-95 transition-transform duration-300 ease-in-out',
+              !fabExpanded && 'translate-x-[80px]',
+            )}
+            aria-label="AI Assistant"
+          >
+            <Icon path={mdiRobot} size={1} color="white" />
+          </button>
+        </div>
+
+        {/* ── Desktop FABs (unchanged) ── */}
         <button
           onClick={() => setCalcOpen(true)}
-          className="fixed bottom-40 right-4 lg:bottom-24 lg:right-6 z-40
+          className="hidden lg:flex fixed bottom-24 right-6 z-40
                      w-[52px] h-[52px] rounded-full bg-violet-500 text-white
-                     shadow-lg shadow-violet-500/40 flex items-center justify-center
+                     shadow-lg shadow-violet-500/40 items-center justify-center
                      active:scale-95 transition-transform duration-150"
           aria-label="Work Time Calculator"
         >
           <Icon path={mdiClockMinusOutline} size={1} color="white" />
         </button>
 
-        {/* ── Floating chat button ── */}
         <button
           onClick={() => setChatOpen(true)}
-          className="fixed bottom-24 right-4 lg:bottom-6 lg:right-6 z-40
-                     w-13 h-13 w-[52px] h-[52px] rounded-full bg-emerald-500 text-white
-                     shadow-lg shadow-emerald-500/40 flex items-center justify-center
+          className="hidden lg:flex fixed bottom-6 right-6 z-40
+                     w-[52px] h-[52px] rounded-full bg-emerald-500 text-white
+                     shadow-lg shadow-emerald-500/40 items-center justify-center
                      active:scale-95 transition-transform duration-150"
           aria-label="AI Assistant"
         >

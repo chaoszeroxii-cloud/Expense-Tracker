@@ -214,15 +214,15 @@ export class AnalyticsService {
         .andWhere("TO_CHAR(e.occurred_at, 'YYYY-MM') = :month", { month })
         .groupBy('e.allocation_id')
         .getRawMany(),
-      // Net inflows: fund + transfer_in minus unallocate reversals
+      // Net inflows: fund + transfer_in minus unallocate/transfer_out reversals
       this.movementRepo
         .createQueryBuilder('m')
         .select([
           'm.allocation_id AS "allocationId"',
-          `SUM(CASE WHEN m.type IN ('fund', 'transfer_in') THEN m.amount WHEN m.type = 'unallocate' THEN -m.amount ELSE 0 END) AS "fundedThisMonth"`,
+          `SUM(CASE WHEN m.type IN ('fund', 'transfer_in') THEN m.amount WHEN m.type IN ('unallocate', 'transfer_out') THEN -m.amount ELSE 0 END) AS "fundedThisMonth"`,
         ])
         .where('m.user_id = :userId', { userId })
-        .andWhere('m.type IN (:...types)', { types: ['fund', 'transfer_in', 'unallocate'] })
+        .andWhere('m.type IN (:...types)', { types: ['fund', 'transfer_in', 'unallocate', 'transfer_out'] })
         .andWhere("TO_CHAR(m.created_at, 'YYYY-MM') = :month", { month })
         .groupBy('m.allocation_id')
         .getRawMany(),

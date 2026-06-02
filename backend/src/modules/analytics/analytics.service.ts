@@ -202,17 +202,18 @@ export class AnalyticsService {
     const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
 
     const [txRows, movRows] = await Promise.all([
-      // Spending from linked categories
+      // Spending: direct allocation_id OR via category→allocation_categories join
       this.repo
         .createQueryBuilder('e')
         .select([
-          'e.allocation_id AS "allocationId"',
+          'COALESCE(e.allocation_id, ac.allocation_id) AS "allocationId"',
           'SUM(CASE WHEN e.type = \'expense\' THEN e.amount ELSE 0 END) AS "spentThisMonth"',
         ])
+        .leftJoin('allocation_categories', 'ac', 'ac.category_id = e.category_id')
         .where('e.user_id = :userId', { userId })
-        .andWhere('e.allocation_id IS NOT NULL')
+        .andWhere('(e.allocation_id IS NOT NULL OR ac.allocation_id IS NOT NULL)')
         .andWhere("TO_CHAR(e.occurred_at, 'YYYY-MM') = :month", { month })
-        .groupBy('e.allocation_id')
+        .groupBy('COALESCE(e.allocation_id, ac.allocation_id)')
         .getRawMany(),
       // Net inflows: fund + transfer_in minus unallocate/transfer_out reversals
       this.movementRepo

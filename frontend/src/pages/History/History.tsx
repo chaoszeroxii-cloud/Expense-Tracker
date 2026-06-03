@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react'
 import Icon from '@mdi/react'
-import { mdiTrashCan, mdiChevronLeft, mdiChevronRight, mdiCalendarMonth, mdiCash, mdiWallet, mdiClose } from '@mdi/js'
+import {
+  mdiTrashCan, mdiChevronLeft, mdiChevronRight, mdiCash, mdiWallet, mdiClose,
+  mdiTrayArrowDown, mdiFileDelimited, mdiFileDocumentOutline, mdiFilePdfBox, mdiLoading,
+} from '@mdi/js'
 import clsx from 'clsx'
 import { useExpenses, currentMonth } from '../../hooks'
 import { expensesApi } from '../../api'
 import { Amount, Empty, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
+import { exportHistory, type ExportFormat } from '../../utils/exportHistory'
 
 function monthOffset(base: string, offset: number): string {
   const [y, m] = base.split('-').map(Number)
@@ -34,6 +38,30 @@ export default function History() {
   const askConfirm = (message: string, onConfirm: () => void) =>
     setConfirmState({ open: true, message, onConfirm })
   const closeConfirm = () => setConfirmState(s => ({ ...s, open: false }))
+
+  // ── Export ───────────────────────────────────────────────────
+  const [showExport, setShowExport]   = useState(false)
+  const [exportFrom, setExportFrom]   = useState(currentMonth())
+  const [exportTo, setExportTo]       = useState(currentMonth())
+  const [exportFmt, setExportFmt]     = useState<ExportFormat>('csv')
+  const [exporting, setExporting]     = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const handleExport = async () => {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const [from, to] = exportFrom <= exportTo ? [exportFrom, exportTo] : [exportTo, exportFrom]
+      const rows = await expensesApi.list({ from, to })
+      if (!rows.length) { setExportError(t('export_empty')); return }
+      await exportHistory(exportFmt, rows, { from, to, lang })
+      setShowExport(false)
+    } catch {
+      setExportError(t('export_empty'))
+    } finally {
+      setExporting(false)
+    }
+  }
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -86,7 +114,14 @@ export default function History() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <h1 className="text-2xl font-extrabold text-base-theme tracking-tight">{t('history')}</h1>
-        <Icon path={mdiCalendarMonth} size={0.85} className="text-muted-theme" />
+        <button
+          onClick={() => { setExportError(null); setShowExport(true) }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-900/20
+                     text-brand-600 text-xs font-semibold hover:bg-brand-100 dark:hover:bg-brand-900/30 transition-colors"
+        >
+          <Icon path={mdiTrayArrowDown} size={0.7} />
+          {t('export')}
+        </button>
       </div>
 
       {/* Month navigator */}
@@ -279,6 +314,98 @@ export default function History() {
                 )
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExport && (
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40"
+          onClick={() => !exporting && setShowExport(false)}>
+          <div className="w-full max-w-sm bg-card rounded-3xl p-5 animate-fade-up"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-base-theme flex items-center gap-2">
+                <Icon path={mdiTrayArrowDown} size={0.8} /> {t('export_history')}
+              </h3>
+              <button onClick={() => !exporting && setShowExport(false)} className="p-1 text-muted-theme">
+                <Icon path={mdiClose} size={0.9} />
+              </button>
+            </div>
+
+            {/* Month range */}
+            <div className="flex gap-3 mb-4">
+              <label className="flex-1">
+                <span className="block text-xs font-semibold text-muted-theme mb-1">{t('export_from')}</span>
+                <input
+                  type="month"
+                  value={exportFrom}
+                  max={currentMonth()}
+                  onChange={e => setExportFrom(e.target.value)}
+                  className="w-full bg-[var(--input)] border border-theme rounded-xl px-3 py-2 text-sm text-base-theme"
+                />
+              </label>
+              <label className="flex-1">
+                <span className="block text-xs font-semibold text-muted-theme mb-1">{t('export_to')}</span>
+                <input
+                  type="month"
+                  value={exportTo}
+                  max={currentMonth()}
+                  onChange={e => setExportTo(e.target.value)}
+                  className="w-full bg-[var(--input)] border border-theme rounded-xl px-3 py-2 text-sm text-base-theme"
+                />
+              </label>
+            </div>
+
+            {/* Format picker */}
+            <p className="text-xs font-semibold text-muted-theme mb-2">{t('export_format')}</p>
+            <div className="space-y-2 mb-5">
+              {([
+                { id: 'csv', icon: mdiFileDelimited, label: 'CSV', desc: t('export_csv_desc') },
+                { id: 'txt', icon: mdiFileDocumentOutline, label: 'TXT', desc: t('export_txt_desc') },
+                { id: 'pdf', icon: mdiFilePdfBox, label: 'PDF', desc: t('export_pdf_desc') },
+              ] as const).map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setExportFmt(f.id)}
+                  className={clsx(
+                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left',
+                    exportFmt === f.id
+                      ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20'
+                      : 'border-theme hover:bg-[var(--input)]',
+                  )}
+                >
+                  <Icon path={f.icon} size={0.9} className={exportFmt === f.id ? 'text-brand-600' : 'text-muted-theme'} />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-base-theme">{f.label}</p>
+                    <p className="text-xs text-muted-theme">{f.desc}</p>
+                  </div>
+                  <span className={clsx(
+                    'w-4 h-4 rounded-full border-2',
+                    exportFmt === f.id ? 'border-brand-500 bg-brand-500' : 'border-slate-300 dark:border-slate-600',
+                  )} />
+                </button>
+              ))}
+            </div>
+
+            {exportError && (
+              <p className="text-xs text-rose-500 font-medium mb-3 text-center">{exportError}</p>
+            )}
+
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-brand-600 text-white
+                         font-semibold text-sm hover:bg-brand-700 disabled:opacity-60 transition-colors"
+            >
+              {exporting ? (
+                <><Icon path={mdiLoading} size={0.8} className="animate-spin" /> {t('exporting')}</>
+              ) : (
+                <><Icon path={mdiTrayArrowDown} size={0.8} /> {t('export_download')}</>
+              )}
+            </button>
           </div>
         </div>
       )}

@@ -26,7 +26,13 @@ export class ExpensesService {
 
     if (query.type)       qb.andWhere('e.type = :type', { type: query.type })
     if (query.categoryId) qb.andWhere('e.category_id = :categoryId', { categoryId: query.categoryId })
-    if (query.month) {
+    if (query.from && query.to) {
+      // Inclusive month range, e.g. 2026-01 → 2026-06
+      const [lo, hi] = query.from <= query.to
+        ? [query.from, query.to]
+        : [query.to, query.from]
+      qb.andWhere("TO_CHAR(e.occurred_at, 'YYYY-MM') BETWEEN :lo AND :hi", { lo, hi })
+    } else if (query.month) {
       qb.andWhere("TO_CHAR(e.occurred_at, 'YYYY-MM') = :month", { month: query.month })
     } else if (query.year) {
       qb.andWhere("TO_CHAR(e.occurred_at, 'YYYY') = :year", { year: query.year })

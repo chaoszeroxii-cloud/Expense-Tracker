@@ -93,7 +93,7 @@ export const analyticsApi = {
 
 // ── Expenses ─────────────────────────────────────────────────
 export const expensesApi = {
-  list: (params?: { month?: string; type?: string; categoryId?: string }) =>
+  list: (params?: { month?: string; from?: string; to?: string; type?: string; categoryId?: string }) =>
     http.get<Expense[]>('/expenses', { params }).then(r => r.data),
 
   create: (payload: CreateExpensePayload) =>

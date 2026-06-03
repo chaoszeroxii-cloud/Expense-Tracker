@@ -85,4 +85,14 @@ export class QueryExpenseDto {
   @IsOptional()
   @IsString()
   year?: string
+
+  // Inclusive month range (YYYY-MM). When both are set they take
+  // precedence over `month`/`year` and return everything in between.
+  @IsOptional()
+  @IsString()
+  from?: string
+
+  @IsOptional()
+  @IsString()
+  to?: string
 }

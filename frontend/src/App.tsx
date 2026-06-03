@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { SpeedInsights } from '@vercel/speed-insights/react'
 import Layout from './components/layout/Layout'
 import PrivateRoute, { AdminRoute } from './components/layout/PrivateRoute'
 import Dashboard from './pages/Dashboard/Dashboard'
@@ -35,6 +36,7 @@ function Lazy({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
+      <SpeedInsights />
       <Routes>
         {/* Public */}
         <Route path="/login" element={<Lazy><AuthPage /></Lazy>} />

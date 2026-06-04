@@ -547,7 +547,7 @@ export class ChatService {
   private async streamFromOpenRouter(
     messages: any[],
     onChunk: (text: string) => void,
-    toolChoice: 'auto' | 'none' = 'auto',
+    toolChoice: 'auto' | 'none' | 'required' = 'auto',
   ): Promise<{ content: string; toolCalls: any[] | null; generationId: string | null }> {
     const apiKey = process.env.OPENROUTER_API_KEY
     if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured')
@@ -702,16 +702,21 @@ export class ChatService {
       if (lastUserIdx !== -1) currentMessages[lastUserIdx] = { role: 'user', content: messageForAI }
     }
 
+    const CONFIRM_PATTERN = /^(ใช่|ยืนยัน|ok|okay|ตกลง|โอเค|yes|confirm|บันทึกเลย|ทำเลย|ได้เลย|ใช่เลย|เค|ได้|อืม|เออ|อา)$/i
+    const isConfirmation = CONFIRM_PATTERN.test(userMessage.trim())
+
     let fullResponse = ''
     const uiMarkers: string[] = []
     const generationIds: string[] = []
 
     try {
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+        // Force tool call on confirmation messages so model cannot hallucinate "done" without calling a tool
+        const firstRoundChoice = round === 0 && isConfirmation ? 'required' : 'auto'
         const { content, toolCalls, generationId } = await this.streamFromOpenRouter(
           currentMessages,
           chunk => this.sendSSEChunk(res, chunk),
-          'auto',
+          firstRoundChoice,
         )
         if (generationId) generationIds.push(generationId)
 
@@ -1356,9 +1361,9 @@ UI: change_theme, navigate_to
 ### WRITE operations (ยกเว้น delete)
 1. เรียก tool อ่านข้อมูลที่จำเป็นก่อน (ถ้ายังไม่รู้)
 2. อธิบายสิ่งที่จะทำ + รายละเอียดครบ — แล้วรอ user ยืนยัน
-3. เมื่อ user ยืนยัน ("ยืนยัน" / "ใช่" / "ok" / "ตกลง") → **ต้อง call tool ทันทีในรอบนั้น** ห้ามตอบว่าทำแล้วโดยไม่ได้ call tool จริง
+3. เมื่อ user ยืนยัน ("ยืนยัน" / "ใช่" / "ok" / "ตกลง") → **ต้อง call tool ทันทีในรอบนั้น** ห้ามตอบว่าทำแล้วโดยไม่ได้ call tool จริง **เด็ดขาด**
 4. ถ้าต้องทำหลาย tool ต่อเนื่อง (เช่น add_investment แล้ว add_investment_transaction) → call ทั้งหมดพร้อมกันใน round เดียวเมื่อ user ยืนยัน อย่าแยกเป็นหลาย round
-5. ห้าม claim success โดยไม่มี tool result ยืนยัน — ถ้า tool return error ต้องบอก user ตรงๆ
+5. **ห้ามใช้คำว่า "บันทึกเรียบร้อย" "✅" "สำเร็จ" หรือ claim success ใดๆ โดยไม่มี tool result ยืนยัน** — ถ้า tool return error ต้องบอก user ตรงๆ ห้าม fabricate ผลลัพธ์
 
 ### DELETE operations (double confirmation)
 1. บอกว่าจะลบอะไร รายละเอียดครบ

@@ -1,16 +1,20 @@
 import { useState, useEffect } from 'react'
 import Icon from '@mdi/react'
 import {
-  mdiTrashCan, mdiChevronLeft, mdiChevronRight, mdiCash, mdiWallet, mdiClose,
+  mdiTrashCan, mdiPencilOutline, mdiChevronLeft, mdiChevronRight, mdiCash, mdiWallet, mdiClose,
   mdiTrayArrowDown, mdiFileDelimited, mdiFileDocumentOutline, mdiFilePdfBox, mdiLoading,
+  mdiCalendar,
 } from '@mdi/js'
 import clsx from 'clsx'
-import { useExpenses, currentMonth } from '../../hooks'
+import { useExpenses, useCategories, currentMonth } from '../../hooks'
 import { expensesApi } from '../../api'
 import { Amount, Empty, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
 import { exportHistory, type ExportFormat } from '../../utils/exportHistory'
+import type { Expense } from '../../types'
+
+const QUICK = [5, 10, 20, 50, 100, 200, 500, 1000]
 
 function monthOffset(base: string, offset: number): string {
   const [y, m] = base.split('-').map(Number)
@@ -31,9 +35,44 @@ export default function History() {
   const [showPicker, setShowPicker] = useState(false)
   const [pickerYear, setPickerYear] = useState(() => parseMonth(currentMonth()).year)
   const { data, loading, refetch } = useExpenses(month)
+  const { data: categories } = useCategories()
   const [confirmState, setConfirmState] = useState<{
     open: boolean; message: string; onConfirm: () => void
   }>({ open: false, message: '', onConfirm: () => {} })
+
+  // ── Edit ─────────────────────────────────────────────────────
+  const [editExpense,    setEditExpense]    = useState<Expense | null>(null)
+  const [editAmount,     setEditAmount]     = useState('')
+  const [editCatId,      setEditCatId]      = useState('')
+  const [editNote,       setEditNote]       = useState('')
+  const [editDate,       setEditDate]       = useState('')
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  const openEdit = (e: Expense) => {
+    setEditExpense(e)
+    setEditAmount(String(e.amount))
+    setEditCatId(e.categoryId)
+    setEditNote(e.note ?? '')
+    setEditDate(e.occurredAt.slice(0, 10))
+  }
+  const closeEdit = () => { setEditExpense(null); setEditSubmitting(false) }
+
+  const handleEditSave = async () => {
+    if (!editExpense || !editAmount || !editCatId) return
+    setEditSubmitting(true)
+    try {
+      await expensesApi.update(editExpense.id, {
+        amount: Number(editAmount),
+        categoryId: editCatId,
+        note: editNote || undefined,
+        occurredAt: new Date(editDate).toISOString(),
+      })
+      closeEdit()
+      refetch()
+    } catch { setEditSubmitting(false) }
+  }
+
+  const editFilteredCats = categories?.filter(c => c.type === editExpense?.type) ?? []
 
   const askConfirm = (message: string, onConfirm: () => void) =>
     setConfirmState({ open: true, message, onConfirm })
@@ -238,14 +277,24 @@ export default function History() {
 
                       <Amount value={e.amount} type={e.type} size="md" />
 
-                      <button
-                        onClick={() => handleDelete(e.id)}
-                        className="ml-1 p-1.5 rounded-lg text-slate-300 dark:text-slate-600
-                                   hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20
-                                   transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Icon path={mdiTrashCan} size={0.65} />
-                      </button>
+                      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => openEdit(e)}
+                          className="p-1.5 rounded-lg text-slate-300 dark:text-slate-600
+                                     hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20
+                                     transition-colors"
+                        >
+                          <Icon path={mdiPencilOutline} size={0.65} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(e.id)}
+                          className="p-1.5 rounded-lg text-slate-300 dark:text-slate-600
+                                     hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20
+                                     transition-colors"
+                        >
+                          <Icon path={mdiTrashCan} size={0.65} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -406,6 +455,136 @@ export default function History() {
                 <><Icon path={mdiTrayArrowDown} size={0.8} /> {t('export_download')}</>
               )}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editExpense && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40"
+          onClick={() => !editSubmitting && closeEdit()}
+        >
+          <div
+            className="w-full max-w-sm bg-card rounded-3xl animate-fade-up overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-theme">
+              <h3 className="font-bold text-base-theme flex items-center gap-2">
+                <Icon path={mdiPencilOutline} size={0.75} className="text-brand-500" />
+                {t('edit_transaction')}
+              </h3>
+              <button onClick={closeEdit} className="p-1 text-muted-theme">
+                <Icon path={mdiClose} size={0.9} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto max-h-[72vh] px-5 py-4 space-y-4">
+              {/* Type badge (read-only) */}
+              <span className={clsx(
+                'inline-flex px-3 py-1 rounded-full text-xs font-semibold',
+                editExpense.type === 'expense'
+                  ? 'bg-rose-50 text-rose-500 dark:bg-rose-900/20'
+                  : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20',
+              )}>
+                {editExpense.type === 'expense' ? t('expense') : t('income_tab')}
+              </span>
+
+              {/* Amount */}
+              <div className="bg-[var(--input)] rounded-2xl px-4 py-3">
+                <label className="text-xs font-semibold text-muted-theme block mb-1 uppercase tracking-wide">
+                  {t('amount')}
+                </label>
+                <input
+                  type="number" inputMode="decimal" value={editAmount}
+                  onChange={e => setEditAmount(e.target.value)} min={0}
+                  className="w-full text-3xl font-extrabold text-base-theme bg-transparent outline-none
+                             placeholder:text-slate-300 dark:placeholder:text-slate-600 tracking-tight"
+                />
+                <div className="flex gap-1.5 mt-2 flex-wrap">
+                  {QUICK.map(v => (
+                    <button key={v} type="button"
+                      onClick={() => setEditAmount(p => p ? String(Number(p) + v) : String(v))}
+                      className="px-2.5 py-1 rounded-full bg-brand-50 dark:bg-brand-900/30
+                                 text-brand-600 text-xs font-semibold active:bg-brand-100 transition-colors">
+                      +{v}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => setEditAmount('')}
+                    className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700
+                               text-muted-theme text-xs font-semibold transition-colors">
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="text-xs font-semibold text-muted-theme block mb-2 uppercase tracking-wide px-1">
+                  {t('category')}
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {editFilteredCats.map(cat => (
+                    <button key={cat.id} type="button" onClick={() => setEditCatId(cat.id)}
+                      className={clsx(
+                        'flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border-2 transition-all bg-card',
+                        editCatId === cat.id
+                          ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20 shadow-sm'
+                          : 'border-transparent',
+                      )}>
+                      <div className="w-8 h-8 flex items-center justify-center rounded-xl">
+                        <IconDisplay icon={cat.icon} color={cat.color} size="lg" />
+                      </div>
+                      <span className="text-[10px] font-semibold text-muted-theme leading-tight text-center px-1 truncate w-full">
+                        {cat.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Date */}
+              <div className="bg-[var(--input)] rounded-2xl px-4 py-3">
+                <label className="text-xs font-semibold text-muted-theme block mb-1 uppercase tracking-wide">
+                  {t('date')}
+                </label>
+                <div className="flex items-center gap-3">
+                  <Icon path={mdiCalendar} size={0.8} color="#818cf8" />
+                  <input type="date" value={editDate}
+                    onChange={e => setEditDate(e.target.value)}
+                    max={new Date().toISOString().slice(0, 10)}
+                    className="flex-1 text-base-theme font-semibold bg-transparent outline-none" />
+                </div>
+              </div>
+
+              {/* Note */}
+              <div className="bg-[var(--input)] rounded-2xl px-4 py-3">
+                <label className="text-xs font-semibold text-muted-theme block mb-1 uppercase tracking-wide">
+                  {t('note_optional')}
+                </label>
+                <input type="text" placeholder={t('note_placeholder')} value={editNote}
+                  onChange={e => setEditNote(e.target.value)} maxLength={200}
+                  className="w-full text-base-theme font-medium bg-transparent outline-none placeholder:text-muted-theme" />
+              </div>
+
+              {/* Save */}
+              <button
+                onClick={handleEditSave}
+                disabled={editSubmitting || !editAmount || !editCatId}
+                className={clsx(
+                  'w-full py-3.5 rounded-2xl font-bold text-white text-sm transition-all active:scale-[0.98]',
+                  editSubmitting || !editAmount || !editCatId
+                    ? 'bg-slate-300 dark:bg-slate-700 cursor-not-allowed'
+                    : editExpense.type === 'expense'
+                      ? 'bg-brand-600 hover:bg-brand-700'
+                      : 'bg-emerald-500 hover:bg-emerald-600',
+                )}>
+                {editSubmitting
+                  ? t('updating')
+                  : editExpense.type === 'expense' ? t('update_expense') : t('update_income')}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -44,6 +44,8 @@ const dict = {
     insufficient_funds:  'Not enough unallocated balance',
     move_success:        'Funds moved!',
     all_allocated:       'All funds are allocated',
+    over_allocated:      'Over-allocated',
+    over_allocated_desc: 'Your wallets hold more than your real balance. Return some funds from a wallet to fix this.',
 
     // Add Expense
     add_transaction:   'Add Transaction',
@@ -356,6 +358,8 @@ const dict = {
     insufficient_funds:  'ยอดเงินรอจัดสรรไม่พอ',
     move_success:        'ย้ายเงินสำเร็จ!',
     all_allocated:       'เงินทั้งหมดจัดสรรแล้ว',
+    over_allocated:      'จัดสรรเกินจริง',
+    over_allocated_desc: 'ซองถือเงินรวมมากกว่ายอดเงินจริง — ดึงเงินคืนจากซองเพื่อแก้ไข',
 
     // Add Expense
     add_transaction:   'เพิ่มรายการ',

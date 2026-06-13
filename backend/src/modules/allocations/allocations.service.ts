@@ -89,9 +89,12 @@ export class AllocationsService {
     const unallocated = Number(user.totalBalance) - totalAllocated
 
     if (amount > unallocated) {
-      throw new BadRequestException(
-        `Insufficient unallocated balance. Available: ฿${unallocated.toFixed(2)}`,
-      )
+      // Negative unallocated = wallets hold more than the real balance.
+      // The user must return funds from a wallet before allocating more.
+      const message = unallocated < 0
+        ? `Over-allocated by ฿${Math.abs(unallocated).toFixed(2)}. Return funds from a wallet before allocating more.`
+        : `Insufficient unallocated balance. Available: ฿${unallocated.toFixed(2)}`
+      throw new BadRequestException(message)
     }
 
     // Credit the wallet — no totalBalance change needed

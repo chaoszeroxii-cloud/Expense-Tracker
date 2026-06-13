@@ -10,6 +10,7 @@ import {
   mdiPencilOutline,
   mdiSwapHorizontal,
   mdiArrowLeft,
+  mdiAlertCircleOutline,
 } from "@mdi/js";
 import clsx from "clsx";
 import {
@@ -106,13 +107,21 @@ function BalanceOverview({ balance }: { balance: BalanceSummary }) {
         <span
           className={clsx(
             "flex items-center gap-1.5",
-            unalloc > 0 ? "text-amber-500" : "text-muted-theme",
+            unalloc < 0
+              ? "text-rose-500"
+              : unalloc > 0
+                ? "text-amber-500"
+                : "text-muted-theme",
           )}
         >
           <span
             className={clsx(
               "w-2 h-2 rounded-full inline-block",
-              unalloc > 0 ? "bg-amber-400" : "bg-slate-300 dark:bg-slate-600",
+              unalloc < 0
+                ? "bg-rose-400"
+                : unalloc > 0
+                  ? "bg-amber-400"
+                  : "bg-slate-300 dark:bg-slate-600",
             )}
           />
           {t("unallocated")} ฿{fmt(unalloc)}
@@ -323,6 +332,37 @@ function UnallocatedBanner({
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Over-allocated Warning Banner ─────────────────────────────
+// Shown when wallets collectively hold MORE than the real total balance,
+// i.e. unallocatedBalance < 0. User must return funds from a wallet to fix.
+function OverAllocatedWarning({ amount }: { amount: number }) {
+  const t = useT();
+  return (
+    <div className="mx-5 mb-4 animate-fade-up">
+      <div
+        className="rounded-2xl bg-rose-50 dark:bg-rose-900/20
+                   border border-rose-200 dark:border-rose-700
+                   px-4 py-3 flex items-start gap-3"
+      >
+        <div
+          className="w-9 h-9 rounded-xl bg-rose-100 dark:bg-rose-800/50
+                     flex items-center justify-center flex-shrink-0"
+        >
+          <Icon path={mdiAlertCircleOutline} size={0.75} color="#f43f5e" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-rose-700 dark:text-rose-300">
+            {t("over_allocated")} ฿{fmt(amount)}
+          </p>
+          <p className="text-xs text-rose-500 dark:text-rose-400 mt-0.5">
+            {t("over_allocated_desc")}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -721,19 +761,23 @@ export default function AllocationWallets() {
 
   const enriched = enrich(allocations, summaries ?? []);
   const unallocated = balance?.unallocatedBalance ?? 0;
+  // < -0.005 → genuinely over-allocated (ignore float rounding noise near 0)
+  const overAllocated = unallocated < -0.005;
+  const fullyAllocated = !overAllocated && unallocated <= 0;
 
   return (
     <Card padding={false} className="overflow-hidden">
       {/* Balance overview */}
       {balance && <BalanceOverview balance={balance} />}
 
-      {/* Unallocated funds banner (only when there's money to distribute) */}
+      {/* Unallocated funds banner (positive) OR over-allocated warning (negative) */}
       <div className="pt-4">
         <UnallocatedBanner
           amount={unallocated}
           allocations={enriched}
           onMoved={refetchAll}
         />
+        {overAllocated && <OverAllocatedWarning amount={-unallocated} />}
       </div>
 
       {/* Wallet list */}
@@ -757,8 +801,8 @@ export default function AllocationWallets() {
         </ul>
       </div>
 
-      {/* Footer: all-allocated state */}
-      {unallocated <= 0 && balance && balance.totalBalance > 0 && (
+      {/* Footer: all-allocated state (only when truly balanced, not over-allocated) */}
+      {fullyAllocated && balance && balance.totalBalance > 0 && (
         <div className="flex items-center justify-center gap-1.5 py-3 border-t border-theme">
           <Icon path={mdiProgressCheck} size={0.6} color="#10b981" />
           <p className="text-xs text-emerald-500 font-semibold">

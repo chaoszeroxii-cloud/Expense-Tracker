@@ -257,6 +257,7 @@ function UnallocatedBanner({
                 <input
                   type="number"
                   inputMode="decimal"
+                  step="0.01"
                   min={1}
                   max={amount}
                   placeholder={t("move_amount_ph")}
@@ -536,7 +537,7 @@ function WalletRow({
           <div className="flex gap-2">
             <div className="flex-1 relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-theme">฿</span>
-              <input type="number" inputMode="decimal" min={1} max={unallocated} placeholder="0"
+              <input type="number" inputMode="decimal" step="0.01" min={1} max={unallocated} placeholder="0"
                 value={fundAmt} onChange={(e) => { setFundAmt(e.target.value); setFundErr(""); }}
                 className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
                            text-sm font-semibold text-base-theme outline-none focus:border-brand-400 transition-all" />
@@ -628,7 +629,7 @@ function WalletRow({
               <div className="flex gap-2">
                 <div className="flex-1 relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-theme">฿</span>
-                  <input type="number" inputMode="decimal" min={1} max={walletBalance} placeholder="0"
+                  <input type="number" inputMode="decimal" step="0.01" min={1} max={walletBalance} placeholder="0"
                     value={adjAmt} onChange={(e) => { setAdjAmt(e.target.value); setAdjErr(""); }}
                     className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
                                text-sm font-semibold text-base-theme outline-none focus:border-indigo-400 transition-all" />
@@ -671,7 +672,7 @@ function WalletRow({
               <div className="flex gap-2">
                 <div className="flex-1 relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-theme">฿</span>
-                  <input type="number" inputMode="decimal" min={1} max={walletBalance} placeholder="0"
+                  <input type="number" inputMode="decimal" step="0.01" min={1} max={walletBalance} placeholder="0"
                     value={adjAmt} onChange={(e) => { setAdjAmt(e.target.value); setAdjErr(""); }}
                     className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
                                text-sm font-semibold text-base-theme outline-none focus:border-amber-400 transition-all" />

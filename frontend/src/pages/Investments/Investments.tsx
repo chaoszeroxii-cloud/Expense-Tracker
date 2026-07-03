@@ -294,11 +294,11 @@ export default function Investments() {
                 { value: 'dividend', label: t('tx_dividend') },
               ]}
             />
-            <input type="number" placeholder={t('amount_baht')} value={txForm.amount} onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
+            <input type="number" step="0.01" placeholder={t('amount_baht')} value={txForm.amount} onChange={e => setTxForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none" />
-            <input type="number" placeholder={t('units_optional')} value={txForm.units} onChange={e => setTxForm(f => ({ ...f, units: e.target.value }))}
+            <input type="number" step="any" placeholder={t('units_optional')} value={txForm.units} onChange={e => setTxForm(f => ({ ...f, units: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none" />
-            <input type="number" placeholder={t('nav_optional')} value={txForm.navPrice} onChange={e => setTxForm(f => ({ ...f, navPrice: e.target.value }))}
+            <input type="number" step="any" placeholder={t('nav_optional')} value={txForm.navPrice} onChange={e => setTxForm(f => ({ ...f, navPrice: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none" />
             <div>
               <label className="text-xs text-muted-theme mb-1 block">{t('date')}</label>

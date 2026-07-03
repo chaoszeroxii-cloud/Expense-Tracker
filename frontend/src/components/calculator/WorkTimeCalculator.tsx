@@ -137,6 +137,7 @@ export default function WorkTimeCalculator({ onClose }: Props) {
               <input
                 type="number"
                 inputMode="decimal"
+                step="0.01"
                 placeholder={t('wt_price_ph')}
                 value={price}
                 onChange={e => setPrice(e.target.value)}
@@ -202,6 +203,7 @@ export default function WorkTimeCalculator({ onClose }: Props) {
                 <input
                   type="number"
                   inputMode="decimal"
+                  step={key === 'salary' ? '0.01' : '1'}
                   placeholder={placeholder}
                   min={min}
                   value={draft[key] === 0 ? '' : draft[key]}

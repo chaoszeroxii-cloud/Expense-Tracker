@@ -270,7 +270,7 @@ export default function Loans() {
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
             />
             <input
-              type="number" placeholder={t('amount_baht')}
+              type="number" step="0.01" placeholder={t('amount_baht')}
               value={form.amount}
               onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
@@ -310,7 +310,7 @@ export default function Loans() {
               <button onClick={() => setShowPayment(null)} className="p-1 text-muted-theme"><Icon path={mdiClose} size={0.9} /></button>
             </div>
             <input
-              type="number" placeholder={t('amount_label')}
+              type="number" step="0.01" placeholder={t('amount_label')}
               value={payForm.amount}
               onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"

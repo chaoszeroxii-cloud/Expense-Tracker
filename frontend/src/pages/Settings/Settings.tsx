@@ -191,7 +191,7 @@ export default function Settings() {
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-theme">฿</span>
               <input
-                type="number" inputMode="decimal" min={0} placeholder="0"
+                type="number" inputMode="decimal" step="0.01" min={0} placeholder="0"
                 value={expectedIncome} onChange={e => setExpectedIncome(e.target.value)}
                 className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-theme bg-input
                            text-sm font-medium text-base-theme outline-none

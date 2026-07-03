@@ -497,7 +497,7 @@ export default function History() {
                   {t('amount')}
                 </label>
                 <input
-                  type="number" inputMode="decimal" value={editAmount}
+                  type="number" inputMode="decimal" step="0.01" value={editAmount}
                   onChange={e => setEditAmount(e.target.value)} min={0}
                   className="w-full text-3xl font-extrabold text-base-theme bg-transparent outline-none
                              placeholder:text-slate-300 dark:placeholder:text-slate-600 tracking-tight"

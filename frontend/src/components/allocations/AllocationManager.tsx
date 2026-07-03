@@ -300,7 +300,7 @@ export default function AllocationManager() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-base-theme truncate">{a.name}</p>
                     <p className="text-xs text-muted-theme">
-                      ฿{Number(a.balance).toLocaleString()} · {(a.categories.length + a.incomeCategories.length)} {(a.categories.length + a.incomeCategories.length)!==1?t('categorys_pl'):t('categorys')}
+                      ฿{Number(a.balance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {(a.categories.length + a.incomeCategories.length)} {(a.categories.length + a.incomeCategories.length)!==1?t('categorys_pl'):t('categorys')}
                     </p>
                   </div>
                   <button onClick={() => setExpanded(expanded===a.id?null:a.id)}

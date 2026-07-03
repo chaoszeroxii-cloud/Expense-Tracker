@@ -6,12 +6,23 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { User } from '../users/user.entity'
 import { AllocationsService } from './allocations.service'
-import { CreateAllocationDto, UpdateAllocationDto, MoveMoneyDto, TransferMoneyDto } from './allocation.dto'
+import { CreateAllocationDto, UpdateAllocationDto, MoveMoneyDto, TransferMoneyDto, ApplyPlanDto } from './allocation.dto'
 
 @Controller('allocations')
 @UseGuards(JwtAuthGuard)
 export class AllocationsController {
   constructor(private readonly service: AllocationsService) {}
+
+  // ── Apply Last Month's Plan (static routes — keep above ':id' routes) ──
+  @Get('plans/preview')
+  previewApplyPlan(@CurrentUser() user: User) {
+    return this.service.previewApplyPlan(user.id)
+  }
+
+  @Post('plans/apply')
+  applyPlan(@Body() dto: ApplyPlanDto, @CurrentUser() user: User) {
+    return this.service.applyPlan(user.id, dto.amounts)
+  }
 
   @Get()
   findAll(@CurrentUser() user: User) {

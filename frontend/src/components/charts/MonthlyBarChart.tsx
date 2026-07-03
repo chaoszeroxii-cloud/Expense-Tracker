@@ -15,7 +15,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       <p className="font-semibold text-muted-theme mb-1">{label}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} style={{ color: p.color }} className="font-bold">
-          ฿{Number(p.value).toLocaleString()}
+          ฿{Number(p.value).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
       ))}
     </div>

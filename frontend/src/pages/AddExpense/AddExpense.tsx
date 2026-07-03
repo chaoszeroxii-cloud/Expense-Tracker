@@ -10,6 +10,8 @@ import { expensesApi } from '../../api'
 import { useCategories, useAllocations } from '../../hooks'
 import { IconDisplay } from '../../components/ui'
 import { useT } from '../../store/i18n.store'
+import { useAuthStore } from '../../store/auth.store'
+import { round2 } from '../../utils/money'
 import type { EntryType } from '../../types'
 
 const QUICK = [5, 10, 20, 50, 100, 200, 500, 1000]
@@ -19,6 +21,7 @@ export default function AddExpense() {
   const t = useT()
   const { data: categories, loading: loadingCats } = useCategories()
   const { data: allocations }                       = useAllocations()
+  const expectedMonthlyIncome = useAuthStore(s => s.user?.expectedMonthlyIncome)
 
   const [type,       setType]   = useState<EntryType>('expense')
   const [amount,     setAmount] = useState('')
@@ -40,7 +43,13 @@ export default function AddExpense() {
     ? allocations?.find(a => a.incomeCategories?.some(c => c.id === categoryId))
     : null
 
-  const handleTypeChange = (tp: EntryType) => { setType(tp); setCatId('') }
+  const handleTypeChange = (tp: EntryType) => {
+    setType(tp)
+    setCatId('')
+    if (tp === 'income' && !amount && expectedMonthlyIncome) {
+      setAmount(Number(expectedMonthlyIncome).toFixed(2))
+    }
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -114,7 +123,7 @@ export default function AddExpense() {
           <div className="flex gap-2 mt-3 flex-wrap">
             {QUICK.map(v => (
               <button key={v} type="button"
-                onClick={() => setAmount(p => p ? String(Number(p) + v) : String(v))}
+                onClick={() => setAmount(p => round2((p ? Number(p) : 0) + v).toFixed(2))}
                 className="px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600
                            text-xs font-semibold active:bg-brand-100 transition-colors">
                 +{v}
@@ -148,7 +157,7 @@ export default function AddExpense() {
                   {t('income_linked_info')}
                   {amount && Number(amount) > 0 && (
                     <span className="ml-1 text-emerald-400">
-                      ฿{Number(linkedIncomeAlloc.balance).toLocaleString()} → ฿{(Number(linkedIncomeAlloc.balance) + Number(amount)).toLocaleString()} {t('after')}
+                      ฿{Number(linkedIncomeAlloc.balance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → ฿{(Number(linkedIncomeAlloc.balance) + Number(amount)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t('after')}
                     </span>
                   )}
                 </p>
@@ -216,10 +225,10 @@ export default function AddExpense() {
                   {linkedAlloc.name}
                 </p>
                 <p className="text-[10px] text-brand-400 mt-0.5">
-                  {t('current_balance')} ฿{Number(linkedAlloc.balance).toLocaleString()}
+                  {t('current_balance')} ฿{Number(linkedAlloc.balance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   {amount && Number(amount) > 0 && (
                     <span className="ml-1 text-rose-400">
-                      → ฿{(Number(linkedAlloc.balance) - Number(amount)).toLocaleString()} {t('after')}
+                      → ฿{(Number(linkedAlloc.balance) - Number(amount)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t('after')}
                     </span>
                   )}
                 </p>

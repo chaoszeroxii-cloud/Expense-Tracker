@@ -32,7 +32,7 @@ export function Amount({ value, currency = '฿', type, size = 'md' }:
   return (
     <span className={clsx(sz, color)}>
       {type === 'expense' && value > 0 ? '−' : ''}
-      {currency}{value.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+      {currency}{value.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
     </span>
   )
 }

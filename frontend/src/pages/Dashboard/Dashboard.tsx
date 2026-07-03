@@ -36,7 +36,7 @@ function formatMonthLabel(ym: string, lang = 'th') {
 }
 
 function fmt(n: number) {
-  return n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export default function Dashboard() {
@@ -115,7 +115,7 @@ export default function Dashboard() {
           ? <div className="h-10 w-36 rounded-xl bg-white/20 animate-pulse mb-4" />
           : (
             <p className="text-4xl font-extrabold tracking-tight mb-4 relative z-10">
-              ฿{(summary?.totalExpense ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}
+              ฿{(summary?.totalExpense ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           )
         }
@@ -158,7 +158,7 @@ export default function Dashboard() {
           </div>
           {summary.net < 0 && (
             <p className="text-xs text-rose-400 mt-2 font-medium">
-              −฿{Math.abs(summary.net).toLocaleString()}
+              −฿{Math.abs(summary.net).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
           )}
         </Card>
@@ -369,7 +369,7 @@ function StatPill({ icon, label, value, valueText, color }: {
       {value === null || valueText === null
         ? <div className="h-4 w-10 rounded bg-white/20 animate-pulse" />
         : <p className="text-sm font-bold">
-            {valueText ?? `฿${(value ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 0 })}`}
+            {valueText ?? `฿${(value ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </p>
       }
     </div>

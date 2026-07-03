@@ -13,7 +13,7 @@ import type { MonthlyTrend, CategoryBreakdown } from '../../types'
 
 // ── Helpers ────────────────────────────────────────────────────
 function fmt(n: number) {
-  return n.toLocaleString('th-TH', { maximumFractionDigits: 0 })
+  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function pctChange(curr: number, prev: number): number {

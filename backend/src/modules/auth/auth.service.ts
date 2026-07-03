@@ -174,7 +174,10 @@ export class AuthService {
 
   // ── Update profile ──────────────────────────────────────────
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    await this.users.update(userId, { name: dto.name })
+    await this.users.update(userId, {
+      name: dto.name,
+      ...(dto.expectedMonthlyIncome !== undefined ? { expectedMonthlyIncome: dto.expectedMonthlyIncome } : {}),
+    })
     return this.users.findOne({ where: { id: userId } })
   }
 

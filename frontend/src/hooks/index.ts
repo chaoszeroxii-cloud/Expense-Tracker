@@ -4,6 +4,7 @@ import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
   BudgetItem, LoanSummary, EmergencyFundSummary, AiRecommendation,
+  AllocationPlanPreview,
 } from '../types'
 
 // Current month helper — returns "YYYY-MM"
@@ -62,6 +63,10 @@ export function useAllocations() {
 
 export function useAllocationSummary() {
   return useFetch(() => allocationsApi.getSummary())
+}
+
+export function useAllocationPlanPreview() {
+  return useFetch<AllocationPlanPreview>(() => allocationsApi.previewPlan())
 }
 
 // ── Balance summary: total / allocated / unallocated ─────────

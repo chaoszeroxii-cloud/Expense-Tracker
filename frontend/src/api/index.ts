@@ -6,6 +6,7 @@ import type {
   BudgetItem, Loan, LoanSummary, Investment, InvestmentTransaction,
   TaxDeduction, TaxCalculationResult, TaxDeductionType,
   EmergencyFundSummary, AdminUser, AdminStats, AiRecommendation,
+  AllocationPlanPreview,
 } from '../types'
 
 const http = axios.create({
@@ -43,7 +44,7 @@ export const authApi = {
 
   me: () => http.get('/auth/me').then(r => r.data),
 
-  updateProfile: (payload: { name: string }) =>
+  updateProfile: (payload: { name: string; expectedMonthlyIncome?: number }) =>
     http.patch('/auth/profile', payload).then(r => r.data),
 
   getOnboardingWallets: () =>
@@ -148,6 +149,14 @@ export const allocationsApi = {
   // POST /api/allocations/:id/unallocate — return wallet funds to unallocated pool
   unallocate: (id: string, amount: number) =>
     http.post(`/allocations/${id}/unallocate`, { amount }).then(r => r.data),
+
+  // GET /api/allocations/plans/preview — last month's plan + this month's gap per wallet
+  previewPlan: () =>
+    http.get<AllocationPlanPreview>('/allocations/plans/preview').then(r => r.data),
+
+  // POST /api/allocations/plans/apply — batch-fund every wallet at once
+  applyPlan: (amounts: { allocationId: string; amount: number }[]) =>
+    http.post('/allocations/plans/apply', { amounts }).then(r => r.data),
 }
 
 // ── Budgets ───────────────────────────────────────────────────

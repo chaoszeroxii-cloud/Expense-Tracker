@@ -7,7 +7,7 @@ import { useT, useI18n } from '../../store/i18n.store'
 import ConfirmModal from '../../components/ui/ConfirmModal'
 
 function fmt(n: number) {
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export default function Loans() {

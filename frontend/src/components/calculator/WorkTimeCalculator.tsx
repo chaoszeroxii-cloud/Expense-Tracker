@@ -117,7 +117,7 @@ export default function WorkTimeCalculator({ onClose }: Props) {
             {isReady && (
               <div className="bg-input rounded-2xl px-4 py-3 grid grid-cols-3 gap-1 text-center">
                 <div>
-                  <p className="text-xs font-bold text-base-theme">฿{settings.salary.toLocaleString()}</p>
+                  <p className="text-xs font-bold text-base-theme">฿{settings.salary.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                   <p className="text-[10px] text-muted-theme">{t('wt_month')}</p>
                 </div>
                 <div>
@@ -151,7 +151,7 @@ export default function WorkTimeCalculator({ onClose }: Props) {
               <div className="bg-gradient-to-br from-brand-50 to-violet-50 dark:from-brand-950/60 dark:to-violet-950/40
                               border border-brand-200 dark:border-brand-800/50 rounded-2xl p-4">
                 <p className="text-xs text-muted-theme mb-3 text-center font-medium">
-                  ฿{priceNum.toLocaleString()} {t('wt_must_work')}
+                  ฿{priceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t('wt_must_work')}
                 </p>
                 {(dYears > 0 || dMonths > 0) && (
                   <div className="grid grid-cols-2 gap-2 text-center mb-2">

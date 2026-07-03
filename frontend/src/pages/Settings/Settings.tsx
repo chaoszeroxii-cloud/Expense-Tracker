@@ -40,6 +40,9 @@ export default function Settings() {
 
   // ── Profile ────────────────────────────────────────────────
   const [name, setName]           = useState(user?.name ?? '')
+  const [expectedIncome, setExpectedIncome] = useState(
+    user?.expectedMonthlyIncome != null ? String(user.expectedMonthlyIncome) : '',
+  )
   const [savingProfile, setSaveP] = useState(false)
   const [profileOk, setProfileOk] = useState(false)
 
@@ -99,12 +102,20 @@ export default function Settings() {
 
   const filteredCats = categories?.filter(c => c.type === catType) ?? []
 
+  const profileDirty = name !== user?.name
+    || expectedIncome !== String(user?.expectedMonthlyIncome ?? '')
+
   const handleProfileSave = async (e: FormEvent) => {
     e.preventDefault()
     setSaveP(true)
     try {
-      const updated = await authApi.updateProfile({ name })
-      setAuth(useAuthStore.getState().token!, { ...user!, name: updated.name })
+      const updated = await authApi.updateProfile({
+        name,
+        ...(expectedIncome !== '' ? { expectedMonthlyIncome: Number(expectedIncome) } : {}),
+      })
+      setAuth(useAuthStore.getState().token!, {
+        ...user!, name: updated.name, expectedMonthlyIncome: updated.expectedMonthlyIncome,
+      })
       setProfileOk(true)
       setTimeout(() => setProfileOk(false), 2000)
     } finally { setSaveP(false) }
@@ -173,7 +184,23 @@ export default function Settings() {
                          focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
             />
           </div>
-          <button type="submit" disabled={savingProfile || name === user?.name}
+          <div>
+            <label className="text-xs font-semibold text-muted-theme block mb-1.5 uppercase tracking-wide">
+              {t('expected_monthly_income')}
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-theme">฿</span>
+              <input
+                type="number" inputMode="decimal" min={0} placeholder="0"
+                value={expectedIncome} onChange={e => setExpectedIncome(e.target.value)}
+                className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-theme bg-input
+                           text-sm font-medium text-base-theme outline-none
+                           focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
+              />
+            </div>
+            <p className="text-[11px] text-muted-theme mt-1.5">{t('expected_income_desc')}</p>
+          </div>
+          <button type="submit" disabled={savingProfile || !profileDirty}
             className={clsx('w-full py-2.5 rounded-xl text-sm font-bold transition-all text-white',
               profileOk ? 'bg-emerald-500' : 'bg-brand-600 disabled:opacity-40')}>
             {profileOk ? t('saved_') : savingProfile ? t('saving_') : t('save_changes')}

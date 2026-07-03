@@ -154,7 +154,7 @@ export default function AdminDashboard() {
               {expanded === user.id && (
                 <div className="border-t border-[var(--border)] p-4 space-y-3 animate-fade-in">
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div><span className="text-muted-theme">Balance: </span><span className="font-semibold text-base-theme">฿{fmt(user.totalBalance)}</span></div>
+                    <div><span className="text-muted-theme">Balance: </span><span className="font-semibold text-base-theme">{fmtThb(user.totalBalance)}</span></div>
                     <div><span className="text-muted-theme">Currency: </span><span className="font-semibold text-base-theme">{user.currency}</span></div>
                     <div><span className="text-muted-theme">สมัคร: </span><span className="font-semibold text-base-theme">{new Date(user.createdAt).toLocaleDateString('th-TH')}</span></div>
                     <div><span className="text-muted-theme">Onboarding: </span><span className={`font-semibold ${user.onboardingCompleted ? 'text-emerald-500' : 'text-amber-500'}`}>{user.onboardingCompleted ? 'เสร็จแล้ว' : 'ยังไม่ทำ'}</span></div>

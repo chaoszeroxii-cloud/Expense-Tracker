@@ -1,4 +1,5 @@
-import { IsEmail, IsString, IsOptional, MinLength, MaxLength } from 'class-validator'
+import { IsEmail, IsString, IsOptional, MinLength, MaxLength, IsNumber, Min } from 'class-validator'
+import { Type } from 'class-transformer'
 
 export class RegisterDto {
   @IsEmail()
@@ -45,6 +46,12 @@ export class UpdateProfileDto {
   @MinLength(2)
   @MaxLength(100)
   name: string
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Type(() => Number)
+  expectedMonthlyIncome?: number
 }
 
 export class ForgotPasswordDto {

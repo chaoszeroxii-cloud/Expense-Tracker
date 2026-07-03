@@ -115,7 +115,7 @@ export default function AddExpense() {
             {t('amount')}
           </label>
           <input
-            type="number" inputMode="decimal" placeholder="0" value={amount}
+            type="number" inputMode="decimal" step="0.01" placeholder="0" value={amount}
             onChange={e => setAmount(e.target.value)} required min={0}
             className="w-full text-4xl font-extrabold text-base-theme bg-transparent
                        outline-none placeholder:text-slate-200 dark:placeholder:text-slate-600 tracking-tight"

@@ -207,6 +207,7 @@ export default function Budget() {
             />
             <input
               type="number"
+              step="0.01"
               placeholder={t('amount_baht')}
               value={form.amount}
               onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}

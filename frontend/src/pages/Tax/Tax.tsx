@@ -141,6 +141,7 @@ export default function Tax() {
         <div className="flex gap-2">
           <input
             type="number"
+            step="0.01"
             placeholder="เช่น 600000"
             value={income}
             onChange={e => setIncome(e.target.value)}
@@ -278,7 +279,7 @@ export default function Tax() {
             {selectedType && (
               <p className="text-xs text-muted-theme -mt-2 px-1">{selectedType.description}</p>
             )}
-            <input type="number" placeholder={`${t('amount_label')}${selectedType?.max ? ` (${t('max_amount_label')} ฿${fmt(selectedType.max)})` : ''}`}
+            <input type="number" step="0.01" placeholder={`${t('amount_label')}${selectedType?.max ? ` (${t('max_amount_label')} ฿${fmt(selectedType.max)})` : ''}`}
               value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
               className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none" />
             <button onClick={handleAddDeduction} disabled={saving || !form.type || !form.amount}

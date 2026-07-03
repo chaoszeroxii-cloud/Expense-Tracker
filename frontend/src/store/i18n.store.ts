@@ -47,6 +47,13 @@ const dict = {
     over_allocated:      'Over-allocated',
     over_allocated_desc: 'Your wallets hold more than your real balance. Return some funds from a wallet to fix this.',
 
+    // Apply Last Month's Plan
+    apply_last_month_plan: "Apply Last Month's Plan",
+    apply_plan_desc:       'Fund every wallet the same way as last month',
+    apply_plan_total:      'Total',
+    apply_plan_available:  'Available',
+    apply_plan_over:       'Not enough unallocated funds — adjust the amounts below',
+
     // Add Expense
     add_transaction:   'Add Transaction',
     expense:           'Expense',
@@ -135,6 +142,8 @@ const dict = {
     // Settings
     settings:          'Settings',
     display_name:      'Display Name',
+    expected_monthly_income: 'Expected Monthly Income',
+    expected_income_desc:    'Prefills the amount when you add income. Never affects your real balance.',
     save_changes:      'Save Changes',
     saving_:           'Saving…',
     saved_:            '✓ Saved',
@@ -361,6 +370,13 @@ const dict = {
     over_allocated:      'จัดสรรเกินจริง',
     over_allocated_desc: 'ซองถือเงินรวมมากกว่ายอดเงินจริง — ดึงเงินคืนจากซองเพื่อแก้ไข',
 
+    // Apply Last Month's Plan
+    apply_last_month_plan: 'ใช้แผนเดือนก่อน',
+    apply_plan_desc:       'แบ่งเงินเข้าทุกซองเหมือนเดือนก่อน',
+    apply_plan_total:      'รวม',
+    apply_plan_available:  'มีให้ใช้',
+    apply_plan_over:       'เงินรอจัดสรรไม่พอ — ปรับยอดด้านล่างก่อน',
+
     // Add Expense
     add_transaction:   'เพิ่มรายการ',
     expense:           'รายจ่าย',
@@ -449,6 +465,8 @@ const dict = {
     // Settings
     settings:          'ตั้งค่า',
     display_name:      'ชื่อที่แสดง',
+    expected_monthly_income: 'เงินเดือนที่คาดว่าจะได้',
+    expected_income_desc:    'ช่วยกรอกจำนวนเงินให้อัตโนมัติตอนเพิ่มรายรับ ไม่มีผลต่อยอดเงินจริงของคุณ',
     save_changes:      'บันทึก',
     saving_:           'กำลังบันทึก…',
     saved_:            '✓ บันทึกแล้ว',

@@ -48,6 +48,17 @@ export class User {
   })
   totalBalance: number
 
+  // Reference value only — prefills the "Add Income" amount field.
+  // Never substitutes for real recorded income anywhere else.
+  @Column({
+    name: 'expected_monthly_income',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+  })
+  expectedMonthlyIncome: number | null
+
   @OneToMany(() => Category, (c) => c.user)
   categories: Category[]
 

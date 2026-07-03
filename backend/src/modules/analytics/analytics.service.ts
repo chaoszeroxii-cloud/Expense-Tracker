@@ -6,6 +6,7 @@ import { Expense } from '../expenses/expense.entity';
 import { AllocationMovement } from '../allocations/allocation-movement.entity';
 import { Allocation } from '../allocations/allocation.entity';
 import { User } from '../users/user.entity';
+import { round2 } from '../../common/money.util';
 
 export interface AiRecommendation {
   type: 'warning' | 'tip' | 'good';
@@ -255,13 +256,13 @@ export class AnalyticsService {
       allocationRepo.find({ where: { userId } }),
     ])
 
-    const totalBalance    = Number(user?.totalBalance ?? 0)
-    const allocatedBalance = allocations.reduce((s, a) => s + Number(a.balance), 0)
+    const totalBalance     = round2(Number(user?.totalBalance ?? 0))
+    const allocatedBalance = round2(allocations.reduce((s, a) => s + Number(a.balance), 0))
 
     return {
       totalBalance,
       allocatedBalance,
-      unallocatedBalance: totalBalance - allocatedBalance,
+      unallocatedBalance: round2(totalBalance - allocatedBalance),
     }
   }
 

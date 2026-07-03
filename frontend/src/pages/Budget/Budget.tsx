@@ -13,7 +13,7 @@ function currentMonth() {
 }
 
 function fmt(n: number) {
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export default function Budget() {

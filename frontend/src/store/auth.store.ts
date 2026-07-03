@@ -8,6 +8,7 @@ interface AuthUser {
   role: string
   onboardingCompleted: boolean
   hasPassword: boolean
+  expectedMonthlyIncome: number | null
 }
 
 interface AuthState {

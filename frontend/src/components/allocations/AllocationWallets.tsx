@@ -21,6 +21,7 @@ import {
 import { allocationsApi } from "../../api";
 import { Card, Skeleton } from "../ui";
 import IconDisplay from "../ui/IconDisplay";
+import ApplyLastMonthPlan from "./ApplyLastMonthPlan";
 import { useT } from "../../store/i18n.store";
 import type {
   Allocation,
@@ -64,7 +65,7 @@ function enrich(
 }
 
 function fmt(n: number) {
-  return n.toLocaleString("th-TH", { maximumFractionDigits: 0 });
+  return n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 // ── Balance Overview Card ─────────────────────────────────────
@@ -272,7 +273,7 @@ function UnallocatedBanner({
               {/* Quick fill buttons */}
               <button
                 type="button"
-                onClick={() => setInputAmt(String(amount))}
+                onClick={() => setInputAmt(amount.toFixed(2))}
                 className="px-3 py-2 rounded-xl bg-amber-100 dark:bg-amber-800/40
                            text-xs font-bold text-amber-600 dark:text-amber-300 whitespace-nowrap"
               >
@@ -540,7 +541,7 @@ function WalletRow({
                 className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
                            text-sm font-semibold text-base-theme outline-none focus:border-brand-400 transition-all" />
             </div>
-            <button type="button" onClick={() => setFundAmt(String(unallocated))}
+            <button type="button" onClick={() => setFundAmt(unallocated.toFixed(2))}
               className="px-2.5 py-1 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-xs font-bold text-brand-600 dark:text-brand-300 border border-brand-200 dark:border-brand-700">
               Max
             </button>
@@ -632,7 +633,7 @@ function WalletRow({
                     className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
                                text-sm font-semibold text-base-theme outline-none focus:border-indigo-400 transition-all" />
                 </div>
-                <button type="button" onClick={() => setAdjAmt(String(walletBalance))}
+                <button type="button" onClick={() => setAdjAmt(walletBalance.toFixed(2))}
                   className="px-2.5 py-1 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-xs font-bold text-brand-600 dark:text-brand-300 border border-brand-200 dark:border-brand-700">
                   Max
                 </button>
@@ -675,7 +676,7 @@ function WalletRow({
                     className="w-full pl-6 pr-2 py-2 rounded-xl border border-theme bg-white dark:bg-slate-700
                                text-sm font-semibold text-base-theme outline-none focus:border-amber-400 transition-all" />
                 </div>
-                <button type="button" onClick={() => setAdjAmt(String(walletBalance))}
+                <button type="button" onClick={() => setAdjAmt(walletBalance.toFixed(2))}
                   className="px-2.5 py-1 rounded-xl bg-brand-100 dark:bg-brand-900/40 text-xs font-bold text-brand-600 dark:text-brand-300 border border-brand-200 dark:border-brand-700">
                   Max
                 </button>
@@ -772,6 +773,7 @@ export default function AllocationWallets() {
 
       {/* Unallocated funds banner (positive) OR over-allocated warning (negative) */}
       <div className="pt-4">
+        <ApplyLastMonthPlan unallocated={unallocated} onApplied={refetchAll} />
         <UnallocatedBanner
           amount={unallocated}
           allocations={enriched}

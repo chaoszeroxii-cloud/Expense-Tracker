@@ -15,7 +15,7 @@ const CustomTooltip = ({ active, payload }: any) => {
         <IconDisplay icon={d.categoryIcon} color={d.categoryColor} size="sm" />
         {d.categoryName}
       </p>
-      <p className="text-brand-600 font-bold">฿{d.total.toLocaleString()}</p>
+      <p className="text-brand-600 font-bold">฿{d.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
       <p className="text-muted-theme">{d.percentage}%</p>
     </div>
   )

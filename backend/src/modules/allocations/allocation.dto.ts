@@ -1,6 +1,7 @@
 import {
   IsString, IsOptional, MaxLength,
   IsArray, IsUUID, Matches, IsNumber, Min,
+  ValidateNested, ArrayMinSize,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -75,4 +76,24 @@ export class TransferMoneyDto {
   @Min(0.01, { message: 'Amount must be greater than 0' })
   @Type(() => Number)
   amount: number
+}
+
+// ── Apply Last Month's Plan: batch-fund every wallet at once ──
+export class PlanAmountDto {
+  @IsUUID('4')
+  allocationId: string
+
+  // 0 allowed — user may choose to skip a wallet this month
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Type(() => Number)
+  amount: number
+}
+
+export class ApplyPlanDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => PlanAmountDto)
+  amounts: PlanAmountDto[]
 }

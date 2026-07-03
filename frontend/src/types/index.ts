@@ -74,6 +74,23 @@ export interface AllocationSummary {
   fundedThisMonth: number
 }
 
+// ── Allocation Plan ("Apply Last Month's Plan") ────────────────
+export interface AllocationPlanItem {
+  allocationId: string
+  name: string
+  icon: string
+  color: string
+  planAmount: number
+  fundedThisMonth: number
+  suggested: number
+}
+
+export interface AllocationPlanPreview {
+  sourceMonth: string | null
+  unallocatedBalance: number
+  items: AllocationPlanItem[]
+}
+
 // ── Balance Summary ───────────────────────────────────────────
 // totalBalance      = user.totalBalance  (net of all transactions ever)
 // allocatedBalance  = sum of all wallet balances

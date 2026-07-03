@@ -4,6 +4,7 @@ import { Category } from '../modules/categories/category.entity'
 import { Expense } from '../modules/expenses/expense.entity'
 import { Allocation } from '../modules/allocations/allocation.entity'
 import { AllocationMovement } from '../modules/allocations/allocation-movement.entity'
+import { AllocationPlan } from '../modules/allocations/allocation-plan.entity'
 import { Budget } from '../modules/budgets/budget.entity'
 import { Loan, LoanPayment } from '../modules/loans/loan.entity'
 import { Investment, InvestmentTransaction } from '../modules/investments/investment.entity'
@@ -14,7 +15,7 @@ import { AiUsageLog } from '../modules/chat/ai-usage-log.entity'
 export const databaseConfig = (): TypeOrmModuleOptions => {
   const base: Partial<TypeOrmModuleOptions> = {
     type: 'postgres',
-    entities: [User, Category, Expense, Allocation, AllocationMovement, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog],
+    entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog],
     synchronize: process.env.DB_SYNC === 'true' || process.env.NODE_ENV !== 'production',
     logging: process.env.NODE_ENV === 'development',
   }

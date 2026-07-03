@@ -3,9 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, In, DataSource, EntityManager } from 'typeorm'
 import { Allocation } from './allocation.entity'
 import { AllocationMovement } from './allocation-movement.entity'
+import { AllocationPlan } from './allocation-plan.entity'
 import { Category } from '../categories/category.entity'
 import { User } from '../users/user.entity'
 import { CreateAllocationDto, UpdateAllocationDto } from './allocation.dto'
+import { round2 } from '../../common/money.util'
 
 @Injectable()
 export class AllocationsService {
@@ -15,6 +17,9 @@ export class AllocationsService {
 
     @InjectRepository(AllocationMovement)
     private readonly movementRepo: Repository<AllocationMovement>,
+
+    @InjectRepository(AllocationPlan)
+    private readonly planRepo: Repository<AllocationPlan>,
 
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
@@ -86,7 +91,7 @@ export class AllocationsService {
     if (!user) throw new NotFoundException('User not found')
 
     const totalAllocated = allAllocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
-    const unallocated = Number(user.totalBalance) - totalAllocated
+    const unallocated = round2(Number(user.totalBalance) - totalAllocated)
 
     if (amount > unallocated) {
       // Negative unallocated = wallets hold more than the real balance.
@@ -101,7 +106,7 @@ export class AllocationsService {
     await this.credit(allocationId, userId, amount)
     await this.movementRepo.save(this.movementRepo.create({ userId, allocationId, amount, type: 'fund' }))
 
-    const newUnallocated = unallocated - amount
+    const newUnallocated = round2(unallocated - amount)
     return { unallocatedBalance: newUnallocated }
   }
 
@@ -220,9 +225,147 @@ export class AllocationsService {
     return this.creditByIncomeCategory(categoryId, userId, -amount, em)
   }
 
+  // ── Apply Last Month's Plan ────────────────────────────────────
+  // See docs/adr/0001-allocation-plan-explicit-not-derived.md for why this
+  // is a stored value rather than derived purely from AllocationMovement.
+  async previewApplyPlan(userId: string) {
+    const currentMonth = new Date().toISOString().slice(0, 7)
+
+    const lastPlanRow = await this.planRepo
+      .createQueryBuilder('p')
+      .select('p.month', 'month')
+      .where('p.user_id = :userId', { userId })
+      .andWhere('p.month < :currentMonth', { currentMonth })
+      .orderBy('p.month', 'DESC')
+      .limit(1)
+      .getRawOne()
+
+    const sourceMonth: string | null = lastPlanRow?.month ?? null
+
+    const [allocations, planRows, fundedMap, unallocatedBalance] = await Promise.all([
+      this.repo.find({ where: { userId }, order: { name: 'ASC' } }),
+      sourceMonth ? this.planRepo.find({ where: { userId, month: sourceMonth } }) : Promise.resolve([] as AllocationPlan[]),
+      this.getFundedThisMonthMap(userId, currentMonth),
+      this.getUnallocated(userId),
+    ])
+
+    const planMap = new Map(planRows.map((p) => [p.allocationId, Number(p.amount)]))
+
+    const items = allocations.map((a) => {
+      const planAmount      = planMap.get(a.id) ?? 0
+      const fundedThisMonth = fundedMap.get(a.id) ?? 0
+      return {
+        allocationId: a.id,
+        name: a.name,
+        icon: a.icon,
+        color: a.color,
+        planAmount,
+        fundedThisMonth,
+        suggested: Math.max(0, planAmount - fundedThisMonth),
+      }
+    })
+
+    return { sourceMonth, unallocatedBalance, items }
+  }
+
+  async applyPlan(userId: string, amounts: { allocationId: string; amount: number }[]) {
+    const currentMonth = new Date().toISOString().slice(0, 7)
+
+    return this.dataSource.transaction(async (em: EntityManager) => {
+      const allocRepo = em.getRepository(Allocation)
+      const userRepo  = em.getRepository(User)
+
+      const [user, allocations] = await Promise.all([
+        userRepo.findOne({ where: { id: userId } }),
+        allocRepo.find({ where: { userId } }),
+      ])
+      if (!user) throw new NotFoundException('User not found')
+
+      const ownedIds = new Set(allocations.map((a) => a.id))
+      for (const { allocationId } of amounts) {
+        if (!ownedIds.has(allocationId)) throw new NotFoundException(`Allocation ${allocationId} not found`)
+      }
+
+      const totalAllocated = allocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
+      const unallocated   = round2(Number(user.totalBalance) - totalAllocated)
+      const sumRequested  = round2(amounts.reduce((s, a) => s + a.amount, 0))
+
+      // Only gate on capacity when something is actually being requested —
+      // an all-zero submission (e.g. re-syncing the plan) never needs unallocated room.
+      if (sumRequested > 0 && sumRequested > unallocated) {
+        const message = unallocated < 0
+          ? `Over-allocated by ฿${Math.abs(unallocated).toFixed(2)}. Return funds from a wallet before applying the plan.`
+          : `Insufficient unallocated balance. Available: ฿${unallocated.toFixed(2)}, needed: ฿${sumRequested.toFixed(2)}`
+        throw new BadRequestException(message)
+      }
+
+      for (const { allocationId, amount } of amounts) {
+        if (amount <= 0) continue
+        await this.credit(allocationId, userId, amount, em)
+        await em.save(AllocationMovement, em.create(AllocationMovement, { userId, allocationId, amount, type: 'fund' }))
+      }
+
+      // Plan for this month = total funded-this-month AFTER applying, so ad-hoc
+      // top-ups the user already made aren't double-counted next time (see ADR 0001).
+      const allocationIds = amounts.map((a) => a.allocationId)
+      const fundedMap = await this.getFundedThisMonthMap(userId, currentMonth, em, allocationIds)
+
+      for (const allocationId of allocationIds) {
+        const total = fundedMap.get(allocationId) ?? 0
+        const existing = await em.findOne(AllocationPlan, { where: { userId, allocationId, month: currentMonth } })
+        if (existing) {
+          existing.amount = total
+          await em.save(AllocationPlan, existing)
+        } else {
+          await em.save(AllocationPlan, em.create(AllocationPlan, { userId, allocationId, month: currentMonth, amount: total }))
+        }
+      }
+
+      return { unallocatedBalance: round2(unallocated - sumRequested) }
+    })
+  }
+
   // ── Helper ────────────────────────────────────────────────────
   private async resolveCategories(ids: string[], userId: string): Promise<Category[]> {
     if (!ids.length) return []
     return this.categoryRepo.find({ where: { id: In(ids), userId } })
+  }
+
+  private async getUnallocated(userId: string, em?: EntityManager): Promise<number> {
+    const userRepo  = em ? em.getRepository(User) : this.dataSource.getRepository(User)
+    const allocRepo = em ? em.getRepository(Allocation) : this.repo
+
+    const [user, allocations] = await Promise.all([
+      userRepo.findOne({ where: { id: userId } }),
+      allocRepo.find({ where: { userId } }),
+    ])
+    if (!user) throw new NotFoundException('User not found')
+
+    const totalAllocated = allocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
+    return round2(Number(user.totalBalance) - totalAllocated)
+  }
+
+  private async getFundedThisMonthMap(
+    userId: string, month: string, em?: EntityManager, allocationIds?: string[],
+  ): Promise<Map<string, number>> {
+    const repo = em ? em.getRepository(AllocationMovement) : this.movementRepo
+    const qb = repo
+      .createQueryBuilder('m')
+      .select([
+        'm.allocation_id AS "allocationId"',
+        `SUM(CASE WHEN m.type IN ('fund', 'transfer_in') THEN m.amount WHEN m.type IN ('unallocate', 'transfer_out') THEN -m.amount ELSE 0 END) AS "funded"`,
+      ])
+      .where('m.user_id = :userId', { userId })
+      .andWhere("TO_CHAR(m.created_at, 'YYYY-MM') = :month", { month })
+      .groupBy('m.allocation_id')
+
+    if (allocationIds?.length) {
+      qb.andWhere('m.allocation_id IN (:...allocationIds)', { allocationIds })
+    }
+
+    const rows = await qb.getRawMany()
+    const map = new Map<string, number>()
+    for (const r of rows) map.set(r.allocationId, parseFloat(r.funded) || 0)
+    return map
   }
 }

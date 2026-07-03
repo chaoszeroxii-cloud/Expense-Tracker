@@ -17,6 +17,10 @@ export class AllocationPlan {
   @Column({ name: 'user_id' })
   userId: string
 
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
+  user: User
+
   @Column({ name: 'allocation_id' })
   allocationId: string
 

@@ -53,6 +53,8 @@ const dict = {
     apply_plan_total:      'Total',
     apply_plan_available:  'Available',
     apply_plan_over:       'Not enough unallocated funds — adjust the amounts below',
+    set_month_plan:        "Set This Month's Plan",
+    set_month_plan_desc:   'Choose how much to fund each wallet — reused as next month\'s suggestion',
 
     // Add Expense
     add_transaction:   'Add Transaction',
@@ -376,6 +378,8 @@ const dict = {
     apply_plan_total:      'รวม',
     apply_plan_available:  'มีให้ใช้',
     apply_plan_over:       'เงินรอจัดสรรไม่พอ — ปรับยอดด้านล่างก่อน',
+    set_month_plan:        'ตั้งแผนเดือนนี้',
+    set_month_plan_desc:   'กำหนดยอดที่จะแบ่งเข้าแต่ละซอง — เดือนหน้าจะจำไว้ใช้เป็นค่าเริ่มต้นให้',
 
     // Add Expense
     add_transaction:   'เพิ่มรายการ',

@@ -34,7 +34,12 @@ export default function ApplyLastMonthPlan({
   const [err, setErr] = useState("");
 
   if (loading) return null;
-  if (!preview?.sourceMonth || preview.items.length === 0) return null;
+  // Hide only when there's truly nothing to fund — NOT when there's no plan
+  // history yet. Gating on sourceMonth would mean nobody could ever create
+  // the first plan (it's only ever written as a byproduct of this action).
+  if (!preview || preview.items.length === 0) return null;
+
+  const isFirstTime = !preview.sourceMonth;
 
   const startOpen = () => {
     const next: Record<string, string> = {};
@@ -88,10 +93,10 @@ export default function ApplyLastMonthPlan({
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-violet-700 dark:text-violet-300">
-              {t("apply_last_month_plan")}
+              {isFirstTime ? t("set_month_plan") : t("apply_last_month_plan")}
             </p>
             <p className="text-xs text-violet-500 dark:text-violet-400">
-              {t("apply_plan_desc")}
+              {isFirstTime ? t("set_month_plan_desc") : t("apply_plan_desc")}
             </p>
           </div>
           <Icon
@@ -191,6 +196,8 @@ export default function ApplyLastMonthPlan({
                   </>
                 ) : busy ? (
                   t("saving")
+                ) : isFirstTime ? (
+                  t("set_month_plan")
                 ) : (
                   t("apply_last_month_plan")
                 )}

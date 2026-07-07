@@ -79,10 +79,13 @@ export default function Settings() {
     if (newPw.length < 8) { setPwError(t('min_chars')); return }
     setPwSaving(true)
     try {
-      await authApi.changePassword({
+      const res = await authApi.changePassword({
         ...(user?.hasPassword ? { currentPassword: currentPw } : {}),
         newPassword: newPw,
       })
+      // Backend rotates the token version on change (revoking other sessions),
+      // so adopt the fresh token it returns to keep this session alive.
+      if (res?.accessToken && res?.user) setAuth(res.accessToken, res.user)
       setPwOk(true)
       setTimeout(closePwModal, 1500)
     } catch (err: any) {

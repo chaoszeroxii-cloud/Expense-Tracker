@@ -71,6 +71,12 @@ export class User {
   @Column({ name: 'reset_token_expiry', nullable: true, type: 'timestamptz' })
   resetTokenExpiry: Date | null
 
+  // Bumped whenever a password is changed or reset. The value is embedded in
+  // every JWT (`tv`); a mismatch during auth means the token predates the last
+  // credential change and is rejected — this revokes stolen/old sessions.
+  @Column({ name: 'token_version', type: 'int', default: 0 })
+  tokenVersion: number
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date
 

@@ -8,6 +8,7 @@ import { Allocation } from '../allocations/allocation.entity'
 import { AuthService } from './auth.service'
 import { AuthController } from './auth.controller'
 import { JwtStrategy } from './jwt.strategy'
+import { getJwtSecret } from '../../config/jwt.config'
 
 @Module({
   imports: [
@@ -15,7 +16,7 @@ import { JwtStrategy } from './jwt.strategy'
     PassportModule,
     JwtModule.registerAsync({
       useFactory: () => ({
-        secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+        secret: getJwtSecret(),
         signOptions: { expiresIn: '30d' },
       }),
     }),

@@ -20,9 +20,12 @@ export const databaseConfig = (): TypeOrmModuleOptions => {
     logging: process.env.NODE_ENV === 'development',
   }
 
-  // Render (and most cloud providers) supply a DATABASE_URL connection string
+  // Render (and most cloud providers) supply a DATABASE_URL connection string.
+  // Cert validation is opt-in via DB_SSL_REJECT_UNAUTHORIZED=true — set it once
+  // your provider serves a chain Node trusts, to defend against MITM.
   if (process.env.DATABASE_URL) {
-    return { ...base, type: 'postgres', url: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+    const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
+    return { ...base, type: 'postgres', url: process.env.DATABASE_URL, ssl: { rejectUnauthorized } }
   }
 
   return {

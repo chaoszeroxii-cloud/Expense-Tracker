@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { APP_GUARD, Reflector } from '@nestjs/core'
-import { ThrottlerModule } from '@nestjs/throttler'
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { databaseConfig } from './config/database.config'
 import { AuthModule } from './modules/auth/auth.module'
 import { ExpensesModule } from './modules/expenses/expenses.module'
@@ -37,6 +37,10 @@ import { HealthController } from './health.controller'
     ChatModule,
   ],
   providers: [
+    // Rate-limit first (per IP), then authenticate. Registering ThrottlerGuard
+    // here makes the 100 req/min ceiling actually global — previously it only
+    // applied to the one route that opted in via @UseGuards(ThrottlerGuard).
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     Reflector,
   ],

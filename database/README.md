@@ -41,9 +41,9 @@ user until `DataBackfills` set it to `true` for anyone already using them.
 
 ## Why `synchronize` is off
 
-It is off in every environment (`DB_SYNC=true` forces it on for throwaway databases).
-It had been on outside production, and it drops anything the entities cannot describe.
-Measured on the dev database before this changed:
+It is off in every environment and cannot be enabled by an environment variable. It had
+been on outside production, and it drops anything the entities cannot describe. Measured
+on the dev database before this changed:
 
 - **0** CHECK constraints left in the entire schema — including `expenses.amount > 0`
 - **0** non-primary-key indexes left on `expenses` — including the one the daily-brief

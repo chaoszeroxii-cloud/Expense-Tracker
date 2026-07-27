@@ -21,7 +21,7 @@ export const databaseConfig = (): TypeOrmModuleOptions => {
     type: 'postgres',
     entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog, ProductEvent, DailyCheckin, MonthlySpendingPlan, PushSubscription],
 
-    // Off everywhere. Migrations own the schema.
+    // Off everywhere. Migrations are the only schema owner.
     //
     // It used to be on for every non-production environment, and it had quietly
     // destroyed things the entities cannot describe: every CHECK constraint in the
@@ -30,9 +30,9 @@ export const databaseConfig = (): TypeOrmModuleOptions => {
     // as native enums. The dev schema no longer resembled production, so passing tests
     // there proved less than they appeared to.
     //
-    // DB_SYNC=true still forces it on as a deliberate escape hatch — for throwaway
-    // databases only, never one with data worth keeping.
-    synchronize: process.env.DB_SYNC === 'true',
+    // Do not make this environment-configurable: a stale DB_SYNC=true setting on a
+    // deployed service is enough for TypeORM to rewrite a live schema after migrations.
+    synchronize: false,
 
     migrations: [__dirname + '/../migrations/*.{ts,js}'],
     migrationsTableName: 'migrations',

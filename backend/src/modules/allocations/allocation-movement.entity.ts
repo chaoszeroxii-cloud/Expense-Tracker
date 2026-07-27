@@ -5,10 +5,10 @@ export class AllocationMovement {
   @PrimaryGeneratedColumn('uuid')
   id: string
 
-  @Column({ name: 'user_id' })
+  @Column({ name: 'user_id', type: 'uuid' })
   userId: string
 
-  @Column({ name: 'allocation_id' })
+  @Column({ name: 'allocation_id', type: 'uuid' })
   allocationId: string
 
   @Column({ type: 'numeric', precision: 14, scale: 2 })

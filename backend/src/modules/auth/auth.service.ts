@@ -10,6 +10,7 @@ import axios from 'axios'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { Allocation } from '../allocations/allocation.entity'
+import { SpendingPlanService } from '../budgets/spending-plan.service'
 import {
   RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto,
   ChangePasswordDto, UpdatePreferencesDto, CompleteOnboardingDto,
@@ -62,6 +63,8 @@ export class AuthService {
     private readonly allocations: Repository<Allocation>,
 
     private readonly jwt: JwtService,
+
+    private readonly spendingPlans: SpendingPlanService,
   ) {}
 
   // ── Register ────────────────────────────────────────────────
@@ -362,6 +365,14 @@ export class AuthService {
     if (dto.timezone) patch.timezone = this.assertTimezone(dto.timezone)
 
     await this.users.update(userId, patch)
+
+    // The plan also has to land in the month-scoped table, or there is nothing for the
+    // following month to inherit — the legacy column carries no month and so cannot be
+    // carried forward. Written after the user update so it picks up the new timezone.
+    if (patch.monthlySpendingLimit) {
+      const month = await this.spendingPlans.currentMonth(userId)
+      await this.spendingPlans.setTotal(userId, month, patch.monthlySpendingLimit)
+    }
 
     const refreshed = await this.users.findOne({ where: { id: userId } })
     return { success: true, user: refreshed ? this.toProfile(refreshed) : null }

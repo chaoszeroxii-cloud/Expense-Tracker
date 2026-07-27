@@ -1,28 +1,46 @@
 import { useState, useEffect, useCallback } from 'react'
-import { budgetsApi, categoriesApi } from '../../api'
-import type { BudgetItem, Category } from '../../types'
+import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
-import { mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
+import { mdiChevronDown, mdiChevronRight, mdiWallet, mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
+import clsx from 'clsx'
+import { budgetsApi, categoriesApi } from '../../api'
+import type { SpendingPlanView, Category } from '../../types'
 import CustomSelect from '../../components/ui/CustomSelect'
 import IconDisplay from '../../components/ui/IconDisplay'
-import { useT, useI18n } from '../../store/i18n.store'
 import ConfirmModal from '../../components/ui/ConfirmModal'
-import MonthlyPlanCard from '../../components/plan/MonthlyPlanCard'
+import { Skeleton, ErrorState } from '../../components/ui'
+import SpendingPlanCard from '../../components/plan/SpendingPlanCard'
 import BudgetRollover from '../../components/plan/BudgetRollover'
-import { currentMonthLocal as currentMonth } from '../../utils/localDate'
+import { useT, useI18n } from '../../store/i18n.store'
+import { useAuthStore } from '../../store/auth.store'
+import { toast } from '../../store/toast.store'
+import { apiErrorMessage } from '../../utils/apiError'
+import { currentMonthLocal as currentMonth, monthOffset } from '../../utils/localDate'
+import { fmt } from '../../utils/money'
 
-function fmt(n: number) {
-  return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
+/**
+ * One question per section, in the order they matter.
+ *
+ * The page used to lead with two things called "แผน" and "งบ" without saying how they
+ * differed, and the headline figure was not even scoped to the month selector beneath it.
+ * Now: the monthly limit (which drives the daily number on Home), then envelopes — the
+ * split most people here actually maintain — and per-category limits collapsed away as
+ * the optional alternative they are.
+ */
 export default function Budget() {
   const t = useT()
-  const lang = useI18n(s => s.lang)
+  const { lang } = useI18n()
+  const navigate = useNavigate()
   const dateLocale = lang === 'en' ? 'en-US' : 'th-TH'
+  const advancedMode = useAuthStore(s => s.user?.advancedMode ?? false)
+
   const [month, setMonth] = useState(currentMonth())
-  const [budgets, setBudgets] = useState<BudgetItem[]>([])
+  const [plan, setPlan] = useState<SpendingPlanView | null>(null)
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showCategories, setShowCategories] = useState(false)
+
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ categoryId: '', amount: '' })
   const [saving, setSaving] = useState(false)
@@ -30,11 +48,19 @@ export default function Budget() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [b, c] = await Promise.all([budgetsApi.getWithActual(month), categoriesApi.list()])
-    setBudgets(b)
-    setCategories(c.filter((x: Category) => x.type === 'expense'))
-    setLoading(false)
-  }, [month])
+    setError(null)
+    try {
+      const [p, c] = await Promise.all([budgetsApi.getPlan(month), categoriesApi.list()])
+      setPlan(p)
+      setCategories(c.filter((x: Category) => x.type === 'expense'))
+      // Keep the section open once it is in use, so it does not hide the user's own data.
+      if (p.categoryTargets.length > 0) setShowCategories(true)
+    } catch (err) {
+      setError(apiErrorMessage(err, t('err_load_failed'), t('err_offline')))
+    } finally {
+      setLoading(false)
+    }
+  }, [month, t])
 
   useEffect(() => { load() }, [load])
 
@@ -47,143 +73,192 @@ export default function Budget() {
     return () => window.removeEventListener('moneyflow:refresh', handler)
   }, [load])
 
-  const totalBudgeted = budgets.reduce((s, b) => s + b.budgeted, 0)
-  const totalActual   = budgets.reduce((s, b) => s + b.actual, 0)
-
   const handleSave = async () => {
     if (!form.categoryId || !form.amount) return
     setSaving(true)
-    await budgetsApi.upsert({ categoryId: form.categoryId, amount: parseFloat(form.amount), month })
-    setShowForm(false)
-    setForm({ categoryId: '', amount: '' })
-    await load()
-    setSaving(false)
+    try {
+      await budgetsApi.upsert({ categoryId: form.categoryId, amount: parseFloat(form.amount), month })
+      setShowForm(false)
+      setForm({ categoryId: '', amount: '' })
+      await load()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleDelete = (id: string) => {
+  const handleDelete = (categoryId: string) => {
     setConfirmState({
       open: true,
       onConfirm: async () => {
         setConfirmState(s => ({ ...s, open: false }))
-        await budgetsApi.remove(id)
-        await load()
+        try {
+          await budgetsApi.saveBatch(month, [{ categoryId, amount: 0 }])
+          await load()
+        } catch (err) {
+          toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline')))
+        }
       },
     })
   }
 
   const changeMonth = (dir: number) => {
-    const [y, m] = month.split('-').map(Number)
-    const d = new Date(y, m - 1 + dir, 1)
-    const newMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-    if (newMonth <= currentMonth()) setMonth(newMonth)
+    const next = monthOffset(month, dir)
+    if (next <= currentMonth()) setMonth(next)
   }
 
-  const usedCategoryIds = new Set(budgets.map(b => b.categoryId))
-  const availableCategories = categories.filter(c => !usedCategoryIds.has(c.id))
+  const used = new Set((plan?.categoryTargets ?? []).map(b => b.categoryId))
+  const availableCategories = categories.filter(c => !used.has(c.id))
 
   return (
     <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">
-      {/* Header */}
       <div>
         <h1 className="text-2xl font-extrabold text-base-theme">{t('nav_plan')}</h1>
         <p className="text-xs text-muted-theme mt-0.5">{t('budget_subtitle')}</p>
       </div>
 
-      {/* The overall monthly limit the daily allowance is derived from. It leads the
-          page because every figure on Home depends on it. */}
-      <MonthlyPlanCard />
-
-      {/* Per-category limits, a separate and optional layer on top */}
-      <div className="flex items-center justify-between pt-1">
-        <h2 className="font-bold text-base-theme text-sm">{t('budget_title')}</h2>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold
-                     active:scale-95 transition-transform"
-        >
-          <Icon path={mdiPlus} size={0.8} />
-          {t('add')}
-        </button>
-      </div>
-
-      {/* Month selector */}
+      {/* One month selector for the whole page — the headline used to ignore it. */}
       <div className="flex items-center justify-center gap-4">
-        <button onClick={() => changeMonth(-1)} className="p-2 rounded-full hover:bg-[var(--input)] text-muted-theme">‹</button>
-        <span className="font-bold text-base-theme text-sm min-w-[100px] text-center">
+        <button onClick={() => changeMonth(-1)} aria-label="Previous month"
+          className="p-2 rounded-full hover:bg-[var(--input)] text-muted-theme">‹</button>
+        <span className="font-bold text-base-theme text-sm min-w-[120px] text-center">
           {new Date(month + '-01').toLocaleDateString(dateLocale, { year: 'numeric', month: 'long' })}
         </span>
-        <button
-          onClick={() => changeMonth(1)}
-          disabled={month >= currentMonth()}
-          className="p-2 rounded-full hover:bg-[var(--input)] text-muted-theme disabled:opacity-30"
-        >›</button>
+        <button onClick={() => changeMonth(1)} disabled={month >= currentMonth()}
+          className="p-2 rounded-full hover:bg-[var(--input)] text-muted-theme disabled:opacity-30">›</button>
       </div>
 
-      {/* Summary card */}
-      <div className="bg-card rounded-2xl border border-[var(--border)] p-4">
-        <div className="flex justify-between text-sm mb-3">
-          <span className="text-muted-theme">{t('budget_total')}</span>
-          <span className="font-bold text-base-theme">฿{fmt(totalBudgeted)}</span>
-        </div>
-        <div className="w-full bg-[var(--input)] rounded-full h-2.5 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all ${totalActual > totalBudgeted ? 'bg-red-500' : 'bg-brand-500'}`}
-            style={{ width: `${totalBudgeted > 0 ? Math.min(100, (totalActual / totalBudgeted) * 100) : 0}%` }}
-          />
-        </div>
-        <div className="flex justify-between text-xs mt-2 text-muted-theme">
-          <span>{t('spent')} ฿{fmt(totalActual)}</span>
-          <span className={totalActual > totalBudgeted ? 'text-red-500 font-semibold' : 'text-emerald-500 font-semibold'}>
-            {totalActual > totalBudgeted ? `${t('budget_over')} ฿${fmt(totalActual - totalBudgeted)}` : `${t('budget_left')} ฿${fmt(totalBudgeted - totalActual)}`}
-          </span>
-        </div>
-      </div>
-
-      {/* Budget list */}
       {loading ? (
-        <div className="space-y-3">
-          {[1,2,3].map(i => <div key={i} className="h-20 bg-card rounded-2xl animate-pulse border border-[var(--border)]" />)}
-        </div>
-      ) : budgets.length === 0 ? (
-        /* An empty month is where the old flow died — a blank page and no starting
-           point. Offer last month's figures or the user's real averages instead. */
-        <BudgetRollover month={month} onApplied={load} />
-      ) : (
-        <div className="space-y-3">
-          {budgets.map(b => {
-            const pct = b.budgeted > 0 ? Math.min(100, (b.actual / b.budgeted) * 100) : 0
-            const over = b.actual > b.budgeted
-            return (
-              <div key={b.id} className="bg-card rounded-2xl border border-[var(--border)] p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="w-8 h-8 flex items-center justify-center rounded-xl shrink-0"
-                      style={{ backgroundColor: (b.categoryColor ?? '#94a3b8') + '22' }}>
-                      <IconDisplay icon={b.categoryIcon} color={b.categoryColor} size="md" />
+        <Skeleton className="h-40 w-full rounded-2xl" />
+      ) : error ? (
+        <ErrorState message={error} onRetry={load} retryLabel={t('action_retry')} />
+      ) : plan && (
+        <>
+          <SpendingPlanCard plan={plan} month={month} onChanged={load} />
+
+          {/* Envelopes: the split this app's users actually maintain. */}
+          {advancedMode && (
+            <button
+              onClick={() => navigate('/wallets')}
+              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-card border border-[var(--border)]
+                         active:scale-[0.98] transition-all text-left"
+            >
+              <div className="w-11 h-11 rounded-2xl bg-violet-50 dark:bg-violet-900/20 flex items-center justify-center shrink-0">
+                <Icon path={mdiWallet} size={1} color="#8b5cf6" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-base-theme text-sm">{t('plan_wallets_title')}</div>
+                <div className="text-xs text-muted-theme mt-0.5">{t('plan_wallets_desc')}</div>
+              </div>
+              <Icon path={mdiChevronRight} size={0.8} className="text-muted-theme shrink-0" />
+            </button>
+          )}
+
+          {/* Per-category limits — the optional alternative, folded away by default. */}
+          <div className="rounded-2xl bg-card border border-theme overflow-hidden">
+            <button
+              onClick={() => setShowCategories(v => !v)}
+              className="w-full flex items-center justify-between px-5 py-4 text-left"
+            >
+              <div className="min-w-0">
+                <div className="font-bold text-base-theme text-sm">{t('plan_categories_title')}</div>
+                <div className="text-xs text-muted-theme mt-0.5">
+                  {plan.categoryTargets.length > 0
+                    ? `${plan.categoryTargets.length} · ฿${fmt(plan.targetedTotal)}`
+                    : t('plan_categories_desc')}
+                </div>
+              </div>
+              <Icon path={mdiChevronDown} size={0.8}
+                className={clsx('text-muted-theme shrink-0 transition-transform', showCategories && 'rotate-180')} />
+            </button>
+
+            {showCategories && (
+              <div className="px-5 pb-5 space-y-3 border-t border-theme pt-4 animate-fade-up">
+                {plan.flexibleAmount !== null && plan.categoryTargets.length > 0 && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-theme">{t('plan_flexible')}</span>
+                    <span className={clsx('font-bold tabular-nums',
+                      plan.flexibleAmount < 0 ? 'text-rose-500' : 'text-base-theme')}>
+                      ฿{fmt(plan.flexibleAmount)}
                     </span>
-                    <span className="font-semibold text-base-theme text-sm">{b.categoryName}</span>
                   </div>
-                  <button onClick={() => handleDelete(b.id)} className="p-1 text-muted-theme hover:text-red-500 transition-colors">
-                    <Icon path={mdiTrashCanOutline} size={0.75} />
+                )}
+
+                {plan.categoryTargets.length === 0 ? (
+                  <BudgetRollover month={month} onApplied={load} />
+                ) : (
+                  <>
+                    {plan.categoryTargets.map(b => {
+                      const pct = b.amount > 0 ? Math.min(100, (b.actual / b.amount) * 100) : 0
+                      const over = b.actual > b.amount
+                      return (
+                        <div key={b.categoryId}>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="w-5 h-5 flex items-center justify-center rounded-md shrink-0"
+                              style={{ backgroundColor: (b.categoryColor ?? '#94a3b8') + '22' }}>
+                              <IconDisplay icon={b.categoryIcon ?? 'other'} color={b.categoryColor ?? undefined} size={0.55} />
+                            </span>
+                            <span className="flex-1 min-w-0 truncate text-xs font-medium text-base-theme">
+                              {b.categoryName}
+                            </span>
+                            <span className={clsx('text-xs tabular-nums', over ? 'text-rose-500 font-semibold' : 'text-muted-theme')}>
+                              ฿{fmt(b.actual)} / ฿{fmt(b.amount)}
+                            </span>
+                            <button onClick={() => handleDelete(b.categoryId)}
+                              aria-label={`${t('action_delete')} ${b.categoryName}`}
+                              className="p-1 rounded-lg text-muted-theme active:bg-[var(--input)]">
+                              <Icon path={mdiTrashCanOutline} size={0.6} />
+                            </button>
+                          </div>
+                          <div className="w-full bg-[var(--input)] rounded-full h-1.5 overflow-hidden">
+                            <div className={clsx('h-full rounded-full transition-all',
+                              over ? 'bg-rose-500' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-500')}
+                              style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
+
+                {showForm ? (
+                  <div className="space-y-2 pt-2 border-t border-theme animate-fade-up">
+                    <CustomSelect
+                      value={form.categoryId}
+                      onChange={(v: string) => setForm(f => ({ ...f, categoryId: v }))}
+                      options={availableCategories.map(c => ({ value: c.id, label: c.name, icon: c.icon, color: c.color }))}
+                      placeholder={t('category')}
+                    />
+                    <input type="number" inputMode="decimal" step="0.01" min={0.01}
+                      placeholder="0" value={form.amount}
+                      onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-[var(--input)] border border-theme
+                                 text-base-theme text-sm outline-none focus:border-brand-500" />
+                    <div className="flex gap-2">
+                      <button onClick={() => { setShowForm(false); setForm({ categoryId: '', amount: '' }) }}
+                        className="flex-1 py-2.5 rounded-xl border border-theme text-sm font-semibold text-base-theme
+                                   flex items-center justify-center gap-1.5">
+                        <Icon path={mdiClose} size={0.6} /> {t('action_cancel')}
+                      </button>
+                      <button onClick={handleSave} disabled={saving || !form.categoryId || !form.amount}
+                        className="flex-1 py-2.5 rounded-xl bg-brand-600 text-white text-sm font-semibold
+                                   disabled:opacity-50 flex items-center justify-center gap-1.5">
+                        <Icon path={mdiCheck} size={0.6} color="white" /> {saving ? t('saving') : t('save')}
+                      </button>
+                    </div>
+                  </div>
+                ) : availableCategories.length > 0 && (
+                  <button onClick={() => setShowForm(true)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl
+                               border border-dashed border-theme text-xs font-semibold text-muted-theme">
+                    <Icon path={mdiPlus} size={0.6} /> {t('add')}
                   </button>
-                </div>
-                <div className="w-full bg-[var(--input)] rounded-full h-2 overflow-hidden mb-2">
-                  <div
-                    className={`h-full rounded-full transition-all ${over ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-xs text-muted-theme">
-                  <span>{t('budget_used')} ฿{fmt(b.actual)}</span>
-                  <span>{t('budget_set')} ฿{fmt(b.budgeted)}</span>
-                </div>
-                {over && (
-                  <p className="text-xs text-red-500 font-semibold mt-1">{t('budget_over_by')} ฿{fmt(b.actual - b.budgeted)}</p>
                 )}
               </div>
-            )
-          })}
-        </div>
+            )}
+          </div>
+        </>
       )}
 
       <ConfirmModal
@@ -192,41 +267,6 @@ export default function Budget() {
         onConfirm={confirmState.onConfirm}
         onCancel={() => setConfirmState(s => ({ ...s, open: false }))}
       />
-
-      {/* Add form modal */}
-      {showForm && (
-        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40">
-          <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-base-theme">{t('set_budget')}</h2>
-              <button onClick={() => setShowForm(false)} className="p-1 text-muted-theme">
-                <Icon path={mdiClose} size={0.9} />
-              </button>
-            </div>
-            <CustomSelect
-              value={form.categoryId}
-              onChange={v => setForm(f => ({ ...f, categoryId: v }))}
-              placeholder={t('select_category')}
-              options={availableCategories.map(c => ({ value: c.id, label: c.name, icon: c.icon, color: c.color }))}
-            />
-            <input
-              type="number"
-              step="0.01"
-              placeholder={t('amount_baht')}
-              value={form.amount}
-              onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}
-              className="w-full px-4 py-3 rounded-xl bg-[var(--input)] text-base-theme text-sm border border-[var(--border)] outline-none"
-            />
-            <button
-              onClick={handleSave}
-              disabled={saving || !form.categoryId || !form.amount}
-              className="w-full py-3 rounded-xl bg-brand-600 text-white font-bold text-sm disabled:opacity-50"
-            >
-              {saving ? t('saving') : t('save')}
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

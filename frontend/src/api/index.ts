@@ -8,6 +8,7 @@ import type {
   EmergencyFundSummary, AdminUser, AdminStats, AiRecommendation,
   AllocationPlanPreview, DailyBrief, UpdatePreferencesPayload,
   CompleteOnboardingPayload, Coverage, WeeklyReview, BudgetSuggestion,
+  SpendingPlanView,
 } from '../types'
 
 const http = axios.create({
@@ -179,11 +180,22 @@ export const allocationsApi = {
   unallocate: (id: string, amount: number) =>
     http.post(`/allocations/${id}/unallocate`, { amount }).then(r => r.data),
 
-  // GET /api/allocations/plans/preview — last month's plan + this month's gap per wallet
+  // GET — this month's targets, inherited from the last month that had them,
+  // alongside what has already been funded.
   previewPlan: () =>
     http.get<AllocationPlanPreview>('/allocations/plans/preview').then(r => r.data),
 
-  // POST /api/allocations/plans/apply — batch-fund every wallet at once
+  /**
+   * PUT — record intent only.
+   *
+   * Moves no money and is never blocked by an empty pool, which is the whole point:
+   * the previous flow could only persist a plan as a side effect of a successful
+   * transfer, so anyone sitting at ฿0 unallocated could never save one.
+   */
+  saveTargets: (month: string, items: { allocationId: string; targetAmount: number }[]) =>
+    http.put<{ saved: number }>('/allocations/plans', { month, items }).then(r => r.data),
+
+  // POST — move real money. Leaves the saved targets untouched.
   applyPlan: (amounts: { allocationId: string; amount: number }[]) =>
     http.post('/allocations/plans/apply', { amounts }).then(r => r.data),
 }
@@ -198,6 +210,17 @@ export const budgetsApi = {
 
   remove: (id: string) =>
     http.delete(`/budgets/${id}`).then(r => r.data),
+
+  /**
+   * The whole Plan screen for one month: the total (inherited when this month has none
+   * of its own) plus the optional per-category breakdown.
+   */
+  getPlan: (month?: string) =>
+    http.get<SpendingPlanView>('/budgets/plan', { params: { month } }).then(r => r.data),
+
+  /** `totalAmount: null` clears the plan for that month. 0 is refused. */
+  setPlanTotal: (month: string, totalAmount: number | null) =>
+    http.put('/budgets/plan', { month, totalAmount }).then(r => r.data),
 
   /** What to prefill a new month with: last month's figures, else actual spend. */
   getSuggestions: (month?: string) =>

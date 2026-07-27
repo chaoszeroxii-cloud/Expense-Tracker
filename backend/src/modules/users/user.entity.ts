@@ -115,6 +115,22 @@ export class User {
   @Column({ name: 'token_version', type: 'int', default: 0 })
   tokenVersion: number
 
+  // ── Daily reminder ──────────────────────────────────────────
+  @Column({ name: 'push_enabled', default: false })
+  pushEnabled: boolean
+
+  /** `HH:MM` in the user's own timezone. */
+  @Column({ name: 'remind_at', length: 5, default: '20:30' })
+  remindAt: string
+
+  /**
+   * Local date the last reminder was sent for. Lets the dispatcher run as a frequent
+   * sweep instead of a single tick at a fixed time, so a run missed during a deploy
+   * does not lose the day's reminder.
+   */
+  @Column({ name: 'last_reminded_date', type: 'date', nullable: true })
+  lastRemindedDate: string | null
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 

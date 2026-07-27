@@ -7,6 +7,31 @@ import { Category } from '../categories/category.entity'
 import { UpsertBudgetDto, BatchBudgetDto } from './dto/budget.dto'
 import { safeTimezone } from '../../common/local-date.util'
 import { round2 } from '../../common/money.util'
+import { SpendingPlanService } from './spending-plan.service'
+
+export interface SpendingPlanView {
+  month: string
+  state: 'explicit' | 'inherited' | 'empty'
+  sourceMonth: string | null
+  totalAmount: number | null
+  /**
+   * Every expense in the month, not only the categories that happen to have a budget.
+   * The Plan screen used to sum actuals across budgeted rows alone, so it reported a
+   * different "spent" figure from Home for the same month with no explanation.
+   */
+  totalActual: number
+  categoryTargets: {
+    categoryId: string
+    categoryName: string
+    categoryIcon: string | null
+    categoryColor: string | null
+    amount: number
+    actual: number
+  }[]
+  targetedTotal: number
+  /** Part of the monthly total not pinned to any category. */
+  flexibleAmount: number | null
+}
 
 export interface BudgetSuggestion {
   categoryId: string
@@ -44,12 +69,55 @@ export class BudgetsService {
     private readonly users: Repository<User>,
     @InjectRepository(Category)
     private readonly categories: Repository<Category>,
+    private readonly spendingPlan: SpendingPlanService,
   ) {}
 
   /** The zone month boundaries are measured in for this user. */
   private async timezoneFor(userId: string): Promise<string> {
     const user = await this.users.findOne({ where: { id: userId }, select: ['id', 'timezone'] })
     return safeTimezone(user?.timezone)
+  }
+
+  /**
+   * The whole Plan screen in one payload: the monthly total (inherited when the month
+   * has no explicit one) plus the optional per-category breakdown.
+   */
+  async getSpendingPlan(userId: string, month: string): Promise<SpendingPlanView> {
+    const plan = await this.spendingPlan.resolve(userId, month)
+    const tz = await this.timezoneFor(userId)
+
+    const [withActual, totalRow] = await Promise.all([
+      this.getBudgetWithActual(userId, month),
+      // Counts every expense in the month, matching what Home reports.
+      this.repo.manager.query(
+        `SELECT COALESCE(SUM(e.amount), 0) AS total
+           FROM expenses e
+          WHERE e.user_id = $1
+            AND e.type = 'expense'
+            AND TO_CHAR(e.occurred_at AT TIME ZONE $3, 'YYYY-MM') = $2`,
+        [userId, month, tz],
+      ),
+    ])
+
+    const targetedTotal = round2(withActual.reduce((sum, b) => sum + b.budgeted, 0))
+
+    return {
+      month,
+      state: plan.state,
+      sourceMonth: plan.sourceMonth,
+      totalAmount: plan.totalAmount,
+      totalActual: round2(parseFloat(totalRow[0]?.total) || 0),
+      categoryTargets: withActual.map((b) => ({
+        categoryId: b.categoryId,
+        categoryName: b.categoryName ?? '',
+        categoryIcon: b.categoryIcon ?? null,
+        categoryColor: b.categoryColor ?? null,
+        amount: b.budgeted,
+        actual: b.actual,
+      })),
+      targetedTotal,
+      flexibleAmount: plan.totalAmount === null ? null : round2(plan.totalAmount - targetedTotal),
+    }
   }
 
   async upsert(userId: string, dto: UpsertBudgetDto): Promise<Budget> {

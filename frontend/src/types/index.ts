@@ -74,22 +74,7 @@ export interface AllocationSummary {
   fundedThisMonth: number
 }
 
-// ── Allocation Plan ("Apply Last Month's Plan") ────────────────
-export interface AllocationPlanItem {
-  allocationId: string
-  name: string
-  icon: string
-  color: string
-  planAmount: number
-  fundedThisMonth: number
-  suggested: number
-}
-
-export interface AllocationPlanPreview {
-  sourceMonth: string | null
-  unallocatedBalance: number
-  items: AllocationPlanItem[]
-}
+// Allocation plan types live with the wallet funding template further down.
 
 // ── Balance Summary ───────────────────────────────────────────
 // totalBalance      = user.totalBalance  (net of all transactions ever)
@@ -97,8 +82,66 @@ export interface AllocationPlanPreview {
 // unallocatedBalance = totalBalance - allocatedBalance  (free to distribute)
 export interface BalanceSummary {
   totalBalance: number
+  /** Net of deficits — `positiveWalletBalance − walletDeficit`. */
   allocatedBalance: number
   unallocatedBalance: number
+  /** Sum of wallets in credit. Reported separately so a summary cannot claim
+   *  "100% allocated" while positive wallets quietly cover negative ones. */
+  positiveWalletBalance: number
+  /** Sum of the shortfalls, as a positive number. */
+  walletDeficit: number
+  negativeWalletCount: number
+}
+
+// ── Spending plan (month-scoped) ──────────────────────────────
+export type PlanSource = 'explicit' | 'inherited' | 'empty'
+
+export interface SpendingPlanView {
+  month: string
+  state: PlanSource
+  /** Which month the figure came from when `state` is `inherited`. */
+  sourceMonth: string | null
+  totalAmount: number | null
+  /** Every expense in the month, so this matches what Home reports. */
+  totalActual: number
+  categoryTargets: {
+    categoryId: string
+    categoryName: string
+    categoryIcon: string | null
+    categoryColor: string | null
+    amount: number
+    actual: number
+  }[]
+  targetedTotal: number
+  flexibleAmount: number | null
+}
+
+// ── Wallet funding template ───────────────────────────────────
+// Targets are intent and can always be saved; moving money is a separate action that
+// can fail for lack of funds.
+export interface AllocationTargetItem {
+  allocationId: string
+  name: string
+  icon: string
+  color: string
+  balance: number
+  targetAmount: number
+  fundedThisMonth: number
+  remainingToFund: number
+  /** @deprecated use `targetAmount` */
+  planAmount: number
+  /** @deprecated use `remainingToFund` */
+  suggested: number
+}
+
+export interface AllocationPlanPreview {
+  month: string
+  state: PlanSource
+  sourceMonth: string | null
+  unallocatedBalance: number
+  items: AllocationTargetItem[]
+  totalTarget: number
+  totalRemainingToFund: number
 }
 
 // ── Budget ────────────────────────────────────────────────────
@@ -330,6 +373,8 @@ export interface UpdatePreferencesPayload {
   showWorkTime?: boolean
   advancedMode?: boolean
   expectedMonthlyIncome?: number
+  /** `HH:MM` in the user's own timezone. */
+  remindAt?: string
 }
 
 export interface CompleteOnboardingPayload {

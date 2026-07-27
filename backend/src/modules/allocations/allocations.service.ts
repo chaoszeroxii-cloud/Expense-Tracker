@@ -8,6 +8,7 @@ import { Category } from '../categories/category.entity'
 import { User } from '../users/user.entity'
 import { CreateAllocationDto, UpdateAllocationDto } from './allocation.dto'
 import { round2 } from '../../common/money.util'
+import { localToday, safeTimezone } from '../../common/local-date.util'
 
 @Injectable()
 export class AllocationsService {
@@ -23,6 +24,9 @@ export class AllocationsService {
 
     @InjectRepository(Category)
     private readonly categoryRepo: Repository<Category>,
+
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
 
     private readonly dataSource: DataSource,
   ) {}
@@ -254,23 +258,42 @@ export class AllocationsService {
   // ── Apply Last Month's Plan ────────────────────────────────────
   // See docs/adr/0001-allocation-plan-explicit-not-derived.md for why this
   // is a stored value rather than derived purely from AllocationMovement.
+  /** The user's own calendar month. A UTC month is wrong for 7 hours a day here. */
+  private async currentMonthFor(userId: string): Promise<string> {
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'timezone'] })
+    return localToday(safeTimezone(user?.timezone)).slice(0, 7)
+  }
+
   async previewApplyPlan(userId: string) {
-    const currentMonth = new Date().toISOString().slice(0, 7)
+    const currentMonth = await this.currentMonthFor(userId)
 
-    const lastPlanRow = await this.planRepo
-      .createQueryBuilder('p')
-      .select('p.month', 'month')
-      .where('p.user_id = :userId', { userId })
-      .andWhere('p.month < :currentMonth', { currentMonth })
-      .orderBy('p.month', 'DESC')
-      .limit(1)
-      .getRawOne()
+    // This month's own targets win; otherwise carry the most recent earlier month
+    // forward so a new month starts with the split the user already decided on.
+    const explicitRows = await this.planRepo.find({ where: { userId, month: currentMonth } })
 
-    const sourceMonth: string | null = lastPlanRow?.month ?? null
+    let sourceMonth: string | null = null
+    let planRows = explicitRows
+    let state: 'explicit' | 'inherited' | 'empty' = explicitRows.length > 0 ? 'explicit' : 'empty'
 
-    const [allocations, planRows, fundedMap, unallocatedBalance] = await Promise.all([
+    if (explicitRows.length === 0) {
+      const lastPlanRow = await this.planRepo
+        .createQueryBuilder('p')
+        .select('p.month', 'month')
+        .where('p.user_id = :userId', { userId })
+        .andWhere('p.month < :currentMonth', { currentMonth })
+        .orderBy('p.month', 'DESC')
+        .limit(1)
+        .getRawOne()
+
+      sourceMonth = lastPlanRow?.month ?? null
+      if (sourceMonth) {
+        planRows = await this.planRepo.find({ where: { userId, month: sourceMonth } })
+        state = 'inherited'
+      }
+    }
+
+    const [allocations, fundedMap, unallocatedBalance] = await Promise.all([
       this.repo.find({ where: { userId }, order: { name: 'ASC' } }),
-      sourceMonth ? this.planRepo.find({ where: { userId, month: sourceMonth } }) : Promise.resolve([] as AllocationPlan[]),
       this.getFundedThisMonthMap(userId, currentMonth),
       this.getUnallocated(userId),
     ])
@@ -278,24 +301,37 @@ export class AllocationsService {
     const planMap = new Map(planRows.map((p) => [p.allocationId, Number(p.amount)]))
 
     const items = allocations.map((a) => {
-      const planAmount      = planMap.get(a.id) ?? 0
+      const targetAmount    = planMap.get(a.id) ?? 0
       const fundedThisMonth = fundedMap.get(a.id) ?? 0
       return {
         allocationId: a.id,
         name: a.name,
         icon: a.icon,
         color: a.color,
-        planAmount,
+        balance: Number(a.balance),
+        targetAmount,
         fundedThisMonth,
-        suggested: Math.max(0, planAmount - fundedThisMonth),
+        /** What topping this wallet up to its target would still cost. */
+        remainingToFund: round2(Math.max(0, targetAmount - fundedThisMonth)),
+        // Retained for the previous client contract during the rollout.
+        planAmount: targetAmount,
+        suggested: round2(Math.max(0, targetAmount - fundedThisMonth)),
       }
     })
 
-    return { sourceMonth, unallocatedBalance, items }
+    return {
+      month: currentMonth,
+      state,
+      sourceMonth,
+      unallocatedBalance,
+      items,
+      totalTarget: round2(items.reduce((s, i) => s + i.targetAmount, 0)),
+      totalRemainingToFund: round2(items.reduce((s, i) => s + i.remainingToFund, 0)),
+    }
   }
 
   async applyPlan(userId: string, amounts: { allocationId: string; amount: number }[]) {
-    const currentMonth = new Date().toISOString().slice(0, 7)
+    const currentMonth = await this.currentMonthFor(userId)
 
     return this.dataSource.transaction(async (em: EntityManager) => {
       const allocRepo = em.getRepository(Allocation)
@@ -333,23 +369,58 @@ export class AllocationsService {
         await em.save(AllocationMovement, em.create(AllocationMovement, { userId, allocationId, amount, type: 'fund' }))
       }
 
-      // Plan for this month = total funded-this-month AFTER applying, so ad-hoc
-      // top-ups the user already made aren't double-counted next time (see ADR 0001).
-      const allocationIds = amounts.map((a) => a.allocationId)
-      const fundedMap = await this.getFundedThisMonthMap(userId, currentMonth, em, allocationIds)
-
-      for (const allocationId of allocationIds) {
-        const total = fundedMap.get(allocationId) ?? 0
-        const existing = await em.findOne(AllocationPlan, { where: { userId, allocationId, month: currentMonth } })
-        if (existing) {
-          existing.amount = total
-          await em.save(AllocationPlan, existing)
-        } else {
-          await em.save(AllocationPlan, em.create(AllocationPlan, { userId, allocationId, month: currentMonth, amount: total }))
-        }
-      }
-
+      // Targets are NOT touched here.
+      //
+      // This used to overwrite AllocationPlan.amount with the month's net funded figure,
+      // which is `fund + transfer_in − unallocate − transfer_out`. So topping a wallet up
+      // mid-month, pulling money back, or transferring between wallets all silently
+      // rewrote next month's template — precisely what ADR 0001 introduced a stored plan
+      // to prevent. Intent is written only by saveTargets(), never as a side effect of
+      // moving money.
       return { unallocatedBalance: round2(unallocated - sumRequested) }
+    })
+  }
+
+  /**
+   * Records how much each wallet is *meant* to hold from this month's funding.
+   *
+   * Deliberately moves no money and checks no capacity: a plan is a statement of intent,
+   * and the user has to be able to write one down before the money exists. The old flow
+   * could only persist a plan as a by-product of a successful transfer, so anyone whose
+   * unallocated pool sat at ฿0 could open the planner, type figures, and never enable the
+   * confirm button — the plan they were promised would "be remembered next month" could
+   * not be saved at all.
+   */
+  async saveTargets(
+    userId: string,
+    month: string,
+    items: { allocationId: string; targetAmount: number }[],
+  ) {
+    const owned = await this.repo.find({ where: { userId } })
+    const ownedIds = new Set(owned.map((a) => a.id))
+    for (const { allocationId } of items) {
+      if (!ownedIds.has(allocationId)) throw new NotFoundException(`Allocation ${allocationId} not found`)
+    }
+    if (new Set(items.map((i) => i.allocationId)).size !== items.length) {
+      throw new BadRequestException('Duplicate allocation in request')
+    }
+
+    return this.dataSource.transaction(async (em: EntityManager) => {
+      // A full snapshot: wallets left out of the payload have their target for this
+      // month removed, so dropping one does not resurrect it from an older row.
+      await em.delete(AllocationPlan, { userId, month })
+
+      const rows = items
+        .filter((i) => i.targetAmount > 0)
+        .map((i) => em.create(AllocationPlan, {
+          userId,
+          allocationId: i.allocationId,
+          month,
+          amount: i.targetAmount,
+        }))
+
+      if (rows.length > 0) await em.save(AllocationPlan, rows)
+      return { saved: rows.length }
     })
   }
 
@@ -376,6 +447,10 @@ export class AllocationsService {
   private async getFundedThisMonthMap(
     userId: string, month: string, em?: EntityManager, allocationIds?: string[],
   ): Promise<Map<string, number>> {
+    const userRepo = em ? em.getRepository(User) : this.userRepo
+    const user = await userRepo.findOne({ where: { id: userId }, select: ['id', 'timezone'] })
+    const tz = safeTimezone(user?.timezone)
+
     const repo = em ? em.getRepository(AllocationMovement) : this.movementRepo
     const qb = repo
       .createQueryBuilder('m')
@@ -384,7 +459,9 @@ export class AllocationsService {
         `SUM(CASE WHEN m.type IN ('fund', 'transfer_in') THEN m.amount WHEN m.type IN ('unallocate', 'transfer_out') THEN -m.amount ELSE 0 END) AS "funded"`,
       ])
       .where('m.user_id = :userId', { userId })
-      .andWhere("TO_CHAR(m.created_at, 'YYYY-MM') = :month", { month })
+      // Grouped in the user's own timezone, matching every other month boundary in the
+      // app. A UTC month files a late-evening movement on the 31st under the next one.
+      .andWhere("TO_CHAR(m.created_at AT TIME ZONE :tz, 'YYYY-MM') = :month", { month, tz })
       .groupBy('m.allocation_id')
 
     if (allocationIds?.length) {

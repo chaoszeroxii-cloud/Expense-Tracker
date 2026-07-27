@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common'
 import { ConfigModule } from '@nestjs/config'
+import { ScheduleModule } from '@nestjs/schedule'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { APP_GUARD, Reflector } from '@nestjs/core'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
@@ -17,6 +18,8 @@ import { AdminModule } from './modules/admin/admin.module'
 import { ChatModule } from './modules/chat/chat.module'
 import { TelemetryModule } from './modules/telemetry/telemetry.module'
 import { CheckinsModule } from './modules/checkins/checkins.module'
+import { AccountModule } from './modules/account/account.module'
+import { NotificationsModule } from './modules/notifications/notifications.module'
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard'
 import { HealthController } from './health.controller'
 
@@ -24,6 +27,7 @@ import { HealthController } from './health.controller'
   controllers: [HealthController],
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     TypeOrmModule.forRootAsync({ useFactory: databaseConfig }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     AuthModule,
@@ -39,6 +43,8 @@ import { HealthController } from './health.controller'
     ChatModule,
     TelemetryModule,
     CheckinsModule,
+    AccountModule,
+    NotificationsModule,
   ],
   providers: [
     // Rate-limit first (per IP), then authenticate. Registering ThrottlerGuard

@@ -1,24 +1,40 @@
 import {
-  Controller, Get, Post, Patch, Delete,
+  Controller, Get, Post, Put, Patch, Delete,
   Param, Body, ParseUUIDPipe, UseGuards,
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { User } from '../users/user.entity'
 import { AllocationsService } from './allocations.service'
-import { CreateAllocationDto, UpdateAllocationDto, MoveMoneyDto, TransferMoneyDto, ApplyPlanDto } from './allocation.dto'
+import {
+  CreateAllocationDto, UpdateAllocationDto, MoveMoneyDto, TransferMoneyDto,
+  ApplyPlanDto, SaveAllocationTargetsDto,
+} from './allocation.dto'
 
 @Controller('allocations')
 @UseGuards(JwtAuthGuard)
 export class AllocationsController {
   constructor(private readonly service: AllocationsService) {}
 
-  // ── Apply Last Month's Plan (static routes — keep above ':id' routes) ──
+  // ── Monthly funding template (static routes — keep above ':id' routes) ──
+  //
+  // Intent and money movement are separate operations with different failure modes:
+  // a plan can always be written down, whereas moving money can fail for lack of it.
+  // Binding them together meant a user with ฿0 unallocated could not record a plan at all.
+
+  // GET — this month's targets, inherited from the last month that had them.
   @Get('plans/preview')
   previewApplyPlan(@CurrentUser() user: User) {
     return this.service.previewApplyPlan(user.id)
   }
 
+  // PUT — record intent only. Moves nothing, never blocked by an empty pool.
+  @Put('plans')
+  saveTargets(@Body() dto: SaveAllocationTargetsDto, @CurrentUser() user: User) {
+    return this.service.saveTargets(user.id, dto.month, dto.items)
+  }
+
+  // POST — move real money. Leaves the targets untouched.
   @Post('plans/apply')
   applyPlan(@Body() dto: ApplyPlanDto, @CurrentUser() user: User) {
     return this.service.applyPlan(user.id, dto.amounts)

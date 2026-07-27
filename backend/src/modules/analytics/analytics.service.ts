@@ -9,6 +9,7 @@ import { User } from '../users/user.entity';
 import { round2 } from '../../common/money.util';
 import { safeTimezone, localToday, shiftDate } from '../../common/local-date.util';
 import { CheckinsService, Coverage } from '../checkins/checkins.service';
+import { SpendingPlanService } from '../budgets/spending-plan.service';
 
 export interface AiRecommendation {
   type: 'warning' | 'tip' | 'good';
@@ -51,8 +52,14 @@ export interface PeriodSummary {
 
 export interface BalanceSummary {
   totalBalance: number;
+  /** Net of any deficits — `positiveWalletBalance − walletDeficit`. */
   allocatedBalance: number;
   unallocatedBalance: number;
+  /** Sum of wallets in credit. */
+  positiveWalletBalance: number;
+  /** Sum of the shortfalls, as a positive number. */
+  walletDeficit: number;
+  negativeWalletCount: number;
 }
 
 export interface DailyBriefTransaction {
@@ -122,6 +129,7 @@ export class AnalyticsService {
     @InjectRepository(User)
     private readonly users: Repository<User>,
     private readonly checkins: CheckinsService,
+    private readonly spendingPlan: SpendingPlanService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -170,7 +178,11 @@ export class AnalyticsService {
     // and only reflects transactions recorded in this app, so a new user goes
     // negative on their first coffee. Calling that "safe to spend" would be a
     // number the user cannot act on.
-    const limitRaw = user.monthlySpendingLimit === null ? null : Number(user.monthlySpendingLimit);
+    //
+    // Resolved per month, and inherited from the last month the user set one, so the
+    // daily figure keeps working on the 1st instead of vanishing until they re-enter it.
+    const effectivePlan = await this.spendingPlan.resolve(userId, month);
+    const limitRaw = effectivePlan.totalAmount;
     const hasPlan  = user.trackingMode === 'plan' && limitRaw !== null && limitRaw > 0;
 
     let safeToday: number | null = null;
@@ -561,13 +573,32 @@ export class AnalyticsService {
       allocationRepo.find({ where: { userId } }),
     ])
 
-    const totalBalance     = round2(Number(user?.totalBalance ?? 0))
-    const allocatedBalance = round2(allocations.reduce((s, a) => s + Number(a.balance), 0))
+    const totalBalance = round2(Number(user?.totalBalance ?? 0))
+
+    // Netting positive and negative wallets into one figure is what let the summary
+    // claim "100% allocated, ฿0 waiting" on a screen that also showed two wallets in
+    // deficit: the positive wallets were quietly covering them. Report both sides.
+    let positiveWalletBalance = 0
+    let walletDeficit = 0
+    let negativeWalletCount = 0
+    for (const a of allocations) {
+      const balance = Number(a.balance)
+      if (balance > 0) positiveWalletBalance += balance
+      else if (balance < 0) { walletDeficit += -balance; negativeWalletCount++ }
+    }
+
+    positiveWalletBalance = round2(positiveWalletBalance)
+    walletDeficit = round2(walletDeficit)
+    const allocatedBalance = round2(positiveWalletBalance - walletDeficit)
 
     return {
       totalBalance,
+      // Net of deficits — kept under the original name for existing clients.
       allocatedBalance,
       unallocatedBalance: round2(totalBalance - allocatedBalance),
+      positiveWalletBalance,
+      walletDeficit,
+      negativeWalletCount,
     }
   }
 

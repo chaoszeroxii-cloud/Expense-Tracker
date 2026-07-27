@@ -30,6 +30,23 @@ export class BatchBudgetDto {
   items: BatchBudgetItemDto[]
 }
 
+export class SetPlanTotalDto {
+  @IsString()
+  @Matches(MONTH, { message: 'month must be YYYY-MM' })
+  month: string
+
+  /**
+   * `null` clears the plan for that month. 0 is refused by validation and by the table:
+   * "no plan" and "spend nothing this month" are different statements and the UI has to
+   * be able to tell them apart.
+   */
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01, { message: 'Monthly total must be greater than 0' })
+  @Type(() => Number)
+  totalAmount?: number | null
+}
+
 export class CopyPreviousDto {
   @IsString()
   @Matches(MONTH, { message: 'month must be YYYY-MM' })

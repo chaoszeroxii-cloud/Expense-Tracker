@@ -16,6 +16,12 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // injectManifest, not generateSW: a generated worker cannot carry a `push`
+      // listener, and push is the whole point of the daily reminder. src/sw.ts is a
+      // like-for-like port of the rules the generated one had.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'icons/*.svg'],
 
@@ -37,35 +43,9 @@ export default defineConfig({
         ],
       },
 
-      // ── Workbox Service Worker strategy ────────────────────
-      workbox: {
-        // Cache app shell (HTML, JS, CSS) — network-first, fallback to cache
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/],
-
-        runtimeCaching: [
-          {
-            // Authenticated API responses are NEVER cached.
-            //
-            // Cache Storage keys on URL only, so a shared `api-cache` would serve
-            // one signed-in user's financial data to the next person to sign in on
-            // the same device, and would silently surface day-old figures with no
-            // "last updated" marker. Offline reads must be per-user in IndexedDB
-            // (planned separately) — not a URL-keyed HTTP cache.
-            urlPattern: /^https?:\/\/.*\/api\//,
-            handler: 'NetworkOnly',
-          },
-          {
-            // Google Fonts: cache-first
-            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
+      // Caching rules now live in src/sw.ts. This only controls what gets precached.
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
       },
     }),
   ],

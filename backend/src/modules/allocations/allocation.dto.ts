@@ -1,7 +1,7 @@
 import {
   IsString, IsOptional, MaxLength,
   IsArray, IsUUID, Matches, IsNumber, Min,
-  ValidateNested, ArrayMinSize,
+  ValidateNested, ArrayMinSize, ArrayMaxSize,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -57,6 +57,36 @@ export class UpdateAllocationDto {
   @IsArray()
   @IsUUID('4', { each: true })
   incomeCategoryIds?: string[]
+}
+
+/**
+ * A wallet's intended share of a month's funding.
+ *
+ * Saving these moves no money and checks no capacity — a plan has to be writable before
+ * the money exists, which the old apply-only flow made impossible whenever the
+ * unallocated pool sat at zero.
+ */
+export class AllocationTargetItemDto {
+  @IsUUID()
+  allocationId: string
+
+  /** 0 removes the target for this wallet. */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Type(() => Number)
+  targetAmount: number
+}
+
+export class SaveAllocationTargetsDto {
+  @IsString()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'month must be YYYY-MM' })
+  month: string
+
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => AllocationTargetItemDto)
+  items: AllocationTargetItemDto[]
 }
 
 // ── Move unallocated funds into a specific wallet ─────────────

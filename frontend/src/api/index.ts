@@ -8,6 +8,7 @@ import type {
   EmergencyFundSummary, AdminUser, AdminStats, AiRecommendation,
   AllocationPlanPreview, DailyBrief, UpdatePreferencesPayload,
   CompleteOnboardingPayload, Coverage, WeeklyReview, BudgetSuggestion,
+  SpendingPlanView,
 } from '../types'
 
 const http = axios.create({
@@ -179,11 +180,22 @@ export const allocationsApi = {
   unallocate: (id: string, amount: number) =>
     http.post(`/allocations/${id}/unallocate`, { amount }).then(r => r.data),
 
-  // GET /api/allocations/plans/preview — last month's plan + this month's gap per wallet
+  // GET — this month's targets, inherited from the last month that had them,
+  // alongside what has already been funded.
   previewPlan: () =>
     http.get<AllocationPlanPreview>('/allocations/plans/preview').then(r => r.data),
 
-  // POST /api/allocations/plans/apply — batch-fund every wallet at once
+  /**
+   * PUT — record intent only.
+   *
+   * Moves no money and is never blocked by an empty pool, which is the whole point:
+   * the previous flow could only persist a plan as a side effect of a successful
+   * transfer, so anyone sitting at ฿0 unallocated could never save one.
+   */
+  saveTargets: (month: string, items: { allocationId: string; targetAmount: number }[]) =>
+    http.put<{ saved: number }>('/allocations/plans', { month, items }).then(r => r.data),
+
+  // POST — move real money. Leaves the saved targets untouched.
   applyPlan: (amounts: { allocationId: string; amount: number }[]) =>
     http.post('/allocations/plans/apply', { amounts }).then(r => r.data),
 }
@@ -199,6 +211,17 @@ export const budgetsApi = {
   remove: (id: string) =>
     http.delete(`/budgets/${id}`).then(r => r.data),
 
+  /**
+   * The whole Plan screen for one month: the total (inherited when this month has none
+   * of its own) plus the optional per-category breakdown.
+   */
+  getPlan: (month?: string) =>
+    http.get<SpendingPlanView>('/budgets/plan', { params: { month } }).then(r => r.data),
+
+  /** `totalAmount: null` clears the plan for that month. 0 is refused. */
+  setPlanTotal: (month: string, totalAmount: number | null) =>
+    http.put('/budgets/plan', { month, totalAmount }).then(r => r.data),
+
   /** What to prefill a new month with: last month's figures, else actual spend. */
   getSuggestions: (month?: string) =>
     http.get<BudgetSuggestion[]>('/budgets/suggestions', { params: { month } }).then(r => r.data),
@@ -209,6 +232,47 @@ export const budgetsApi = {
   /** Saves a whole month at once. An amount of 0 removes that category's budget. */
   saveBatch: (month: string, items: { categoryId: string; amount: number }[]) =>
     http.put<{ saved: number; removed: number }>('/budgets/batch', { month, items }).then(r => r.data),
+}
+
+// ── Account (destructive) ─────────────────────────────────────
+// Every call here is irreversible. The confirmation phrase is re-checked server-side —
+// a guard that only exists in the browser is not a guard.
+export const accountApi = {
+  resetPreview: (from?: string, to?: string) =>
+    http.get<{ count: number; expenseTotal: number; firstMonth: string | null; lastMonth: string | null }>(
+      '/account/reset-preview', { params: { from, to } },
+    ).then(r => r.data),
+
+  /** Omit the range to clear the whole ledger. Balances are rebuilt from what remains. */
+  resetTransactions: (confirm: string, range: { from?: string; to?: string }) =>
+    http.post<{ deletedTransactions: number; from: string | null; to: string | null }>(
+      '/account/reset-transactions', { confirm, ...range },
+    ).then(r => r.data),
+
+  /** Wipes everything the user created; the login survives. `confirm` is their email. */
+  factoryReset: (confirm: string, lang: 'th' | 'en' = 'th') =>
+    http.post<{ ok: true }>('/account/factory-reset', { confirm, lang }).then(r => r.data),
+}
+
+// ── Notifications ─────────────────────────────────────────────
+export const notificationsApi = {
+  status: () =>
+    http.get<{
+      configured: boolean; publicKey: string | null; enabled: boolean
+      remindAt: string; timezone: string; today: string; deviceCount: number
+    }>('/notifications/status').then(r => r.data),
+
+  subscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    http.post('/notifications/subscriptions', { subscription }).then(r => r.data),
+
+  unsubscribe: (endpoint?: string) =>
+    http.delete('/notifications/subscriptions', { data: endpoint ? { endpoint } : {} }).then(r => r.data),
+
+  /** Exercises the whole path — permission, subscription, delivery — in one tap. */
+  test: () =>
+    http.post<{ sent: number; failed: number; pruned: number; configured: boolean }>(
+      '/notifications/test',
+    ).then(r => r.data),
 }
 
 // ── Loans ─────────────────────────────────────────────────────

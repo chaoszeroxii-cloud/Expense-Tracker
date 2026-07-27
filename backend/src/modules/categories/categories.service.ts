@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from './category.entity';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
+import { normalizeMdiIconId } from '../../common/icon.util';
 
 @Injectable()
 export class CategoriesService {
@@ -25,13 +26,22 @@ export class CategoriesService {
   }
 
   create(dto: CreateCategoryDto, userId: string): Promise<Category> {
-    const category = this.repo.create({ ...dto, userId });
+    const category = this.repo.create({
+      ...dto,
+      icon: normalizeMdiIconId(dto.icon, 'other'),
+      userId,
+    });
     return this.repo.save(category);
   }
 
   async update(id: string, dto: UpdateCategoryDto, userId: string): Promise<Category> {
     const category = await this.findOne(id, userId);
-    Object.assign(category, dto);
+    Object.assign(category, {
+      ...dto,
+      ...(dto.icon !== undefined
+        ? { icon: normalizeMdiIconId(dto.icon, 'other') }
+        : {}),
+    });
     return this.repo.save(category);
   }
 

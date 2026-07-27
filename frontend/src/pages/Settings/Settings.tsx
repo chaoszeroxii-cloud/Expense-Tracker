@@ -206,8 +206,9 @@ export default function Settings() {
             <p className="text-[11px] text-muted-theme mt-1.5">{t('expected_income_desc')}</p>
           </div>
           <button type="submit" disabled={savingProfile || !profileDirty}
-            className={clsx('w-full py-2.5 rounded-xl text-sm font-bold transition-all text-white',
+            className={clsx('w-full py-2.5 rounded-xl text-sm font-bold transition-all text-white flex items-center justify-center gap-1.5',
               profileOk ? 'bg-emerald-500' : 'bg-brand-600 disabled:opacity-40')}>
+            {profileOk && <Icon path={mdiCheck} size={0.6} aria-hidden="true" />}
             {profileOk ? t('saved_') : savingProfile ? t('saving_') : t('save_changes')}
           </button>
         </form>
@@ -461,11 +462,12 @@ export default function Settings() {
               onClick={handleChangePassword}
               disabled={pwSaving || !newPw || !confirmPw || (!!user?.hasPassword && !currentPw)}
               className={clsx(
-                'w-full py-3 rounded-2xl text-sm font-bold text-white transition-colors',
+                'w-full py-3 rounded-2xl text-sm font-bold text-white transition-colors flex items-center justify-center gap-1.5',
                 pwOk ? 'bg-emerald-500' : 'bg-brand-600 disabled:opacity-40',
               )}
             >
-              {pwOk ? `✓ ${t('pw_changed')}` : pwSaving ? t('saving_') : t('save_changes')}
+              {pwOk && <Icon path={mdiCheck} size={0.6} aria-hidden="true" />}
+              {pwOk ? t('pw_changed') : pwSaving ? t('saving_') : t('save_changes')}
             </button>
           </div>
         </div>

@@ -4,7 +4,7 @@ import Icon from '@mdi/react'
 import {
   mdiTrashCan, mdiPencilOutline, mdiChevronLeft, mdiChevronRight, mdiCash, mdiWallet, mdiClose,
   mdiTrayArrowDown, mdiFileDelimited, mdiFileDocumentOutline, mdiFilePdfBox, mdiLoading,
-  mdiCalendar,
+  mdiCalendar, mdiMagnify, mdiInboxOutline,
 } from '@mdi/js'
 import clsx from 'clsx'
 import { useExpenses, useCategories, currentMonth } from '../../hooks'
@@ -240,14 +240,14 @@ export default function History() {
       ) : filtered.length === 0 ? (
         (data?.length ?? 0) > 0 ? (
           <Empty
-            icon="🔍"
+            icon={mdiMagnify}
             title={t('empty_filtered_title')}
             sub={t('empty_filtered_sub')}
             action={{ label: t('action_clear_filter'), onPress: () => setFilter('all') }}
           />
         ) : (
           <Empty
-            icon="📭"
+            icon={mdiInboxOutline}
             title={t('empty_no_tx_title')}
             sub={t('empty_no_tx_sub')}
             action={{ label: t('action_add_first'), onPress: () => navigate('/add') }}

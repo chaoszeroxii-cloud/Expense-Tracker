@@ -184,19 +184,19 @@ export class AccountService {
   /** Mirrors the starter list new accounts receive, in the account's language. */
   private async seedDefaultCategories(userId: string, lang: 'th' | 'en') {
     const defaults = [
-      { nameEn: 'Food & Drink',  nameTh: 'อาหารและเครื่องดื่ม', icon: '🍜', color: '#f97316', type: 'expense' },
-      { nameEn: 'Transport',     nameTh: 'เดินทาง',              icon: '🚗', color: '#3b82f6', type: 'expense' },
-      { nameEn: 'Shopping',      nameTh: 'ช้อปปิ้ง',             icon: '🛍️', color: '#a855f7', type: 'expense' },
-      { nameEn: 'Utilities',     nameTh: 'บิล/ค่าน้ำค่าไฟ',      icon: '💡', color: '#eab308', type: 'expense' },
-      { nameEn: 'Health',        nameTh: 'สุขภาพ',               icon: '💊', color: '#ef4444', type: 'expense' },
-      { nameEn: 'Entertainment', nameTh: 'บันเทิง',              icon: '🎮', color: '#ec4899', type: 'expense' },
-      { nameEn: 'Housing',       nameTh: 'ที่อยู่อาศัย',          icon: '🏠', color: '#14b8a6', type: 'expense' },
-      { nameEn: 'Education',     nameTh: 'การศึกษา',             icon: '📚', color: '#6366f1', type: 'expense' },
-      { nameEn: 'Other',         nameTh: 'อื่นๆ',                icon: '📦', color: '#94a3b8', type: 'expense' },
-      { nameEn: 'Salary',        nameTh: 'เงินเดือน',            icon: '💼', color: '#22c55e', type: 'income'  },
-      { nameEn: 'Freelance',     nameTh: 'งานฟรีแลนซ์',          icon: '💻', color: '#10b981', type: 'income'  },
-      { nameEn: 'Investment',    nameTh: 'ผลตอบแทนการลงทุน',     icon: '📈', color: '#06b6d4', type: 'income'  },
-      { nameEn: 'Other Income',  nameTh: 'รายรับอื่นๆ',          icon: '💰', color: '#84cc16', type: 'income'  },
+      { nameEn: 'Food & Drink',  nameTh: 'อาหารและเครื่องดื่ม', icon: 'food',          color: '#f97316', type: 'expense' },
+      { nameEn: 'Transport',     nameTh: 'เดินทาง',              icon: 'transport',     color: '#3b82f6', type: 'expense' },
+      { nameEn: 'Shopping',      nameTh: 'ช้อปปิ้ง',             icon: 'shopping',      color: '#a855f7', type: 'expense' },
+      { nameEn: 'Utilities',     nameTh: 'บิล/ค่าน้ำค่าไฟ',      icon: 'utilities',     color: '#eab308', type: 'expense' },
+      { nameEn: 'Health',        nameTh: 'สุขภาพ',               icon: 'health',        color: '#ef4444', type: 'expense' },
+      { nameEn: 'Entertainment', nameTh: 'บันเทิง',              icon: 'entertainment', color: '#ec4899', type: 'expense' },
+      { nameEn: 'Housing',       nameTh: 'ที่อยู่อาศัย',          icon: 'housing',       color: '#14b8a6', type: 'expense' },
+      { nameEn: 'Education',     nameTh: 'การศึกษา',             icon: 'education',     color: '#6366f1', type: 'expense' },
+      { nameEn: 'Other',         nameTh: 'อื่นๆ',                icon: 'other',         color: '#94a3b8', type: 'expense' },
+      { nameEn: 'Salary',        nameTh: 'เงินเดือน',            icon: 'salary',        color: '#22c55e', type: 'income'  },
+      { nameEn: 'Freelance',     nameTh: 'งานฟรีแลนซ์',          icon: 'freelance',     color: '#10b981', type: 'income'  },
+      { nameEn: 'Investment',    nameTh: 'ผลตอบแทนการลงทุน',     icon: 'investment',    color: '#06b6d4', type: 'income'  },
+      { nameEn: 'Other Income',  nameTh: 'รายรับอื่นๆ',          icon: 'otherincome',   color: '#84cc16', type: 'income'  },
     ] as const
 
     await this.categories.save(

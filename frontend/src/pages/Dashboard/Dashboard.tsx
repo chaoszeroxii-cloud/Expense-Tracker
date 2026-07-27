@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
-import { mdiChartTimelineVariant, mdiChevronRight, mdiWallet } from '@mdi/js'
+import { mdiChartTimelineVariant, mdiChevronRight, mdiInboxOutline, mdiWallet } from '@mdi/js'
 import { Card, Skeleton, ErrorState, Empty, Amount, IconDisplay, WorkTimeBadge } from '../../components/ui'
 import SafeToSpendCard from '../../components/home/SafeToSpendCard'
 import QuickCaptureBar from '../../components/home/QuickCaptureBar'
@@ -94,7 +94,7 @@ export default function Dashboard() {
         ) : !brief?.recentTransactions.length ? (
           <Empty
             compact
-            icon="📭"
+            icon={mdiInboxOutline}
             title={t('empty_no_tx_title')}
             sub={t('empty_no_tx_sub')}
             action={{ label: t('action_add_first'), onPress: () => navigate('/add') }}

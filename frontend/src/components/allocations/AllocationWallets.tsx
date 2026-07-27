@@ -167,7 +167,7 @@ function UnallocatedBanner({
     const n = Number(inputAmt);
     if (!n || n <= 0 || !targetId) return;
     if (n > amount) {
-      setErrMsg("⚠️ " + t("insufficient_funds"));
+      setErrMsg(t("insufficient_funds"));
       return;
     }
     setMoving(true);
@@ -243,7 +243,7 @@ function UnallocatedBanner({
                   )}
                 >
                   <IconDisplay
-                    icon={a.icon ?? "💼"}
+                    icon={a.icon ?? "wallet"}
                     color={a.color}
                     size="sm"
                   />
@@ -294,7 +294,10 @@ function UnallocatedBanner({
             </div>
 
             {errMsg && (
-              <p className="text-xs text-rose-500 font-medium">{errMsg}</p>
+              <p className="text-xs text-rose-500 font-medium flex items-center gap-1">
+                <Icon path={mdiAlertCircleOutline} size={0.5} aria-hidden="true" />
+                {errMsg}
+              </p>
             )}
 
             {/* Action buttons */}
@@ -430,7 +433,7 @@ function WalletRow({
   const handleFund = async () => {
     const n = Number(fundAmt);
     if (!n || n <= 0) return;
-    if (n > unallocated) { setFundErr("⚠️ " + t("insufficient_funds")); return; }
+    if (n > unallocated) { setFundErr(t("insufficient_funds")); return; }
     setFundBusy(true); setFundErr("");
     try {
       await allocationsApi.moveToAllocation(wallet.id, n);
@@ -444,7 +447,7 @@ function WalletRow({
   const handleAdjust = async () => {
     const n = Number(adjAmt);
     if (!n || n <= 0) return;
-    if (n > Number(wallet.balance)) { setAdjErr("⚠️ " + t("insufficient_funds")); return; }
+    if (n > Number(wallet.balance)) { setAdjErr(t("insufficient_funds")); return; }
     if (adjMode === "transfer" && !adjTarget) return;
     setAdjBusy(true); setAdjErr("");
     try {
@@ -470,7 +473,7 @@ function WalletRow({
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
           style={{ backgroundColor: (wallet.color ?? "#6366f1") + "22" }}
         >
-          <IconDisplay icon={wallet.icon ?? "💼"} color={wallet.color} size="md" />
+          <IconDisplay icon={wallet.icon ?? "wallet"} color={wallet.color} size="md" />
         </div>
 
         <div className="flex-1 min-w-0">
@@ -679,7 +682,12 @@ function WalletRow({
               <Icon path={fundDone ? mdiCheck : mdiArrowRight} size={0.65} color="white" />
             </button>
           </div>
-          {fundErr && <p className="text-[10px] text-rose-500 mt-1.5 font-medium">{fundErr}</p>}
+          {fundErr && (
+            <p className="text-[10px] text-rose-500 mt-1.5 font-medium flex items-center gap-1">
+              <Icon path={mdiAlertCircleOutline} size={0.45} aria-hidden="true" />
+              {fundErr}
+            </p>
+          )}
         </div>
       )}
 
@@ -740,7 +748,7 @@ function WalletRow({
                         ? "border-indigo-500 bg-indigo-100 dark:bg-indigo-800/40"
                         : "border-transparent bg-white dark:bg-slate-700/50",
                     )}>
-                    <IconDisplay icon={w.icon ?? "💼"} color={w.color} size="sm" />
+                    <IconDisplay icon={w.icon ?? "wallet"} color={w.color} size="sm" />
                     <div className="min-w-0">
                       <p className="text-xs font-bold text-base-theme truncate">{w.name}</p>
                       <p className="text-[10px] text-muted-theme">฿{fmt(Number(w.balance))}</p>
@@ -772,7 +780,12 @@ function WalletRow({
                   <Icon path={adjDone ? mdiCheck : mdiSwapHorizontal} size={0.65} color="white" />
                 </button>
               </div>
-              {adjErr && <p className="text-[10px] text-rose-500 mt-1.5 font-medium">{adjErr}</p>}
+              {adjErr && (
+                <p className="text-[10px] text-rose-500 mt-1.5 font-medium flex items-center gap-1">
+                  <Icon path={mdiAlertCircleOutline} size={0.45} aria-hidden="true" />
+                  {adjErr}
+                </p>
+              )}
             </div>
           )}
 
@@ -815,7 +828,12 @@ function WalletRow({
                   <Icon path={adjDone ? mdiCheck : mdiArrowLeft} size={0.65} color="white" />
                 </button>
               </div>
-              {adjErr && <p className="text-[10px] text-rose-500 mt-1.5 font-medium">{adjErr}</p>}
+              {adjErr && (
+                <p className="text-[10px] text-rose-500 mt-1.5 font-medium flex items-center gap-1">
+                  <Icon path={mdiAlertCircleOutline} size={0.45} aria-hidden="true" />
+                  {adjErr}
+                </p>
+              )}
             </div>
           )}
         </div>

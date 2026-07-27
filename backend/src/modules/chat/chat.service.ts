@@ -11,6 +11,7 @@ import { BudgetsService } from '../budgets/budgets.service'
 import { AllocationsService } from '../allocations/allocations.service'
 import { InvestmentsService } from '../investments/investments.service'
 import { TaxService } from '../tax/tax.service'
+import { MDI_ICON_IDS } from '../../common/icon.util'
 
 // ─────────────────────────────────────────────────────────────
 // Tool definitions for DeepSeek
@@ -228,7 +229,11 @@ const TOOLS = [
         properties: {
           name: { type: 'string' },
           type: { type: 'string', enum: ['expense', 'income'] },
-          icon: { type: 'string', description: 'emoji เช่น 🍕' },
+          icon: {
+            type: 'string',
+            enum: [...MDI_ICON_IDS],
+            description: 'MDI icon ID จากรายการที่กำหนด',
+          },
           color: { type: 'string', description: 'hex color เช่น #f97316' },
         },
         required: ['name', 'type'],
@@ -259,7 +264,11 @@ const TOOLS = [
         type: 'object',
         properties: {
           name: { type: 'string' },
-          icon: { type: 'string', description: 'emoji' },
+          icon: {
+            type: 'string',
+            enum: [...MDI_ICON_IDS],
+            description: 'MDI icon ID จากรายการที่กำหนด',
+          },
           color: { type: 'string', description: 'hex color' },
           categoryNames: { type: 'array', items: { type: 'string' }, description: 'ชื่อหมวดรายจ่ายที่ผูก' },
           incomeCategoryNames: { type: 'array', items: { type: 'string' }, description: 'ชื่อหมวดรายรับที่ผูก' },
@@ -278,7 +287,7 @@ const TOOLS = [
         properties: {
           allocationName: { type: 'string', description: 'ชื่อ wallet ที่จะแก้' },
           newName: { type: 'string' },
-          icon: { type: 'string' },
+          icon: { type: 'string', enum: [...MDI_ICON_IDS] },
           color: { type: 'string' },
           categoryNames: { type: 'array', items: { type: 'string' }, description: 'หมวดรายจ่ายใหม่ (แทนที่ของเดิมทั้งหมด)' },
           incomeCategoryNames: { type: 'array', items: { type: 'string' } },
@@ -682,7 +691,7 @@ export class ChatService {
       }
     }
 
-    await this.saveMessage(userId, 'user', userMessage || '📎 แนบรูป', imageAnalysis)
+    await this.saveMessage(userId, 'user', userMessage || 'แนบรูป', imageAnalysis)
     const history = await this.getHistory(userId)
     const systemPrompt = this.buildSystemPrompt(context)
 
@@ -1148,7 +1157,7 @@ export class ChatService {
       // ── create_category ────────────────────────────────────
       case 'create_category': {
         const cat = await this.categoriesSvc.create(
-          { name: args.name, type: args.type, icon: args.icon ?? '📦', color: args.color ?? '#94a3b8' },
+          { name: args.name, type: args.type, icon: args.icon ?? 'other', color: args.color ?? '#94a3b8' },
           userId,
         )
         return { success: true, categoryId: cat.id, message: `สร้างหมวดหมู่ "${args.name}" แล้ว`, marker: '[REFRESH:categories]' }
@@ -1363,7 +1372,7 @@ UI: change_theme, navigate_to
 2. อธิบายสิ่งที่จะทำ + รายละเอียดครบ — แล้วรอ user ยืนยัน
 3. เมื่อ user ยืนยัน ("ยืนยัน" / "ใช่" / "ok" / "ตกลง") → **ต้อง call tool ทันทีในรอบนั้น** ห้ามตอบว่าทำแล้วโดยไม่ได้ call tool จริง **เด็ดขาด**
 4. ถ้าต้องทำหลาย tool ต่อเนื่อง (เช่น add_investment แล้ว add_investment_transaction) → call ทั้งหมดพร้อมกันใน round เดียวเมื่อ user ยืนยัน อย่าแยกเป็นหลาย round
-5. **ห้ามใช้คำว่า "บันทึกเรียบร้อย" "✅" "สำเร็จ" หรือ claim success ใดๆ โดยไม่มี tool result ยืนยัน** — ถ้า tool return error ต้องบอก user ตรงๆ ห้าม fabricate ผลลัพธ์
+5. **ห้ามใช้คำว่า "บันทึกเรียบร้อย" "สำเร็จ" หรือ claim success ใดๆ โดยไม่มี tool result ยืนยัน** — ถ้า tool return error ต้องบอก user ตรงๆ ห้าม fabricate ผลลัพธ์
 
 ### DELETE operations (double confirmation)
 1. บอกว่าจะลบอะไร รายละเอียดครบ

@@ -3,6 +3,7 @@ import type { CategoryBreakdown } from '../../types'
 import { Skeleton, Empty, ErrorState } from '../ui'
 import IconDisplay from '../ui/IconDisplay'
 import { useT } from '../../store/i18n.store'
+import { mdiInboxOutline } from '@mdi/js'
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null
@@ -36,7 +37,7 @@ export default function SpendingPieChart({ data, loading, error, onRetry, onAdd 
   if (!data?.length) return (
     <Empty
       compact
-      icon="📭"
+      icon={mdiInboxOutline}
       title={t('empty_no_tx_title')}
       sub={t('empty_no_tx_sub')}
       action={onAdd ? { label: t('action_add_first'), onPress: onAdd } : undefined}
@@ -47,7 +48,7 @@ export default function SpendingPieChart({ data, loading, error, onRetry, onAdd 
   const rest = data.slice(6)
   const chartData = rest.length > 0
     ? [...top, {
-        categoryId: 'other', categoryName: 'Other', categoryIcon: '📦',
+        categoryId: 'other', categoryName: 'Other', categoryIcon: 'other',
         categoryColor: '#cbd5e1',
         total: rest.reduce((s, r) => s + r.total, 0),
         count: rest.length,

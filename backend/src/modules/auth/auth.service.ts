@@ -19,13 +19,13 @@ import {
 const SALT_ROUNDS = 12
 
 export const DEFAULT_WALLETS = [
-  { key: 'emergency',  name: 'เงินสำรองฉุกเฉิน', nameEn: 'Emergency Fund',    icon: '🏦', color: '#f59e0b', pct: 10 },
-  { key: 'fixed',      name: 'ค่าใช้จ่ายคงที่',   nameEn: 'Fixed Expenses',    icon: '🏠', color: '#3b82f6', pct: 30 },
-  { key: 'daily',      name: 'ค่าใช้จ่ายประจำวัน', nameEn: 'Daily Expenses',   icon: '🍚', color: '#10b981', pct: 20 },
-  { key: 'savings',    name: 'เป้าหมายการออม',     nameEn: 'Savings Goal',     icon: '🎯', color: '#6366f1', pct: 10 },
-  { key: 'investment', name: 'การลงทุน',           nameEn: 'Investment',        icon: '📈', color: '#06b6d4', pct: 15 },
-  { key: 'personal',   name: 'ส่วนตัว/บันเทิง',   nameEn: 'Personal / Fun',   icon: '🎉', color: '#ec4899', pct: 10 },
-  { key: 'health',     name: 'สุขภาพ/ประกัน',     nameEn: 'Health / Insurance', icon: '🏥', color: '#ef4444', pct: 5  },
+  { key: 'emergency',  name: 'เงินสำรองฉุกเฉิน', nameEn: 'Emergency Fund',    icon: 'bank',       color: '#f59e0b', pct: 10 },
+  { key: 'fixed',      name: 'ค่าใช้จ่ายคงที่',   nameEn: 'Fixed Expenses',    icon: 'housing',    color: '#3b82f6', pct: 30 },
+  { key: 'daily',      name: 'ค่าใช้จ่ายประจำวัน', nameEn: 'Daily Expenses',   icon: 'food',       color: '#10b981', pct: 20 },
+  { key: 'savings',    name: 'เป้าหมายการออม',     nameEn: 'Savings Goal',     icon: 'target',     color: '#6366f1', pct: 10 },
+  { key: 'investment', name: 'การลงทุน',           nameEn: 'Investment',        icon: 'investment', color: '#06b6d4', pct: 15 },
+  { key: 'personal',   name: 'ส่วนตัว/บันเทิง',   nameEn: 'Personal / Fun',   icon: 'party',      color: '#ec4899', pct: 10 },
+  { key: 'health',     name: 'สุขภาพ/ประกัน',     nameEn: 'Health / Insurance', icon: 'medical',  color: '#ef4444', pct: 5  },
 ]
 
 // Seeded once per account. Category names are user data — they are stored in the
@@ -34,19 +34,19 @@ export const DEFAULT_WALLETS = [
 // The first four expense entries double as the Quick Add starter set for users
 // with no history yet, so keep the everyday ones at the top.
 const DEFAULT_CATEGORIES = [
-  { nameEn: 'Food & Drink',  nameTh: 'อาหารและเครื่องดื่ม', icon: '🍜', color: '#f97316', type: 'expense' },
-  { nameEn: 'Transport',     nameTh: 'เดินทาง',              icon: '🚗', color: '#3b82f6', type: 'expense' },
-  { nameEn: 'Shopping',      nameTh: 'ช้อปปิ้ง',             icon: '🛍️', color: '#a855f7', type: 'expense' },
-  { nameEn: 'Utilities',     nameTh: 'บิล/ค่าน้ำค่าไฟ',      icon: '💡', color: '#eab308', type: 'expense' },
-  { nameEn: 'Health',        nameTh: 'สุขภาพ',               icon: '💊', color: '#ef4444', type: 'expense' },
-  { nameEn: 'Entertainment', nameTh: 'บันเทิง',              icon: '🎮', color: '#ec4899', type: 'expense' },
-  { nameEn: 'Housing',       nameTh: 'ที่อยู่อาศัย',          icon: '🏠', color: '#14b8a6', type: 'expense' },
-  { nameEn: 'Education',     nameTh: 'การศึกษา',             icon: '📚', color: '#6366f1', type: 'expense' },
-  { nameEn: 'Other',         nameTh: 'อื่นๆ',                icon: '📦', color: '#94a3b8', type: 'expense' },
-  { nameEn: 'Salary',        nameTh: 'เงินเดือน',            icon: '💼', color: '#22c55e', type: 'income'  },
-  { nameEn: 'Freelance',     nameTh: 'งานฟรีแลนซ์',          icon: '💻', color: '#10b981', type: 'income'  },
-  { nameEn: 'Investment',    nameTh: 'ผลตอบแทนการลงทุน',     icon: '📈', color: '#06b6d4', type: 'income'  },
-  { nameEn: 'Other Income',  nameTh: 'รายรับอื่นๆ',          icon: '💰', color: '#84cc16', type: 'income'  },
+  { nameEn: 'Food & Drink',  nameTh: 'อาหารและเครื่องดื่ม', icon: 'food',          color: '#f97316', type: 'expense' },
+  { nameEn: 'Transport',     nameTh: 'เดินทาง',              icon: 'transport',     color: '#3b82f6', type: 'expense' },
+  { nameEn: 'Shopping',      nameTh: 'ช้อปปิ้ง',             icon: 'shopping',      color: '#a855f7', type: 'expense' },
+  { nameEn: 'Utilities',     nameTh: 'บิล/ค่าน้ำค่าไฟ',      icon: 'utilities',     color: '#eab308', type: 'expense' },
+  { nameEn: 'Health',        nameTh: 'สุขภาพ',               icon: 'health',        color: '#ef4444', type: 'expense' },
+  { nameEn: 'Entertainment', nameTh: 'บันเทิง',              icon: 'entertainment', color: '#ec4899', type: 'expense' },
+  { nameEn: 'Housing',       nameTh: 'ที่อยู่อาศัย',          icon: 'housing',       color: '#14b8a6', type: 'expense' },
+  { nameEn: 'Education',     nameTh: 'การศึกษา',             icon: 'education',     color: '#6366f1', type: 'expense' },
+  { nameEn: 'Other',         nameTh: 'อื่นๆ',                icon: 'other',         color: '#94a3b8', type: 'expense' },
+  { nameEn: 'Salary',        nameTh: 'เงินเดือน',            icon: 'salary',        color: '#22c55e', type: 'income'  },
+  { nameEn: 'Freelance',     nameTh: 'งานฟรีแลนซ์',          icon: 'freelance',     color: '#10b981', type: 'income'  },
+  { nameEn: 'Investment',    nameTh: 'ผลตอบแทนการลงทุน',     icon: 'investment',    color: '#06b6d4', type: 'income'  },
+  { nameEn: 'Other Income',  nameTh: 'รายรับอื่นๆ',          icon: 'otherincome',   color: '#84cc16', type: 'income'  },
 ] as const
 
 @Injectable()
@@ -441,7 +441,7 @@ export class AuthService {
         sender: { name: 'MoneyFlow', email: process.env.BREVO_SENDER_EMAIL },
         to: [{ email: to }],
         subject: 'ตั้งรหัสผ่านใหม่ - MoneyFlow',
-        htmlContent: `<!DOCTYPE html><html lang="th"><body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"><div style="max-width:480px;margin:40px auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.1);"><div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:32px 40px;text-align:center;"><h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">💸 MoneyFlow</h1></div><div style="padding:40px;"><h2 style="color:#1e293b;font-size:20px;font-weight:700;margin:0 0 16px;">ตั้งรหัสผ่านใหม่</h2><p style="color:#64748b;margin:0 0 8px;line-height:1.6;">เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชี <strong style="color:#1e293b;">${to}</strong></p><p style="color:#64748b;margin:0 0 28px;line-height:1.6;">คลิกปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ ลิงก์จะหมดอายุใน <strong style="color:#1e293b;">30 นาที</strong></p><div style="text-align:center;margin-bottom:32px;"><a href="${resetUrl}" style="display:inline-block;background:#4f46e5;color:#fff;padding:16px 40px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">ตั้งรหัสผ่านใหม่ →</a></div><div style="border-top:1px solid #e2e8f0;padding-top:24px;"><p style="color:#94a3b8;font-size:13px;margin:0;line-height:1.6;">ถ้าคุณไม่ได้ขอเปลี่ยนรหัสผ่าน ไม่ต้องทำอะไร รหัสผ่านเดิมของคุณจะไม่มีการเปลี่ยนแปลง</p></div></div></div></body></html>`,
+        htmlContent: `<!DOCTYPE html><html lang="th"><body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"><div style="max-width:480px;margin:40px auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.1);"><div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:32px 40px;text-align:center;"><h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">MoneyFlow</h1></div><div style="padding:40px;"><h2 style="color:#1e293b;font-size:20px;font-weight:700;margin:0 0 16px;">ตั้งรหัสผ่านใหม่</h2><p style="color:#64748b;margin:0 0 8px;line-height:1.6;">เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชี <strong style="color:#1e293b;">${to}</strong></p><p style="color:#64748b;margin:0 0 28px;line-height:1.6;">คลิกปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ ลิงก์จะหมดอายุใน <strong style="color:#1e293b;">30 นาที</strong></p><div style="text-align:center;margin-bottom:32px;"><a href="${resetUrl}" style="display:inline-block;background:#4f46e5;color:#fff;padding:16px 40px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">ตั้งรหัสผ่านใหม่ →</a></div><div style="border-top:1px solid #e2e8f0;padding-top:24px;"><p style="color:#94a3b8;font-size:13px;margin:0;line-height:1.6;">ถ้าคุณไม่ได้ขอเปลี่ยนรหัสผ่าน ไม่ต้องทำอะไร รหัสผ่านเดิมของคุณจะไม่มีการเปลี่ยนแปลง</p></div></div></div></body></html>`,
       },
       { headers: { 'api-key': process.env.BREVO_API_KEY } },
     )

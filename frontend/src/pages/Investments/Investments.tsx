@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { investmentsApi } from '../../api'
 import type { Investment } from '../../types'
 import Icon from '@mdi/react'
-import { mdiPlus, mdiTrashCanOutline, mdiTrendingUp, mdiClose, mdiChevronDown, mdiChevronUp } from '@mdi/js'
+import {
+  mdiPlus, mdiTrashCanOutline, mdiTrendingUp, mdiClose,
+  mdiChevronDown, mdiChevronUp, mdiChartLine,
+} from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
 import { useT, useI18n } from '../../store/i18n.store'
 import ConfirmModal from '../../components/ui/ConfirmModal'
@@ -142,7 +145,7 @@ export default function Investments() {
         <div className="space-y-3">{[1,2].map(i => <div key={i} className="h-28 bg-card rounded-2xl animate-pulse border border-[var(--border)]" />)}</div>
       ) : investments.length === 0 ? (
         <div className="text-center py-12 text-muted-theme">
-          <div className="text-4xl mb-2">📈</div>
+          <Icon path={mdiChartLine} size={2} aria-hidden="true" className="mx-auto mb-2" />
           <p className="font-semibold">{t('no_investments')}</p>
           <p className="text-sm mt-1">{t('add_investment_hint')}</p>
         </div>

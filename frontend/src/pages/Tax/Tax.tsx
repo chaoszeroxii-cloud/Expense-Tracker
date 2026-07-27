@@ -4,7 +4,10 @@ import jsPDF from 'jspdf'
 import { taxApi } from '../../api'
 import type { TaxDeduction, TaxCalculationResult, TaxDeductionType } from '../../types'
 import Icon from '@mdi/react'
-import { mdiPlus, mdiTrashCanOutline, mdiClose, mdiLightbulbOutline, mdiReceiptTextOutline, mdiDownload } from '@mdi/js'
+import {
+  mdiPlus, mdiTrashCanOutline, mdiClose, mdiLightbulbOutline,
+  mdiReceiptTextOutline, mdiDownload, mdiFileDocumentEditOutline,
+} from '@mdi/js'
 import CustomSelect from '../../components/ui/CustomSelect'
 import { useT, useI18n } from '../../store/i18n.store'
 import ConfirmModal from '../../components/ui/ConfirmModal'
@@ -221,7 +224,7 @@ export default function Tax() {
         <h2 className="font-bold text-base-theme text-sm mb-3">{t('saved_deductions')} ({lang === 'th' ? year + 543 : year})</h2>
         {deductions.length === 0 ? (
           <div className="text-center py-8 text-muted-theme">
-            <div className="text-3xl mb-2">📝</div>
+            <Icon path={mdiFileDocumentEditOutline} size={1.8} aria-hidden="true" className="mx-auto mb-2" />
             <p className="text-sm">{t('no_deductions')}</p>
           </div>
         ) : (

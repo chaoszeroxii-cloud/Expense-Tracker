@@ -61,3 +61,15 @@ export function dateInputToTimestamp(yyyyMmDd: string): string {
   const [y, m, d] = yyyyMmDd.split('-').map(Number)
   return new Date(y, m - 1, d, 12, 0, 0, 0).toISOString()
 }
+
+/**
+ * Shift a `YYYY-MM-DD` by whole days.
+ *
+ * Uses UTC internally so the arithmetic cannot be shifted by the local zone or a
+ * daylight-saving transition — the input is a plain calendar date with no zone attached.
+ */
+export function shiftDateLocal(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const shifted = new Date(Date.UTC(y, m - 1, d + days))
+  return `${shifted.getUTCFullYear()}-${pad(shifted.getUTCMonth() + 1)}-${pad(shifted.getUTCDate())}`
+}

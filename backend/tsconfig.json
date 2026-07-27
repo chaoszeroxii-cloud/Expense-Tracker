@@ -11,7 +11,11 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": "./",
-    "incremental": true,
+    // Deliberately off. The incremental cache survives a deleted `dist/`, so the next
+    // build decides there is nothing to do and emits nothing — silently. Under the
+    // migration-on-start command that means no compiled migrations and a boot against
+    // an unmigrated database. The rebuild cost here is a few seconds.
+    "incremental": false,
     "skipLibCheck": true,
     "strictNullChecks": false
   },

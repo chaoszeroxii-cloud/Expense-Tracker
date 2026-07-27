@@ -10,8 +10,21 @@
 |---|---|---|
 | **P0A** — trust bugs + ตัด noise | ✅ ส่งแล้ว | API 10/10 · UI 19/19 ผ่านบนเบราว์เซอร์จริง |
 | **P0B** — activation + daily value | ✅ ส่งแล้ว | API 23/23 · UI 25/25 · production build 3/3 |
-| **P1** — habit | ⬜ ยังไม่เริ่ม | 7-day coverage, budget rollover, weekly review, push, offline queue |
+| **P1** — habit | 🟡 ส่งแล้ว 4/5 | API 24/24 · UI 17/17 — เหลือ P1.4 web push (ดูด้านล่าง) |
 | **P2** — advanced | ⬜ ยังไม่เริ่ม | envelope mode, accounts/opening balance, ledger linking |
+
+### P1.4 (web push) — ยังไม่ทำ เพราะติดข้อจำกัดของ hosting
+
+โค้ดฝั่ง client/server ทำได้ แต่ตัวที่ทำให้ notification มีประโยชน์คือ **scheduler ที่ยิงตอน
+20:30 ทุกวัน** ซึ่ง Render free tier ให้ไม่ได้ — service จะ sleep เมื่อไม่มี traffic
+ถ้าสร้างไปตอนนี้จะได้ฟีเจอร์ที่ผู้ใช้กดเปิด permission แล้วไม่มีอะไรมาเลย ซึ่งแย่กว่าไม่มีปุ่ม
+
+ทางเลือกเมื่อพร้อมทำ:
+1. **Render Cron Job** (paid) — ตรงไปตรงมาที่สุด
+2. **GitHub Actions schedule** ยิง endpoint ที่ป้องกันด้วย secret — ฟรี แต่ความแม่นยำ ±10 นาที
+3. **cron-job.org / Upstash QStash** — ฟรี tier พอสำหรับวันละครั้ง
+
+ต้องมี `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` ด้วย (สร้างด้วย `npx web-push generate-vapid-keys`)
 
 ### การ deploy — ไม่ต้องรัน migration มืออีกแล้ว
 

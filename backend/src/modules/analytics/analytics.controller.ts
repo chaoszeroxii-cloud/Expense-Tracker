@@ -25,6 +25,13 @@ export class AnalyticsController {
     return this.service.getDailyBrief(user.id)
   }
 
+  // GET /api/analytics/weekly-review
+  // Deterministic SQL — no model call, so it is fast, free and explainable.
+  @Get('weekly-review')
+  getWeeklyReview(@CurrentUser() user: User) {
+    return this.service.getWeeklyReview(user.id)
+  }
+
   @Get('summary')
   getSummary(@Query() q: AnalyticsQueryDto, @CurrentUser() user: User) {
     return this.service.getPeriodSummary(user.id, q.month, q.year)

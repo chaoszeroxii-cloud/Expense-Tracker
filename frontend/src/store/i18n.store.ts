@@ -542,6 +542,24 @@ const dict = {
     wal_over_allocated:   'Envelopes hold more than you actually have',
     wal_over_allocated_body: 'Return some money from an envelope before adding more.',
 
+    // ── Danger zone ─────────────────────────────────────────
+    dz_title:           'Irreversible actions',
+    dz_reset_title:     'Clear transactions',
+    dz_reset_desc:      'Delete recorded income and expenses. Categories, envelopes and your plan stay.',
+    dz_reset_warn:      'Deleted transactions cannot be recovered. Balances are recalculated from whatever remains.',
+    dz_factory_title:   'Start the account over',
+    dz_factory_desc:    'Erase everything you have created. You stay signed in.',
+    dz_factory_warn:    'Transactions, envelopes, categories, plans, loans, investments and tax records are all deleted. Your login and email are kept, and setup starts again.',
+    dz_range_all:       'Everything',
+    dz_range_pick:      'Pick months',
+    dz_will_delete:     'transactions will be deleted',
+    dz_export_first:    'Download a CSV backup first',
+    dz_type_phrase:     'Type this phrase to confirm:',
+    dz_type_email:      'Type your email address to confirm:',
+    dz_confirm_button:  'Delete permanently',
+    dz_reset_done:      'Transactions deleted:',
+    dz_factory_done:    'The account has been reset',
+
     // ── AI insights (now on demand) ─────────────────────────
     ai_run_analysis:     'Analyse my spending',
     ai_run_hint:         'Sends a summary of this month to the AI. Nothing is sent until you tap.',
@@ -1106,6 +1124,24 @@ const dict = {
     wal_covered:          'เติมให้ครบแล้ว',
     wal_over_allocated:   'ยอดในซองรวมมากกว่าเงินที่มีจริง',
     wal_over_allocated_body: 'คืนเงินจากซองสักใบก่อนถึงจะเติมซองเพิ่มได้',
+
+    // ── Danger zone ─────────────────────────────────────────
+    dz_title:           'การกระทำที่ย้อนกลับไม่ได้',
+    dz_reset_title:     'ล้างรายการ',
+    dz_reset_desc:      'ลบรายรับรายจ่ายที่บันทึกไว้ หมวดหมู่ ซองเงิน และแผนยังอยู่ครบ',
+    dz_reset_warn:      'รายการที่ลบแล้วกู้คืนไม่ได้ ยอดเงินจะถูกคำนวณใหม่จากรายการที่เหลือ',
+    dz_factory_title:   'เริ่มบัญชีใหม่ทั้งหมด',
+    dz_factory_desc:    'ล้างทุกอย่างที่คุณสร้างไว้ แต่ยังล็อกอินเดิมได้',
+    dz_factory_warn:    'รายการ ซองเงิน หมวดหมู่ แผน หนี้สิน การลงทุน และข้อมูลภาษี จะถูกลบทั้งหมด อีเมลกับรหัสผ่านยังอยู่ และจะเริ่มตั้งค่าใหม่ตั้งแต่ต้น',
+    dz_range_all:       'ทั้งหมด',
+    dz_range_pick:      'เลือกช่วงเดือน',
+    dz_will_delete:     'รายการจะถูกลบ',
+    dz_export_first:    'ดาวน์โหลดสำรองเป็น CSV ก่อน',
+    dz_type_phrase:     'พิมพ์ข้อความนี้เพื่อยืนยัน:',
+    dz_type_email:      'พิมพ์อีเมลของคุณเพื่อยืนยัน:',
+    dz_confirm_button:  'ลบถาวร',
+    dz_reset_done:      'ลบรายการแล้ว:',
+    dz_factory_done:    'รีเซ็ตบัญชีเรียบร้อย',
 
     // ── AI insights (now on demand) ─────────────────────────
     ai_run_analysis:     'วิเคราะห์การใช้จ่ายของฉัน',

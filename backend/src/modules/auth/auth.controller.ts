@@ -1,5 +1,5 @@
 import { Controller, Post, Get, Patch, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+import { Throttle } from '@nestjs/throttler'
 import { AuthService, DEFAULT_WALLETS } from './auth.service'
 import {
   RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto,
@@ -92,8 +92,10 @@ export class AuthController {
   }
 
   // POST /api/auth/forgot-password  (public, rate-limited)
+  // The global ThrottlerGuard already covers this route; declaring it again ran the
+  // guard twice, so the "3 per 15 minutes" here was really about one attempt — enough
+  // for a single typo to lock someone out of their own password reset.
   @Public()
-  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 3, ttl: 900000 } })
   @Post('forgot-password')
   forgotPassword(@Body() dto: ForgotPasswordDto) {

@@ -1,5 +1,5 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common'
-import { Throttle, ThrottlerGuard } from '@nestjs/throttler'
+import { Throttle } from '@nestjs/throttler'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { User } from '../users/user.entity'
@@ -13,8 +13,9 @@ export class TelemetryController {
 
   // POST /api/telemetry/event
   // Rate-limited so a runaway client loop cannot fill the table.
+  // No @UseGuards(ThrottlerGuard) here: the guard is global, and adding it again runs it
+  // twice per request, halving the effective limit.
   @Post('event')
-  @UseGuards(ThrottlerGuard)
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.ACCEPTED)
   record(@CurrentUser() user: User, @Body() dto: ProductEventDto) {

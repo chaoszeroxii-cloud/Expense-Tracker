@@ -16,6 +16,7 @@ import { Card, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { MDI_ICON_CATEGORIES } from '../../utils/iconMap'
 import type { Category, EntryType } from '../../types'
+import DangerZone from '../../components/settings/DangerZone'
 
 const PRESET_COLORS = [
   '#6366f1','#f97316','#3b82f6','#a855f7','#ef4444',
@@ -468,6 +469,9 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* Last on the page on purpose: nothing should be scrolled past on the way to it. */}
+      <DangerZone />
 
       <ConfirmModal
         open={confirmState.open}

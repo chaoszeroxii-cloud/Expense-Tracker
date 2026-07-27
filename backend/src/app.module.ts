@@ -17,6 +17,7 @@ import { AdminModule } from './modules/admin/admin.module'
 import { ChatModule } from './modules/chat/chat.module'
 import { TelemetryModule } from './modules/telemetry/telemetry.module'
 import { CheckinsModule } from './modules/checkins/checkins.module'
+import { AccountModule } from './modules/account/account.module'
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard'
 import { HealthController } from './health.controller'
 
@@ -39,6 +40,7 @@ import { HealthController } from './health.controller'
     ChatModule,
     TelemetryModule,
     CheckinsModule,
+    AccountModule,
   ],
   providers: [
     // Rate-limit first (per IP), then authenticate. Registering ThrottlerGuard

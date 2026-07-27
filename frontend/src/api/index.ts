@@ -234,6 +234,26 @@ export const budgetsApi = {
     http.put<{ saved: number; removed: number }>('/budgets/batch', { month, items }).then(r => r.data),
 }
 
+// ── Account (destructive) ─────────────────────────────────────
+// Every call here is irreversible. The confirmation phrase is re-checked server-side —
+// a guard that only exists in the browser is not a guard.
+export const accountApi = {
+  resetPreview: (from?: string, to?: string) =>
+    http.get<{ count: number; expenseTotal: number; firstMonth: string | null; lastMonth: string | null }>(
+      '/account/reset-preview', { params: { from, to } },
+    ).then(r => r.data),
+
+  /** Omit the range to clear the whole ledger. Balances are rebuilt from what remains. */
+  resetTransactions: (confirm: string, range: { from?: string; to?: string }) =>
+    http.post<{ deletedTransactions: number; from: string | null; to: string | null }>(
+      '/account/reset-transactions', { confirm, ...range },
+    ).then(r => r.data),
+
+  /** Wipes everything the user created; the login survives. `confirm` is their email. */
+  factoryReset: (confirm: string, lang: 'th' | 'en' = 'th') =>
+    http.post<{ ok: true }>('/account/factory-reset', { confirm, lang }).then(r => r.data),
+}
+
 // ── Loans ─────────────────────────────────────────────────────
 export const loansApi = {
   findAll: () =>

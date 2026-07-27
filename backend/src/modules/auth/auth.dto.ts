@@ -1,6 +1,6 @@
 import {
   IsEmail, IsString, IsOptional, MinLength, MaxLength,
-  IsNumber, Min, Max, IsIn, IsBoolean, IsInt,
+  IsNumber, Min, Max, IsIn, IsBoolean, IsInt, Matches,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -116,6 +116,12 @@ export class UpdatePreferencesDto {
   @IsOptional()
   @IsBoolean()
   advancedMode?: boolean
+
+  /** `HH:MM` in the user's own timezone; when the daily reminder fires. */
+  @IsOptional()
+  @IsString()
+  @Matches(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, { message: 'remindAt must be HH:MM' })
+  remindAt?: string
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })

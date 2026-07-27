@@ -560,6 +560,23 @@ const dict = {
     dz_reset_done:      'Transactions deleted:',
     dz_factory_done:    'The account has been reset',
 
+    // ── Daily reminder ──────────────────────────────────────
+    rem_title:      'Daily reminder',
+    rem_desc:       'A nudge at the time you choose, only on days you have not recorded anything.',
+    rem_on:         'Reminder on',
+    rem_off:        'Reminder off',
+    rem_time:       'Remind me at',
+    rem_skip_note:  'Skipped on days you have already recorded something or marked as no-spend',
+    rem_enabled:    'Reminder turned on',
+    rem_disabled:   'Reminder turned off',
+    rem_send_test:  'Send a test notification',
+    rem_test_sent:  'Test sent — check your notifications',
+    rem_test_failed:'Could not deliver. Try turning the reminder off and on again.',
+    rem_permission_declined: 'Notifications were not allowed',
+    rem_ios_install: 'On iPhone and iPad, add MoneyFlow to your home screen first — Safari only allows notifications for an installed app.',
+    rem_blocked:    'Notifications are blocked for this site. Allow them in your browser settings to turn this on.',
+    rem_unsupported:'This browser does not support notifications.',
+
     // ── AI insights (now on demand) ─────────────────────────
     ai_run_analysis:     'Analyse my spending',
     ai_run_hint:         'Sends a summary of this month to the AI. Nothing is sent until you tap.',
@@ -1142,6 +1159,23 @@ const dict = {
     dz_confirm_button:  'ลบถาวร',
     dz_reset_done:      'ลบรายการแล้ว:',
     dz_factory_done:    'รีเซ็ตบัญชีเรียบร้อย',
+
+    // ── Daily reminder ──────────────────────────────────────
+    rem_title:      'เตือนประจำวัน',
+    rem_desc:       'เตือนตามเวลาที่เลือก เฉพาะวันที่ยังไม่ได้บันทึกอะไรเลย',
+    rem_on:         'เปิดการเตือน',
+    rem_off:        'ปิดการเตือน',
+    rem_time:       'เตือนตอน',
+    rem_skip_note:  'ข้ามวันที่บันทึกรายการแล้ว หรือกดว่าไม่มีรายจ่ายแล้ว',
+    rem_enabled:    'เปิดการเตือนแล้ว',
+    rem_disabled:   'ปิดการเตือนแล้ว',
+    rem_send_test:  'ส่งการแจ้งเตือนทดสอบ',
+    rem_test_sent:  'ส่งแล้ว — ลองเช็คการแจ้งเตือนดู',
+    rem_test_failed:'ส่งไม่สำเร็จ ลองปิดแล้วเปิดการเตือนใหม่',
+    rem_permission_declined: 'ยังไม่ได้อนุญาตการแจ้งเตือน',
+    rem_ios_install: 'บน iPhone/iPad ต้องเพิ่ม MoneyFlow ลงหน้าจอโฮมก่อน — Safari อนุญาตการแจ้งเตือนเฉพาะแอปที่ติดตั้งแล้ว',
+    rem_blocked:    'เบราว์เซอร์บล็อกการแจ้งเตือนของเว็บนี้อยู่ ต้องไปอนุญาตในตั้งค่าเบราว์เซอร์ก่อน',
+    rem_unsupported:'เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน',
 
     // ── AI insights (now on demand) ─────────────────────────
     ai_run_analysis:     'วิเคราะห์การใช้จ่ายของฉัน',

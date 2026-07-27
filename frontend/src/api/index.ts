@@ -254,6 +254,27 @@ export const accountApi = {
     http.post<{ ok: true }>('/account/factory-reset', { confirm, lang }).then(r => r.data),
 }
 
+// ── Notifications ─────────────────────────────────────────────
+export const notificationsApi = {
+  status: () =>
+    http.get<{
+      configured: boolean; publicKey: string | null; enabled: boolean
+      remindAt: string; timezone: string; today: string; deviceCount: number
+    }>('/notifications/status').then(r => r.data),
+
+  subscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    http.post('/notifications/subscriptions', { subscription }).then(r => r.data),
+
+  unsubscribe: (endpoint?: string) =>
+    http.delete('/notifications/subscriptions', { data: endpoint ? { endpoint } : {} }).then(r => r.data),
+
+  /** Exercises the whole path — permission, subscription, delivery — in one tap. */
+  test: () =>
+    http.post<{ sent: number; failed: number; pruned: number; configured: boolean }>(
+      '/notifications/test',
+    ).then(r => r.data),
+}
+
 // ── Loans ─────────────────────────────────────────────────────
 export const loansApi = {
   findAll: () =>

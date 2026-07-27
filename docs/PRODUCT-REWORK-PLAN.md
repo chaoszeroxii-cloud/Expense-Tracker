@@ -10,21 +10,37 @@
 |---|---|---|
 | **P0A** — trust bugs + ตัด noise | ✅ ส่งแล้ว | API 10/10 · UI 19/19 ผ่านบนเบราว์เซอร์จริง |
 | **P0B** — activation + daily value | ✅ ส่งแล้ว | API 23/23 · UI 25/25 · production build 3/3 |
-| **P1** — habit | 🟡 ส่งแล้ว 4/5 | API 24/24 · UI 17/17 — เหลือ P1.4 web push (ดูด้านล่าง) |
+| **P1** — habit | ✅ ส่งแล้ว 5/5 | API 24/24 · UI 17/17 · push API 16/16 · push UI 13/13 |
 | **P2** — advanced | ⬜ ยังไม่เริ่ม | envelope mode, accounts/opening balance, ledger linking |
 
-### P1.4 (web push) — ยังไม่ทำ เพราะติดข้อจำกัดของ hosting
+### P1.4 (web push) — ส่งแล้ว
 
-โค้ดฝั่ง client/server ทำได้ แต่ตัวที่ทำให้ notification มีประโยชน์คือ **scheduler ที่ยิงตอน
-20:30 ทุกวัน** ซึ่ง Render free tier ให้ไม่ได้ — service จะ sleep เมื่อไม่มี traffic
-ถ้าสร้างไปตอนนี้จะได้ฟีเจอร์ที่ผู้ใช้กดเปิด permission แล้วไม่มีอะไรมาเลย ซึ่งแย่กว่าไม่มีปุ่ม
+สิ่งที่เคยบล็อกคือ scheduler: Render free tier จะ sleep เมื่อไม่มี traffic จึงยิงตอน
+20:30 เองไม่ได้ ตอนนี้มี cron-job.org ping `/api/health` ทุก 10 นาทีอยู่แล้ว service
+จึงตื่นตลอด — `@Cron` ในแอป (กวาดทุก 5 นาที) ทำงานได้จริง
 
-ทางเลือกเมื่อพร้อมทำ:
-1. **Render Cron Job** (paid) — ตรงไปตรงมาที่สุด
-2. **GitHub Actions schedule** ยิง endpoint ที่ป้องกันด้วย secret — ฟรี แต่ความแม่นยำ ±10 นาที
-3. **cron-job.org / Upstash QStash** — ฟรี tier พอสำหรับวันละครั้ง
+ถึงอย่างนั้นก็ยัง **ไม่ผูกกับ ping นั้น**: มี `POST /api/notifications/dispatch` ที่ป้องกันด้วย
+`CRON_SECRET` (เทียบแบบ constant-time) ให้ยิงจากข้างนอกได้ ถ้าวันหนึ่ง ping หาย
 
-ต้องมี `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` ด้วย (สร้างด้วย `npx web-push generate-vapid-keys`)
+การกวาดหนึ่งรอบ:
+- เลือกเฉพาะคนที่เปิดเตือน มีอุปกรณ์ลงทะเบียน และเวลาท้องถิ่นเลย `remind_at` แล้ว
+- ข้ามคนที่วันนี้จดรายการหรือกดวันไม่ใช้เงินไปแล้ว — เตือนคนที่ทำแล้วคือวิธีทำให้เขาปิดการเตือน
+- `last_reminded_date` กันส่งซ้ำในวันเดียวกัน แม้จะกวาด 288 รอบต่อวัน
+- endpoint ที่ push service ตอบ 404/410 ถูกลบทิ้ง ไม่สะสมขยะ
+
+**ต้องตั้งบน Render ก่อนใช้งานได้:**
+
+```
+VAPID_PUBLIC_KEY   ← npx web-push generate-vapid-keys
+VAPID_PRIVATE_KEY  ← จากคำสั่งเดียวกัน (เก็บเป็นความลับ)
+VAPID_SUBJECT      ← mailto:you@example.com
+CRON_SECRET        ← สุ่มเอง ใช้เมื่อจะยิง /dispatch จากข้างนอก
+```
+
+ถ้ายังไม่ตั้ง VAPID ส่วน "เตือนประจำวัน" ใน Settings จะไม่ขึ้นมาเลย ไม่ใช่ขึ้นมาแล้วกดไม่ได้
+
+**ยังเหลือ:** การส่งจริงต้องทดสอบบนเครื่องจริง — headless browser ไม่มี push service
+ให้ subscribe ทดสอบได้แค่ว่าเลือกคนถูกและยิงถึงขั้นตอนส่ง
 
 ### การ deploy — ไม่ต้องรัน migration มืออีกแล้ว
 

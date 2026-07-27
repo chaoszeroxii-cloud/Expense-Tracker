@@ -287,6 +287,7 @@ export class AuthService {
     if (dto.workDaysPerMonth !== undefined) patch.workDaysPerMonth = dto.workDaysPerMonth
     if (dto.showWorkTime !== undefined)     patch.showWorkTime = dto.showWorkTime
     if (dto.advancedMode !== undefined)     patch.advancedMode = dto.advancedMode
+    if (dto.remindAt !== undefined)         patch.remindAt = dto.remindAt
     if (dto.expectedMonthlyIncome !== undefined) patch.expectedMonthlyIncome = dto.expectedMonthlyIncome
 
     // An explicit null clears the plan. `undefined` (absent) leaves it alone —
@@ -470,6 +471,9 @@ export class AuthService {
       showWorkTime: user.showWorkTime,
       // Reveals wallets, loans, investments and tax
       advancedMode: user.advancedMode,
+      // Daily reminder
+      pushEnabled: user.pushEnabled,
+      remindAt: user.remindAt,
     }
   }
 

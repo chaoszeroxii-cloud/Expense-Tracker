@@ -14,11 +14,12 @@ import { AiUsageLog } from '../modules/chat/ai-usage-log.entity'
 import { ProductEvent } from '../modules/telemetry/product-event.entity'
 import { MonthlySpendingPlan } from '../modules/budgets/monthly-spending-plan.entity'
 import { DailyCheckin } from '../modules/checkins/daily-checkin.entity'
+import { PushSubscription } from '../modules/notifications/push-subscription.entity'
 
 export const databaseConfig = (): TypeOrmModuleOptions => {
   const base: Partial<TypeOrmModuleOptions> = {
     type: 'postgres',
-    entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog, ProductEvent, DailyCheckin, MonthlySpendingPlan],
+    entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog, ProductEvent, DailyCheckin, MonthlySpendingPlan, PushSubscription],
 
     // Off everywhere. Migrations own the schema.
     //

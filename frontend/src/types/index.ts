@@ -373,6 +373,8 @@ export interface UpdatePreferencesPayload {
   showWorkTime?: boolean
   advancedMode?: boolean
   expectedMonthlyIncome?: number
+  /** `HH:MM` in the user's own timezone. */
+  remindAt?: string
 }
 
 export interface CompleteOnboardingPayload {

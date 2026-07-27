@@ -7,10 +7,8 @@ import CustomSelect from '../../components/ui/CustomSelect'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
 import ConfirmModal from '../../components/ui/ConfirmModal'
-
-function currentMonth() {
-  return new Date().toISOString().slice(0, 7)
-}
+import MonthlyPlanCard from '../../components/plan/MonthlyPlanCard'
+import { currentMonthLocal as currentMonth } from '../../utils/localDate'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -85,11 +83,18 @@ export default function Budget() {
   return (
     <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-extrabold text-base-theme">{t('budget_title')}</h1>
-          <p className="text-xs text-muted-theme mt-0.5">{t('budget_subtitle')}</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-extrabold text-base-theme">{t('nav_plan')}</h1>
+        <p className="text-xs text-muted-theme mt-0.5">{t('budget_subtitle')}</p>
+      </div>
+
+      {/* The overall monthly limit the daily allowance is derived from. It leads the
+          page because every figure on Home depends on it. */}
+      <MonthlyPlanCard />
+
+      {/* Per-category limits, a separate and optional layer on top */}
+      <div className="flex items-center justify-between pt-1">
+        <h2 className="font-bold text-base-theme text-sm">{t('budget_title')}</h2>
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold

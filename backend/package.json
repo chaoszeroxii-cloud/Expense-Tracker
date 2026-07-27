@@ -5,8 +5,12 @@
     "build": "nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
-    "migration:generate": "typeorm migration:generate -d dist/config/database.config",
-    "migration:run": "typeorm migration:run -d dist/config/database.config"
+    "//migrations": "The CLI runs against compiled output, so build first. `start:prod` is the Render start command: it applies pending migrations before booting.",
+    "start:prod": "npm run migration:run && node dist/main",
+    "migration:run": "typeorm migration:run -d dist/config/data-source.js",
+    "migration:revert": "typeorm migration:revert -d dist/config/data-source.js",
+    "migration:show": "typeorm migration:show -d dist/config/data-source.js",
+    "migration:generate": "typeorm migration:generate -d dist/config/data-source.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

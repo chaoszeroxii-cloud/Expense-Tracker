@@ -8,8 +8,10 @@ export class CreateExpenseDto {
   @IsUUID()
   categoryId: string
 
+  // Must match `CHECK (amount > 0)` on the expenses table. `@Min(0)` let a zero through
+  // validation and straight into a constraint violation, which surfaced as an opaque 500.
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
+  @Min(0.01, { message: 'Amount must be greater than 0' })
   @Type(() => Number)
   amount: number
 
@@ -42,7 +44,7 @@ export class UpdateExpenseDto {
 
   @IsOptional()
   @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
+  @Min(0.01, { message: 'Amount must be greater than 0' })
   @Type(() => Number)
   amount?: number
 

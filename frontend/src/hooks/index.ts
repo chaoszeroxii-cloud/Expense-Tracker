@@ -4,11 +4,12 @@ import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
   BudgetItem, LoanSummary, EmergencyFundSummary, AiRecommendation,
-  AllocationPlanPreview,
+  AllocationPlanPreview, DailyBrief,
 } from '../types'
 
-// Current month helper — returns "YYYY-MM"
-export const currentMonth = () => new Date().toISOString().slice(0, 7)
+// Current month helper — returns "YYYY-MM" from the *local* calendar.
+// (A UTC-derived month reports the previous one before 07:00 in Asia/Bangkok.)
+export { currentMonthLocal as currentMonth } from '../utils/localDate'
 
 // ── Generic fetcher hook ───────────────────────────────────────
 function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
@@ -35,6 +36,17 @@ function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
 }
 
 // ── Domain hooks ──────────────────────────────────────────────
+
+/**
+ * The home screen's single above-the-fold request.
+ *
+ * Replaces the seven hooks Dashboard used to mount (plus three from the wallet widget
+ * and one plan preview) before it could display anything.
+ */
+export function useDailyBrief() {
+  return useFetch<DailyBrief>(() => analyticsApi.getDailyBrief())
+}
+
 export function useSummary(month: string) {
   return useFetch<PeriodSummary>(() => analyticsApi.getSummary(month), [month])
 }
@@ -88,4 +100,32 @@ export function useEmergencyFund(months = 6) {
 
 export function useRecommendations() {
   return useFetch<AiRecommendation[]>(() => analyticsApi.getRecommendations())
+}
+
+/**
+ * On-demand variant of {@link useRecommendations}.
+ *
+ * The recommendations endpoint runs four aggregate queries and then calls an external LLM
+ * with a 20s timeout. Firing that on Home mount charged every app open for an analysis
+ * nobody had asked to see — and shipped a summary of the user's finances to a third party
+ * without an explicit action. Nothing is requested until `run()` is called.
+ */
+export function useRecommendationsOnDemand() {
+  const [data, setData]       = useState<AiRecommendation[] | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError]     = useState<string | null>(null)
+
+  const run = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      setData(await analyticsApi.getRecommendations())
+    } catch (e: any) {
+      setError(e?.message ?? 'Something went wrong')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  return { data, loading, error, run, hasRun: data !== null || error !== null }
 }

@@ -38,15 +38,66 @@ export function Amount({ value, currency = '฿', type, size = 'md' }:
 }
 
 // ── Empty ─────────────────────────────────────────────────────
-export function Empty({ icon, title, sub }: { icon: ReactNode; title: string; sub?: string }) {
+// An empty state is the user's next step, not a dead end: pass an `action` unless
+// there is genuinely nothing for them to do.
+export function Empty({ icon, title, sub, action, compact }: {
+  icon: ReactNode
+  title: string
+  sub?: string
+  action?: { label: string; onPress: () => void }
+  compact?: boolean
+}) {
   return (
-    <div className="flex flex-col items-center gap-2 py-12 text-muted-theme">
-      <div className="text-4xl">{icon}</div>
+    <div className={clsx(
+      'flex flex-col items-center gap-2 text-muted-theme text-center',
+      compact ? 'py-6' : 'py-12',
+    )}>
+      <div className={compact ? 'text-2xl' : 'text-4xl'}>{icon}</div>
       <p className="font-semibold text-sub">{title}</p>
-      {sub && <p className="text-sm">{sub}</p>}
+      {sub && <p className="text-sm max-w-xs">{sub}</p>}
+      {action && (
+        <button
+          onClick={action.onPress}
+          className="mt-2 px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold
+                     active:scale-95 transition-transform"
+        >
+          {action.label}
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── ErrorState ────────────────────────────────────────────────
+// A failed request must never render as "no data" — that reads as a true zero and
+// quietly destroys trust in every number on the screen.
+export function ErrorState({ message, onRetry, retryLabel, compact }: {
+  message: string
+  onRetry?: () => void
+  retryLabel: string
+  compact?: boolean
+}) {
+  return (
+    <div className={clsx(
+      'flex flex-col items-center gap-2 text-center',
+      compact ? 'py-6' : 'py-10',
+    )}>
+      <div className={compact ? 'text-2xl' : 'text-3xl'}>⚠️</div>
+      <p className="font-semibold text-sm text-base-theme max-w-xs">{message}</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="mt-1 px-4 py-2 rounded-xl border border-theme bg-card text-sm font-semibold
+                     text-base-theme active:scale-95 transition-transform"
+        >
+          {retryLabel}
+        </button>
+      )}
     </div>
   )
 }
 
 export { default as IconDisplay } from './IconDisplay'
 export { default as ConfirmModal } from './ConfirmModal'
+export { default as ToastHost } from './ToastHost'
+export { default as WorkTimeBadge } from './WorkTimeBadge'

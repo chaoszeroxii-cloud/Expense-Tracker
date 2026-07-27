@@ -82,32 +82,40 @@ export class AllocationsService {
   async moveToAllocation(allocationId: string, userId: string, amount: number): Promise<{ unallocatedBalance: number }> {
     if (amount <= 0) throw new BadRequestException('Amount must be positive')
 
-    const userRepo = this.dataSource.getRepository(User)
-    const [user, allAllocations] = await Promise.all([
-      userRepo.findOne({ where: { id: userId } }),
-      this.repo.find({ where: { userId } }),
-    ])
+    return this.dataSource.transaction(async (em: EntityManager) => {
+      const userRepo  = em.getRepository(User)
+      const allocRepo = em.getRepository(Allocation)
 
-    if (!user) throw new NotFoundException('User not found')
+      // Lock the user row so concurrent allocations for the same user serialize
+      // — prevents two requests both passing the capacity check and over-funding.
+      const user = await userRepo.createQueryBuilder('u')
+        .setLock('pessimistic_write')
+        .where('u.id = :userId', { userId })
+        .getOne()
+      if (!user) throw new NotFoundException('User not found')
 
-    const totalAllocated = allAllocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
-    const unallocated = round2(Number(user.totalBalance) - totalAllocated)
+      const target = await allocRepo.findOne({ where: { id: allocationId, userId } })
+      if (!target) throw new NotFoundException(`Allocation ${allocationId} not found`)
 
-    if (amount > unallocated) {
-      // Negative unallocated = wallets hold more than the real balance.
-      // The user must return funds from a wallet before allocating more.
-      const message = unallocated < 0
-        ? `Over-allocated by ฿${Math.abs(unallocated).toFixed(2)}. Return funds from a wallet before allocating more.`
-        : `Insufficient unallocated balance. Available: ฿${unallocated.toFixed(2)}`
-      throw new BadRequestException(message)
-    }
+      const allAllocations = await allocRepo.find({ where: { userId } })
+      const totalAllocated = allAllocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
+      const unallocated = round2(Number(user.totalBalance) - totalAllocated)
 
-    // Credit the wallet — no totalBalance change needed
-    await this.credit(allocationId, userId, amount)
-    await this.movementRepo.save(this.movementRepo.create({ userId, allocationId, amount, type: 'fund' }))
+      if (amount > unallocated) {
+        // Negative unallocated = wallets hold more than the real balance.
+        // The user must return funds from a wallet before allocating more.
+        const message = unallocated < 0
+          ? `Over-allocated by ฿${Math.abs(unallocated).toFixed(2)}. Return funds from a wallet before allocating more.`
+          : `Insufficient unallocated balance. Available: ฿${unallocated.toFixed(2)}`
+        throw new BadRequestException(message)
+      }
 
-    const newUnallocated = round2(unallocated - amount)
-    return { unallocatedBalance: newUnallocated }
+      // Credit the wallet — no totalBalance change needed
+      await this.credit(allocationId, userId, amount, em)
+      await em.save(AllocationMovement, em.create(AllocationMovement, { userId, allocationId, amount, type: 'fund' }))
+
+      return { unallocatedBalance: round2(unallocated - amount) }
+    })
   }
 
   // ── Transfer between wallets ──────────────────────────────────
@@ -115,39 +123,54 @@ export class AllocationsService {
     if (amount <= 0) throw new BadRequestException('Amount must be positive')
     if (sourceId === targetId) throw new BadRequestException('Cannot transfer to the same wallet')
 
-    const source = await this.findOne(sourceId, userId)
-    if (Number(source.balance) < amount) {
-      throw new BadRequestException(`Insufficient balance. Available: ฿${Number(source.balance).toFixed(2)}`)
-    }
+    await this.dataSource.transaction(async (em: EntityManager) => {
+      const allocRepo = em.getRepository(Allocation)
 
-    await this.repo.createQueryBuilder()
-      .update(Allocation)
-      .set({ balance: () => `balance - ${amount}` })
-      .where('id = :id AND user_id = :userId', { id: sourceId, userId })
-      .execute()
+      // Atomic guarded debit: only succeeds if the wallet is owned and has funds.
+      const debit = await allocRepo.createQueryBuilder()
+        .update(Allocation)
+        .set({ balance: () => 'balance - :delta' })
+        .where('id = :id AND user_id = :userId AND balance >= :delta', { id: sourceId, userId })
+        .setParameter('delta', amount)
+        .execute()
 
-    await this.credit(targetId, userId, amount)
-    await this.movementRepo.save([
-      this.movementRepo.create({ userId, allocationId: sourceId, amount, type: 'transfer_out' }),
-      this.movementRepo.create({ userId, allocationId: targetId, amount, type: 'transfer_in' }),
-    ])
+      if (debit.affected === 0) {
+        const src = await allocRepo.findOne({ where: { id: sourceId, userId } })
+        if (!src) throw new NotFoundException(`Allocation ${sourceId} not found`)
+        throw new BadRequestException(`Insufficient balance. Available: ฿${Number(src.balance).toFixed(2)}`)
+      }
+
+      // Credit throws (→ rollback) if the target is missing or not owned.
+      await this.credit(targetId, userId, amount, em)
+      await em.save(AllocationMovement, [
+        em.create(AllocationMovement, { userId, allocationId: sourceId, amount, type: 'transfer_out' }),
+        em.create(AllocationMovement, { userId, allocationId: targetId, amount, type: 'transfer_in' }),
+      ])
+    })
   }
 
   // ── Return wallet funds to unallocated pool ───────────────────
   async unallocateFromAllocation(allocationId: string, userId: string, amount: number): Promise<void> {
     if (amount <= 0) throw new BadRequestException('Amount must be positive')
 
-    const allocation = await this.findOne(allocationId, userId)
-    if (Number(allocation.balance) < amount) {
-      throw new BadRequestException(`Insufficient balance. Available: ฿${Number(allocation.balance).toFixed(2)}`)
-    }
+    await this.dataSource.transaction(async (em: EntityManager) => {
+      const allocRepo = em.getRepository(Allocation)
 
-    await this.repo.createQueryBuilder()
-      .update(Allocation)
-      .set({ balance: () => `balance - ${amount}` })
-      .where('id = :id AND user_id = :userId', { id: allocationId, userId })
-      .execute()
-    await this.movementRepo.save(this.movementRepo.create({ userId, allocationId, amount, type: 'unallocate' }))
+      const debit = await allocRepo.createQueryBuilder()
+        .update(Allocation)
+        .set({ balance: () => 'balance - :delta' })
+        .where('id = :id AND user_id = :userId AND balance >= :delta', { id: allocationId, userId })
+        .setParameter('delta', amount)
+        .execute()
+
+      if (debit.affected === 0) {
+        const a = await allocRepo.findOne({ where: { id: allocationId, userId } })
+        if (!a) throw new NotFoundException(`Allocation ${allocationId} not found`)
+        throw new BadRequestException(`Insufficient balance. Available: ฿${Number(a.balance).toFixed(2)}`)
+      }
+
+      await em.save(AllocationMovement, em.create(AllocationMovement, { userId, allocationId, amount, type: 'unallocate' }))
+    })
   }
 
   // ── Balance mutations (called from ExpensesService) ───────────
@@ -158,8 +181,9 @@ export class AllocationsService {
     const result = await repo
       .createQueryBuilder()
       .update(Allocation)
-      .set({ balance: () => `balance + ${amount}` })
+      .set({ balance: () => 'balance + :delta' })
       .where('id = :id AND user_id = :userId', { id: allocationId, userId })
+      .setParameter('delta', amount)
       .execute()
     if (result.affected === 0) throw new NotFoundException(`Allocation ${allocationId} not found`)
   }
@@ -180,8 +204,9 @@ export class AllocationsService {
     await repo
       .createQueryBuilder()
       .update(Allocation)
-      .set({ balance: () => `balance - ${amount}` })
+      .set({ balance: () => 'balance - :delta' })
       .where('id = :id', { id: allocation.id })
+      .setParameter('delta', amount)
       .execute()
 
     return allocation
@@ -203,8 +228,9 @@ export class AllocationsService {
     await repo
       .createQueryBuilder()
       .update(Allocation)
-      .set({ balance: () => `balance + ${amount}` })
+      .set({ balance: () => 'balance + :delta' })
       .where('id = :id', { id: allocation.id })
+      .setParameter('delta', amount)
       .execute()
 
     return allocation
@@ -275,12 +301,14 @@ export class AllocationsService {
       const allocRepo = em.getRepository(Allocation)
       const userRepo  = em.getRepository(User)
 
-      const [user, allocations] = await Promise.all([
-        userRepo.findOne({ where: { id: userId } }),
-        allocRepo.find({ where: { userId } }),
-      ])
+      // Lock the user row so this can't race with moveToAllocation / another apply.
+      const user = await userRepo.createQueryBuilder('u')
+        .setLock('pessimistic_write')
+        .where('u.id = :userId', { userId })
+        .getOne()
       if (!user) throw new NotFoundException('User not found')
 
+      const allocations = await allocRepo.find({ where: { userId } })
       const ownedIds = new Set(allocations.map((a) => a.id))
       for (const { allocationId } of amounts) {
         if (!ownedIds.has(allocationId)) throw new NotFoundException(`Allocation ${allocationId} not found`)

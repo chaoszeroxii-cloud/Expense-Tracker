@@ -31,10 +31,10 @@ export class Investment {
   @OneToMany(() => InvestmentTransaction, (t) => t.investment, { cascade: true })
   transactions: InvestmentTransaction[]
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date
 }
 
@@ -75,6 +75,6 @@ export class InvestmentTransaction {
   @Column({ nullable: true })
   note: string
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 }

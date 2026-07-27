@@ -2,7 +2,17 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Stamped into the bundle so telemetry can attribute an event to a release without
+// the client having to guess or the server having to infer it.
+const appVersion = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7)
+  ?? process.env.APP_VERSION
+  ?? 'dev'
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
+
   plugins: [
     react(),
     VitePWA({
@@ -21,9 +31,9 @@ export default defineConfig({
         start_url: '/',
         scope: '/',
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icons/icon-192.png',          sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png',          sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
 
@@ -35,15 +45,15 @@ export default defineConfig({
 
         runtimeCaching: [
           {
-            // API calls: network-first, 5s timeout, fallback to cache
+            // Authenticated API responses are NEVER cached.
+            //
+            // Cache Storage keys on URL only, so a shared `api-cache` would serve
+            // one signed-in user's financial data to the next person to sign in on
+            // the same device, and would silently surface day-old figures with no
+            // "last updated" marker. Offline reads must be per-user in IndexedDB
+            // (planned separately) — not a URL-keyed HTTP cache.
             urlPattern: /^https?:\/\/.*\/api\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
+            handler: 'NetworkOnly',
           },
           {
             // Google Fonts: cache-first

@@ -11,6 +11,7 @@ import { chatApi } from '../../api'
 import type { ChatMessage } from '../../types'
 import { useAuthStore } from '../../store/auth.store'
 import { useThemeStore } from '../../store/theme.store'
+import { usePanels } from '../../store/panels.store'
 
 interface Props {
   onClose: () => void
@@ -57,7 +58,8 @@ export default function ChatPanel({ onClose }: Props) {
   const setTheme = useThemeStore(s => s.setTheme)
   const navigate = useNavigate()
   const [messages, setMessages] = useState<LocalMessage[]>([])
-  const [input, setInput] = useState('')
+  // Seeded by the home quick-capture bar so "coffee 45" arrives already typed.
+  const [input, setInput] = useState(() => usePanels.getState().chatDraft)
   const [sending, setSending] = useState(false)
   const [loadingHistory, setLoadingHistory] = useState(true)
   const [attachedImage, setAttachedImage] = useState<{ file: File; preview: string; base64: string; mimeType: string } | null>(null)

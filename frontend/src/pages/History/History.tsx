@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
   mdiTrashCan, mdiPencilOutline, mdiChevronLeft, mdiChevronRight, mdiCash, mdiWallet, mdiClose,
@@ -8,19 +9,16 @@ import {
 import clsx from 'clsx'
 import { useExpenses, useCategories, currentMonth } from '../../hooks'
 import { expensesApi } from '../../api'
-import { Amount, Empty, Skeleton, ConfirmModal } from '../../components/ui'
+import { Amount, Empty, ErrorState, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
 import { exportHistory, type ExportFormat } from '../../utils/exportHistory'
+import { monthOffset, timestampToDateInput, dateInputToTimestamp } from '../../utils/localDate'
+import { toast } from '../../store/toast.store'
+import { apiErrorMessage } from '../../utils/apiError'
 import type { Expense } from '../../types'
 
 const QUICK = [5, 10, 20, 50, 100, 200, 500, 1000]
-
-function monthOffset(base: string, offset: number): string {
-  const [y, m] = base.split('-').map(Number)
-  const d = new Date(y, m - 1 + offset, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
 
 function parseMonth(m: string) {
   const [y, mo] = m.split('-').map(Number)
@@ -34,7 +32,8 @@ export default function History() {
   const [filter, setFilter] = useState<'all' | 'expense' | 'income'>('all')
   const [showPicker, setShowPicker] = useState(false)
   const [pickerYear, setPickerYear] = useState(() => parseMonth(currentMonth()).year)
-  const { data, loading, refetch } = useExpenses(month)
+  const navigate   = useNavigate()
+  const { data, loading, error, refetch } = useExpenses(month)
   const { data: categories } = useCategories()
   const [confirmState, setConfirmState] = useState<{
     open: boolean; message: string; onConfirm: () => void
@@ -53,23 +52,31 @@ export default function History() {
     setEditAmount(String(e.amount))
     setEditCatId(e.categoryId)
     setEditNote(e.note ?? '')
-    setEditDate(e.occurredAt.slice(0, 10))
+    setEditDate(timestampToDateInput(e.occurredAt))
   }
   const closeEdit = () => { setEditExpense(null); setEditSubmitting(false) }
 
+  // Mirrors the `CHECK (amount > 0)` constraint on the expenses table.
+  const editAmountNum   = Number(editAmount)
+  const editAmountValid = editAmount !== '' && Number.isFinite(editAmountNum) && editAmountNum >= 0.01
+
   const handleEditSave = async () => {
-    if (!editExpense || !editAmount || !editCatId) return
+    if (!editExpense || !editCatId) return
+    if (!editAmountValid) { toast.error(t('err_amount_positive')); return }
     setEditSubmitting(true)
     try {
       await expensesApi.update(editExpense.id, {
-        amount: Number(editAmount),
+        amount: editAmountNum,
         categoryId: editCatId,
         note: editNote || undefined,
-        occurredAt: new Date(editDate).toISOString(),
+        occurredAt: dateInputToTimestamp(editDate),
       })
       closeEdit()
       refetch()
-    } catch { setEditSubmitting(false) }
+    } catch (err) {
+      setEditSubmitting(false)
+      toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
+    }
   }
 
   const editFilteredCats = categories?.filter(c => c.type === editExpense?.type) ?? []
@@ -114,7 +121,7 @@ export default function History() {
   const filtered = data?.filter(e => filter === 'all' || e.type === filter) ?? []
 
   const grouped = filtered.reduce<Record<string, typeof filtered>>((acc, e) => {
-    const day = e.occurredAt.slice(0, 10)
+    const day = timestampToDateInput(e.occurredAt)
     ;(acc[day] ??= []).push(e)
     return acc
   }, {})
@@ -122,8 +129,12 @@ export default function History() {
   const handleDelete = async (id: string) => {
     askConfirm(t('delete_confirm'), async () => {
       closeConfirm()
-      await expensesApi.remove(id)
-      refetch()
+      try {
+        await expensesApi.remove(id)
+        refetch()
+      } catch (err) {
+        toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline')))
+      }
     })
   }
 
@@ -222,8 +233,26 @@ export default function History() {
             <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
+      ) : error ? (
+        /* A failed request must not render as "no transactions" — that reads as a
+           truthful zero and makes the user distrust every other figure. */
+        <ErrorState message={t('err_load_failed')} onRetry={refetch} retryLabel={t('action_retry')} />
       ) : filtered.length === 0 ? (
-        <Empty icon="📭" title={t('no_transactions')} sub={t('try_filter')} />
+        (data?.length ?? 0) > 0 ? (
+          <Empty
+            icon="🔍"
+            title={t('empty_filtered_title')}
+            sub={t('empty_filtered_sub')}
+            action={{ label: t('action_clear_filter'), onPress: () => setFilter('all') }}
+          />
+        ) : (
+          <Empty
+            icon="📭"
+            title={t('empty_no_tx_title')}
+            sub={t('empty_no_tx_sub')}
+            action={{ label: t('action_add_first'), onPress: () => navigate('/add') }}
+          />
+        )
       ) : (
         <div className="space-y-5 animate-fade-in">
           {Object.entries(grouped)
@@ -277,22 +306,27 @@ export default function History() {
 
                       <Amount value={e.amount} type={e.type} size="md" />
 
-                      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* Always visible on touch — there is no hover to reveal them there,
+                          so `opacity-0` alone made edit/delete unreachable on mobile.
+                          Desktop keeps the reveal-on-hover behaviour. */}
+                      <div className="flex gap-0.5 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
                         <button
                           onClick={() => openEdit(e)}
-                          className="p-1.5 rounded-lg text-slate-300 dark:text-slate-600
+                          aria-label={`${t('action_edit')} ${e.category?.name ?? ''}`.trim()}
+                          className="p-2 rounded-lg text-muted-theme
                                      hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20
                                      transition-colors"
                         >
-                          <Icon path={mdiPencilOutline} size={0.65} />
+                          <Icon path={mdiPencilOutline} size={0.7} />
                         </button>
                         <button
                           onClick={() => handleDelete(e.id)}
-                          className="p-1.5 rounded-lg text-slate-300 dark:text-slate-600
+                          aria-label={`${t('action_delete')} ${e.category?.name ?? ''}`.trim()}
+                          className="p-2 rounded-lg text-muted-theme
                                      hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20
                                      transition-colors"
                         >
-                          <Icon path={mdiTrashCan} size={0.65} />
+                          <Icon path={mdiTrashCan} size={0.7} />
                         </button>
                       </div>
                     </div>

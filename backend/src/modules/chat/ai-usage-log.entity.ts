@@ -34,6 +34,6 @@ export class AiUsageLog {
   @Column({ name: 'cost_thb', type: 'numeric', precision: 14, scale: 4, default: 0 })
   costThb: number
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 }

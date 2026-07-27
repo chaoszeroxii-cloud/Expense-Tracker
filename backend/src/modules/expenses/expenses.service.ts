@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, EntityManager } from 'typeorm'
 import { Expense } from './expense.entity'
 import { User } from '../users/user.entity'
+import { Category } from '../categories/category.entity'
 import { AllocationsService } from '../allocations/allocations.service'
 import { CreateExpenseDto, UpdateExpenseDto, QueryExpenseDto } from './dto/expense.dto'
 
@@ -49,6 +50,12 @@ export class ExpensesService {
     return e
   }
 
+  /** Reject a categoryId that isn't one of the caller's own categories. */
+  private async assertCategoryOwned(em: EntityManager, categoryId: string, userId: string): Promise<void> {
+    const category = await em.findOne(Category, { where: { id: categoryId, userId } })
+    if (!category) throw new NotFoundException(`Category ${categoryId} not found`)
+  }
+
   // ── Create ────────────────────────────────────────────────────
   // NEW FLOW:
   //   income  → user.total_balance += amount
@@ -57,6 +64,7 @@ export class ExpensesService {
   //             + allocation.balance -= amount (if category is linked to a wallet)
   async create(dto: CreateExpenseDto, userId: string): Promise<Expense> {
     return this.dataSource.transaction(async (em: EntityManager) => {
+      await this.assertCategoryOwned(em, dto.categoryId, userId)
       let resolvedAllocationId: string | undefined
 
       if (dto.type === 'income') {
@@ -93,6 +101,7 @@ export class ExpensesService {
   // ── Update ────────────────────────────────────────────────────
   async update(id: string, dto: UpdateExpenseDto, userId: string): Promise<Expense> {
     return this.dataSource.transaction(async (em: EntityManager) => {
+      if (dto.categoryId) await this.assertCategoryOwned(em, dto.categoryId, userId)
       const expense = await this.findOne(id, userId)
       const oldAmount      = Number(expense.amount)
       const oldType        = expense.type

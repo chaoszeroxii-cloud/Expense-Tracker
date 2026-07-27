@@ -11,18 +11,38 @@ import { Investment, InvestmentTransaction } from '../modules/investments/invest
 import { TaxDeduction } from '../modules/tax/tax-deduction.entity'
 import { ChatMessage } from '../modules/chat/chat-message.entity'
 import { AiUsageLog } from '../modules/chat/ai-usage-log.entity'
+import { ProductEvent } from '../modules/telemetry/product-event.entity'
 
 export const databaseConfig = (): TypeOrmModuleOptions => {
   const base: Partial<TypeOrmModuleOptions> = {
     type: 'postgres',
-    entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog],
-    synchronize: process.env.DB_SYNC === 'true' || process.env.NODE_ENV !== 'production',
+    entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog, ProductEvent],
+
+    // Off everywhere. Migrations own the schema.
+    //
+    // It used to be on for every non-production environment, and it had quietly
+    // destroyed things the entities cannot describe: every CHECK constraint in the
+    // database (including `expenses.amount > 0`), every hand-written index (including
+    // the one the daily-brief query scans on), and it had rewritten two varchar columns
+    // as native enums. The dev schema no longer resembled production, so passing tests
+    // there proved less than they appeared to.
+    //
+    // DB_SYNC=true still forces it on as a deliberate escape hatch — for throwaway
+    // databases only, never one with data worth keeping.
+    synchronize: process.env.DB_SYNC === 'true',
+
+    migrations: [__dirname + '/../migrations/*.{ts,js}'],
+    migrationsTableName: 'migrations',
+
     logging: process.env.NODE_ENV === 'development',
   }
 
-  // Render (and most cloud providers) supply a DATABASE_URL connection string
+  // Render (and most cloud providers) supply a DATABASE_URL connection string.
+  // Cert validation is opt-in via DB_SSL_REJECT_UNAUTHORIZED=true — set it once
+  // your provider serves a chain Node trusts, to defend against MITM.
   if (process.env.DATABASE_URL) {
-    return { ...base, type: 'postgres', url: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+    const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
+    return { ...base, type: 'postgres', url: process.env.DATABASE_URL, ssl: { rejectUnauthorized } }
   }
 
   return {

@@ -60,7 +60,13 @@ export class AdminService {
   async getUserDetail(id: string) {
     const user = await this.users.findOne({ where: { id } })
     if (!user) throw new NotFoundException('User not found')
-    const { passwordHash: _, ...safe } = user as any
+    const {
+      passwordHash: _pw,
+      resetToken: _rt,
+      resetTokenExpiry: _rte,
+      tokenVersion: _tv,
+      ...safe
+    } = user as any
     return safe
   }
 

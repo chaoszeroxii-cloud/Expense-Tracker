@@ -1,69 +1,90 @@
 import { useState } from 'react'
 import Icon from '@mdi/react'
-import { mdiClose, mdiContentSave, mdiCog, mdiPencilOutline, mdiClockMinusOutline  } from '@mdi/js'
+import { mdiClose, mdiContentSave, mdiCog, mdiPencilOutline, mdiClockMinusOutline } from '@mdi/js'
+import clsx from 'clsx'
+import { authApi } from '../../api'
 import { useT } from '../../store/i18n.store'
-
-interface WorkSettings {
-  salary: number
-  hoursPerDay: number
-  workDaysPerMonth: number
-}
-
-const STORAGE_KEY = 'wt_settings'
-const DEFAULTS: WorkSettings = { salary: 30000, hoursPerDay: 8, workDaysPerMonth: 22 }
-
-function load(): WorkSettings {
-  try {
-    const s = localStorage.getItem(STORAGE_KEY)
-    const parsed = s ? JSON.parse(s) : {}
-    // migrate old "daysOff" key → workDaysPerMonth
-    if (parsed.daysOff !== undefined && parsed.workDaysPerMonth === undefined) {
-      parsed.workDaysPerMonth = Math.max(1, 30 - parsed.daysOff)
-      delete parsed.daysOff
-    }
-    return { ...DEFAULTS, ...parsed }
-  } catch { return DEFAULTS }
-}
+import { useAuthStore } from '../../store/auth.store'
+import { toast } from '../../store/toast.store'
+import { hourlyRateOf, workTimeFor } from '../../utils/workTime'
+import { apiErrorMessage } from '../../utils/apiError'
+import { fmt } from '../../utils/money'
+import { track } from '../../utils/telemetry'
 
 interface Props { onClose: () => void }
 
+/**
+ * The full "what would this cost me in work hours" tool, for deliberate what-if
+ * questions before a large purchase.
+ *
+ * Day to day the same lens is delivered inline by WorkTimeBadge — under the amount
+ * field, on the daily allowance, beside a transaction — so nobody has to remember this
+ * screen exists to benefit from it.
+ *
+ * Settings live on the user record, not localStorage: the previous version lost the
+ * salary on every device change and duplicated `expectedMonthlyIncome`, which the
+ * profile already stores.
+ */
 export default function WorkTimeCalculator({ onClose }: Props) {
   const t = useT()
-  const [tab, setTab] = useState<'calc' | 'settings'>('calc')
-  const [settings, setSettings] = useState<WorkSettings>(load)
-  const [draft, setDraft] = useState<WorkSettings>(load)
-  const [price, setPrice] = useState('')
+  const { user, token, setAuth } = useAuthStore()
 
-  const workDays = Math.max(1, settings.workDaysPerMonth)
-  const workHoursPerMonth = workDays * settings.hoursPerDay
-  const hourlyRate = settings.salary > 0 && workHoursPerMonth > 0
-    ? settings.salary / workHoursPerMonth
-    : 0
+  const [tab, setTab] = useState<'calc' | 'settings'>('calc')
+  const [price, setPrice] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const [draftIncome, setDraftIncome] = useState(
+    user?.expectedMonthlyIncome != null ? String(user.expectedMonthlyIncome) : '',
+  )
+  const [draftHours, setDraftHours] = useState(String(user?.workHoursPerDay ?? 8))
+  const [draftDays, setDraftDays]   = useState(String(user?.workDaysPerMonth ?? 22))
+
+  const income      = user?.expectedMonthlyIncome ?? null
+  const hoursPerDay = user?.workHoursPerDay ?? 8
+  const daysPerMonth = user?.workDaysPerMonth ?? 22
+  const hourlyRate  = hourlyRateOf(income, hoursPerDay, daysPerMonth)
 
   const priceNum = parseFloat(price) || 0
-  const totalHours = hourlyRate > 0 && priceNum > 0 ? priceNum / hourlyRate : 0
-  const totalSec = Math.floor(totalHours * 3600)
-  const secPerDay   = settings.hoursPerDay * 3600
-  const secPerMonth = workDays * settings.hoursPerDay * 3600
-  const secPerYear  = 12 * secPerMonth
-  const dYears   = Math.floor(totalSec / secPerYear)
-  const dMonths  = Math.floor((totalSec % secPerYear) / secPerMonth)
-  const dDays    = Math.floor((totalSec % secPerMonth) / secPerDay)
-  const dHours   = Math.floor((totalSec % secPerDay) / 3600)
-  const dMinutes = Math.floor((totalSec % 3600) / 60)
-  const dSeconds = totalSec % 60
+  const parts = hourlyRate && priceNum > 0 ? workTimeFor(priceNum, hourlyRate, hoursPerDay) : null
 
-  const isReady = settings.salary > 0 && settings.hoursPerDay > 0
+  const saveSettings = async () => {
+    const incomeNum = parseFloat(draftIncome)
+    const hoursNum  = parseFloat(draftHours)
+    const daysNum   = parseInt(draftDays, 10)
+    if (!(incomeNum > 0) || !(hoursNum > 0) || !(daysNum > 0)) {
+      toast.error(t('err_generic'))
+      return
+    }
+    setSaving(true)
+    try {
+      const updated = await authApi.updatePreferences({
+        expectedMonthlyIncome: incomeNum,
+        workHoursPerDay: hoursNum,
+        workDaysPerMonth: daysNum,
+      })
+      if (updated && token) setAuth(token, updated)
+      toast.success(t('prefs_saved'))
+      setTab('calc')
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
+    } finally {
+      setSaving(false)
+    }
+  }
 
-  const saveSettings = () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(draft))
-    setSettings(draft)
-    setTab('calc')
+  const toggleBadge = async () => {
+    const next = !(user?.showWorkTime ?? true)
+    try {
+      const updated = await authApi.updatePreferences({ showWorkTime: next })
+      if (updated && token) setAuth(token, updated)
+      track('work_time_toggled')
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center lg:items-center"
-      onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center lg:items-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
 
       <div
@@ -84,151 +105,141 @@ export default function WorkTimeCalculator({ onClose }: Props) {
           <div className="flex items-center gap-1">
             <button
               onClick={() => setTab(tab === 'settings' ? 'calc' : 'settings')}
-              className={`p-2 rounded-xl transition-colors ${
+              className={clsx('p-2 rounded-xl transition-colors',
                 tab === 'settings'
                   ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-600'
-                  : 'text-muted-theme hover:bg-input'
-              }`}
-              aria-label="Settings"
+                  : 'text-muted-theme hover:bg-[var(--input)]')}
+              aria-label={t('settings')}
             >
               <Icon path={tab === 'settings' ? mdiPencilOutline : mdiCog} size={0.8} />
             </button>
-            <button onClick={onClose} className="p-2 text-muted-theme hover:bg-input rounded-xl">
+            <button onClick={onClose} aria-label={t('action_dismiss')}
+              className="p-2 text-muted-theme hover:bg-[var(--input)] rounded-xl">
               <Icon path={mdiClose} size={0.8} />
             </button>
           </div>
         </div>
 
-        {/* ── CALCULATE TAB ── */}
         {tab === 'calc' ? (
           <div className="space-y-4">
-            {/* Not configured warning */}
-            {!isReady && (
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
-                <span>⚙️</span>
-                <span>{t('wt_setup_warn')}</span>
+            {!hourlyRate && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800
+                              rounded-2xl p-3 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
+                <span>{t('wt_needs_income')}</span>
                 <button onClick={() => setTab('settings')} className="ml-auto font-bold underline shrink-0">
                   {t('settings')}
                 </button>
               </div>
             )}
 
-            {/* Rate summary */}
-            {isReady && (
-              <div className="bg-input rounded-2xl px-4 py-3 grid grid-cols-3 gap-1 text-center">
+            {hourlyRate && (
+              <div className="bg-[var(--input)] rounded-2xl px-4 py-3 grid grid-cols-3 gap-1 text-center">
                 <div>
-                  <p className="text-xs font-bold text-base-theme">฿{settings.salary.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  <p className="text-xs font-bold text-base-theme tabular-nums">฿{fmt(income!)}</p>
                   <p className="text-[10px] text-muted-theme">{t('wt_month')}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-base-theme">{settings.hoursPerDay} {t('wt_hr')}</p>
+                  <p className="text-xs font-bold text-base-theme tabular-nums">{hoursPerDay} {t('wt_hr')}</p>
                   <p className="text-[10px] text-muted-theme">{t('wt_per_day')}</p>
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-emerald-500">฿{hourlyRate.toFixed(2)}</p>
+                  <p className="text-xs font-bold text-emerald-500 tabular-nums">฿{hourlyRate.toFixed(2)}</p>
                   <p className="text-[10px] text-muted-theme">{t('wt_per_hour')}</p>
                 </div>
               </div>
             )}
 
-            {/* Price input */}
             <div>
-              <label className="text-xs text-muted-theme mb-1.5 block font-medium">{t('wt_price_label')}</label>
+              <label htmlFor="wt-price" className="text-xs text-muted-theme mb-1.5 block font-medium">
+                {t('wt_price_label')}
+              </label>
               <input
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                placeholder={t('wt_price_ph')}
-                value={price}
-                onChange={e => setPrice(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-input border border-theme
+                id="wt-price" type="number" inputMode="decimal" step="0.01"
+                placeholder={t('wt_price_ph')} value={price} onChange={e => setPrice(e.target.value)}
+                className="w-full px-4 py-3 rounded-2xl bg-[var(--input)] border border-theme
                            text-base-theme text-sm outline-none focus:border-brand-500 transition-colors"
                 autoFocus
               />
             </div>
 
-            {/* Result */}
-            {priceNum > 0 && isReady && (
+            {parts && (
               <div className="bg-gradient-to-br from-brand-50 to-violet-50 dark:from-brand-950/60 dark:to-violet-950/40
                               border border-brand-200 dark:border-brand-800/50 rounded-2xl p-4">
                 <p className="text-xs text-muted-theme mb-3 text-center font-medium">
-                  ฿{priceNum.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t('wt_must_work')}
+                  ฿{fmt(priceNum)} {t('wt_must_work')}
                 </p>
-                {(dYears > 0 || dMonths > 0) && (
-                  <div className="grid grid-cols-2 gap-2 text-center mb-2">
-                    {[
-                      { value: dYears,  label: t('wt_year') },
-                      { value: dMonths, label: t('wt_month') },
-                    ].map(({ value, label }) => (
-                      <div key={label} className="bg-white/70 dark:bg-white/10 rounded-xl py-2.5">
-                        <p className="text-xl font-extrabold text-brand-600 leading-none tabular-nums">{value.toLocaleString()}</p>
-                        <p className="text-[10px] text-muted-theme mt-0.5">{label}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="grid grid-cols-4 gap-2 text-center mb-3">
+                <div className="grid grid-cols-3 gap-2 text-center mb-3">
                   {[
-                    { value: dDays,    label: t('wt_day') },
-                    { value: dHours,   label: t('wt_hr') },
-                    { value: dMinutes, label: t('wt_min') },
-                    { value: dSeconds, label: t('wt_sec') },
+                    { value: parts.days,    label: t('wt_day') },
+                    { value: parts.hours,   label: t('wt_hr') },
+                    { value: parts.minutes, label: t('wt_min') },
                   ].map(({ value, label }) => (
-                    <div key={label}
-                      className="bg-white/70 dark:bg-white/10 rounded-xl py-2.5">
-                      <p className="text-xl font-extrabold text-brand-600 leading-none tabular-nums">{value.toLocaleString()}</p>
+                    <div key={label} className="bg-white/70 dark:bg-white/10 rounded-xl py-2.5">
+                      <p className="text-xl font-extrabold text-brand-600 leading-none tabular-nums">
+                        {value.toLocaleString()}
+                      </p>
                       <p className="text-[10px] text-muted-theme mt-0.5">{label}</p>
                     </div>
                   ))}
                 </div>
                 <p className="text-center text-[10px] text-muted-theme">
-                  {t('wt_total_prefix')} {totalHours.toFixed(2)} {t('wt_hours_unit')} · {(priceNum / settings.salary * 100).toFixed(1)}% {t('wt_of_salary')}
+                  {t('wt_total_prefix')} {parts.totalHours.toFixed(2)} {t('wt_hours_unit')}
+                  {income ? ` · ${((priceNum / income) * 100).toFixed(1)}% ${t('wt_of_salary')}` : ''}
                 </p>
               </div>
             )}
           </div>
 
         ) : (
-          /* ── SETTINGS TAB ── */
           <div className="space-y-3">
             <p className="text-xs text-muted-theme">{t('wt_settings_desc')}</p>
 
             {([
-              { label: t('wt_salary_label'), key: 'salary'           as const, placeholder: '30000', min: 1 },
-              { label: t('wt_hours_label'),  key: 'hoursPerDay'      as const, placeholder: '8',     min: 1 },
-              { label: t('wt_days_label'),   key: 'workDaysPerMonth' as const, placeholder: '22',    min: 1 },
-            ] as const).map(({ label, key, placeholder, min }) => (
-              <div key={key}>
+              { label: t('wt_salary_label'), value: draftIncome, set: setDraftIncome, step: '0.01', ph: '30000' },
+              { label: t('wt_hours_label'),  value: draftHours,  set: setDraftHours,  step: '0.5',  ph: '8' },
+              { label: t('wt_days_label'),   value: draftDays,   set: setDraftDays,   step: '1',    ph: '22' },
+            ]).map(({ label, value, set, step, ph }) => (
+              <div key={label}>
                 <label className="text-xs text-muted-theme mb-1.5 block font-medium">{label}</label>
                 <input
-                  type="number"
-                  inputMode="decimal"
-                  step={key === 'salary' ? '0.01' : '1'}
-                  placeholder={placeholder}
-                  min={min}
-                  value={draft[key] === 0 ? '' : draft[key]}
-                  onChange={e => setDraft(d => ({ ...d, [key]: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-4 py-3 rounded-2xl bg-input border border-theme
+                  type="number" inputMode="decimal" step={step} min={0} placeholder={ph}
+                  value={value} onChange={e => set(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl bg-[var(--input)] border border-theme
                              text-base-theme text-sm outline-none focus:border-brand-500 transition-colors"
                 />
               </div>
             ))}
 
-            {/* Preview */}
-            {draft.salary > 0 && draft.hoursPerDay > 0 && (
-              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl px-4 py-2.5 text-xs text-emerald-700 dark:text-emerald-300">
-                {t('wt_rate_label')} ฿{(draft.salary / (Math.max(1, draft.workDaysPerMonth) * draft.hoursPerDay)).toFixed(2)} / {t('wt_hr')}
-                · {Math.max(1, draft.workDaysPerMonth)} {t('wt_work_days_month')}
+            {/* The badge follows the user across devices, so the switch lives here too. */}
+            <button
+              onClick={toggleBadge}
+              className="w-full flex items-center justify-between gap-3 px-4 py-3 rounded-2xl
+                         bg-[var(--input)] border border-theme text-left"
+            >
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-base-theme">{t('wt_toggle_label')}</p>
+                <p className="text-[10px] text-muted-theme mt-0.5 leading-relaxed">{t('wt_toggle_desc')}</p>
               </div>
-            )}
+              <span className={clsx(
+                'shrink-0 w-10 h-6 rounded-full transition-colors relative',
+                user?.showWorkTime ? 'bg-brand-600' : 'bg-slate-300 dark:bg-slate-600',
+              )}>
+                <span className={clsx(
+                  'absolute top-0.5 w-5 h-5 rounded-full bg-white transition-transform',
+                  user?.showWorkTime ? 'translate-x-[18px]' : 'translate-x-0.5',
+                )} />
+              </span>
+            </button>
 
             <button
               onClick={saveSettings}
+              disabled={saving}
               className="w-full py-3 rounded-2xl bg-brand-600 text-white font-semibold text-sm
-                         active:scale-95 transition-transform flex items-center justify-center gap-2 mt-1"
+                         active:scale-95 transition-transform flex items-center justify-center gap-2 mt-1
+                         disabled:opacity-50"
             >
               <Icon path={mdiContentSave} size={0.8} color="white" />
-              {t('wt_save_settings')}
+              {saving ? t('saving') : t('wt_save_settings')}
             </button>
           </div>
         )}

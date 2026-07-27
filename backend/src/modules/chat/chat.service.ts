@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common'
+import { Injectable, Logger, BadRequestException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import axios from 'axios'
@@ -1404,6 +1404,28 @@ UI: change_theme, navigate_to
       )`,
       [userId, this.MAX_HISTORY],
     )
+  }
+
+  /**
+   * Guard against runaway AI spend: reject a request once the user has burned
+   * through their daily budget (THB). Configurable via AI_DAILY_LIMIT_THB;
+   * set to 0 to disable. Call this BEFORE any paid model request.
+   */
+  async assertWithinDailyBudget(userId: string) {
+    const capThb = Number(process.env.AI_DAILY_LIMIT_THB ?? 50)
+    if (!Number.isFinite(capThb) || capThb <= 0) return
+    const row = await this.usageRepo
+      .createQueryBuilder('u')
+      .select('COALESCE(SUM(u.cost_thb), 0)', 'total')
+      .where('u.user_id = :userId', { userId })
+      .andWhere("u.created_at >= date_trunc('day', now())")
+      .getRawOne<{ total: string }>()
+    const spent = Number(row?.total ?? 0)
+    if (spent >= capThb) {
+      throw new BadRequestException(
+        `เกินโควตาการใช้ AI รายวัน (฿${capThb.toFixed(0)}) แล้ว กรุณาลองใหม่ในวันถัดไป`,
+      )
+    }
   }
 
   private async saveUsageLog(

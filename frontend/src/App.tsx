@@ -4,6 +4,7 @@ import { SpeedInsights } from '@vercel/speed-insights/react'
 import Layout from './components/layout/Layout'
 import PrivateRoute, { AdminRoute } from './components/layout/PrivateRoute'
 import Dashboard from './pages/Dashboard/Dashboard'
+import { ToastHost } from './components/ui'
 
 // ── Lazy-loaded pages ──────────────────────────────────
 const AuthPage         = lazy(() => import('./pages/Auth/AuthPage'))
@@ -14,7 +15,8 @@ const History       = lazy(() => import('./pages/History/History'))
 const Settings      = lazy(() => import('./pages/Settings/Settings'))
 const Wallets       = lazy(() => import('./pages/Wallets/Wallets'))
 const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
-const Finance       = lazy(() => import('./pages/Finance/Finance'))
+const More          = lazy(() => import('./pages/More/More'))
+const Reports       = lazy(() => import('./pages/Reports/Reports'))
 const Budget        = lazy(() => import('./pages/Budget/Budget'))
 const Loans         = lazy(() => import('./pages/Loans/Loans'))
 const Investments   = lazy(() => import('./pages/Investments/Investments'))
@@ -37,6 +39,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <SpeedInsights />
+      {/* Mounted at the root so routes outside <Layout> (e.g. /add) can raise toasts too. */}
+      <ToastHost />
       <Routes>
         {/* Public */}
         <Route path="/login" element={<Lazy><AuthPage /></Lazy>} />
@@ -55,7 +59,10 @@ export default function App() {
             <Route path="/history"    element={<Lazy><History /></Lazy>} />
             <Route path="/wallets"    element={<Lazy><Wallets /></Lazy>} />
             <Route path="/settings"   element={<Lazy><Settings /></Lazy>} />
-            <Route path="/finance"    element={<Lazy><Finance /></Lazy>} />
+            <Route path="/more"       element={<Lazy><More /></Lazy>} />
+            <Route path="/reports"    element={<Lazy><Reports /></Lazy>} />
+            {/* Finance was the old hub; keep the URL working for existing bookmarks. */}
+            <Route path="/finance"    element={<Navigate to="/more" replace />} />
             <Route path="/budget"     element={<Lazy><Budget /></Lazy>} />
             <Route path="/loans"      element={<Lazy><Loans /></Lazy>} />
             <Route path="/investments" element={<Lazy><Investments /></Lazy>} />

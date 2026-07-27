@@ -1,72 +1,168 @@
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, useMemo, useRef, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
-  mdiChevronLeft, mdiCalendar, mdiCheckCircle,
-  mdiWallet, mdiCash, mdiInformationOutline,
+  mdiChevronLeft, mdiCalendar, mdiCheckCircle, mdiChevronDown,
+  mdiWallet, mdiCash, mdiInformationOutline, mdiPlus,
 } from '@mdi/js'
 import clsx from 'clsx'
 import { expensesApi } from '../../api'
-import { useCategories, useAllocations } from '../../hooks'
-import { IconDisplay } from '../../components/ui'
+import { useCategories, useAllocations, useDailyBrief } from '../../hooks'
+import { IconDisplay, WorkTimeBadge } from '../../components/ui'
 import { useT } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
-import { round2 } from '../../utils/money'
-import type { EntryType } from '../../types'
+import { toast, UNDO_WINDOW_MS } from '../../store/toast.store'
+import { round2, fmt } from '../../utils/money'
+import { todayLocal, dateInputToTimestamp } from '../../utils/localDate'
+import { apiErrorMessage } from '../../utils/apiError'
+import { track, startTimer } from '../../utils/telemetry'
+import type { EntryType, Category } from '../../types'
 
-const QUICK = [5, 10, 20, 50, 100, 200, 500, 1000]
+const QUICK = [20, 50, 100, 500]
 
 export default function AddExpense() {
   const navigate = useNavigate()
   const t = useT()
   const { data: categories, loading: loadingCats } = useCategories()
-  const { data: allocations }                       = useAllocations()
-  const expectedMonthlyIncome = useAuthStore(s => s.user?.expectedMonthlyIncome)
+  const { data: allocations }                      = useAllocations()
+  const { data: brief }                            = useDailyBrief()
+  const user = useAuthStore(s => s.user)
+  const advancedMode = user?.advancedMode ?? false
+  const expectedMonthlyIncome = user?.expectedMonthlyIncome
 
   const [type,       setType]   = useState<EntryType>('expense')
   const [amount,     setAmount] = useState('')
   const [categoryId, setCatId]  = useState('')
   const [note,       setNote]   = useState('')
-  const [occurredAt, setDate]   = useState(() => new Date().toISOString().slice(0, 10))
+  const [occurredAt, setDate]   = useState(todayLocal)
+  const [showDetails, setShowDetails] = useState(false)
+  const [showAllCats, setShowAllCats] = useState(false)
   const [submitting, setSubmit] = useState(false)
   const [success,    setSuccess]= useState(false)
 
-  const filteredCats = categories?.filter(c => c.type === type) ?? []
+  const amountRef = useRef<HTMLInputElement>(null)
+  // Measures add_opened → expense_created; the sub-10-second target lives on this.
+  const timerRef = useRef<ReturnType<typeof startTimer> | null>(null)
 
-  // For expense: find which wallet will be debited
-  const linkedAlloc = type === 'expense' && categoryId
+  useEffect(() => {
+    track('add_opened')
+    timerRef.current = startTimer('expense_created')
+    // Focusing immediately removes one tap and raises the keyboard on mobile.
+    amountRef.current?.focus()
+  }, [])
+
+  const filteredCats = useMemo(
+    () => categories?.filter(c => c.type === type) ?? [],
+    [categories, type],
+  )
+
+  /**
+   * The four categories this user actually reaches for, from the daily brief's
+   * recency-weighted frequency list. Everything else stays one tap away.
+   *
+   * Falls back to the head of the category list for a brand-new account, which is
+   * ordered with the everyday categories first when seeded.
+   */
+  const frequentCats = useMemo<Category[]>(() => {
+    if (type !== 'expense') return []
+    const ids = brief?.recentCategoryIds ?? []
+    const byId = new Map(filteredCats.map(c => [c.id, c]))
+    const picked = ids.map(id => byId.get(id)).filter((c): c is Category => !!c)
+    if (picked.length >= 4) return picked.slice(0, 4)
+    const rest = filteredCats.filter(c => !picked.some(p => p.id === c.id))
+    return [...picked, ...rest].slice(0, 4)
+  }, [brief, filteredCats, type])
+
+  const showShortlist = !showAllCats && frequentCats.length > 0
+  const visibleCats = showShortlist ? frequentCats : filteredCats
+
+  const amountNum   = Number(amount)
+  const amountValid = amount !== '' && Number.isFinite(amountNum) && amountNum >= 0.01
+  const canSubmit   = amountValid && !!categoryId && !submitting
+
+  // Wallet previews only mean something to users who opted into envelopes.
+  const linkedAlloc = advancedMode && type === 'expense' && categoryId
     ? allocations?.find(a => a.categories.some(c => c.id === categoryId))
     : null
-
-  // For income: find which wallet will be credited
-  const linkedIncomeAlloc = type === 'income' && categoryId
+  const linkedIncomeAlloc = advancedMode && type === 'income' && categoryId
     ? allocations?.find(a => a.incomeCategories?.some(c => c.id === categoryId))
     : null
 
   const handleTypeChange = (tp: EntryType) => {
     setType(tp)
     setCatId('')
+    setShowAllCats(tp === 'income')
     if (tp === 'income' && !amount && expectedMonthlyIncome) {
       setAmount(Number(expectedMonthlyIncome).toFixed(2))
     }
   }
 
-  const handleSubmit = async (e: FormEvent) => {
+  const resetForNext = () => {
+    setAmount('')
+    setCatId('')
+    setNote('')
+    setShowDetails(false)
+    setSuccess(false)
+    setSubmit(false)
+    timerRef.current = startTimer('expense_created')
+    amountRef.current?.focus()
+  }
+
+  const save = async (): Promise<string | null> => {
+    const created = await expensesApi.create({
+      categoryId,
+      amount: amountNum,
+      type,
+      note: note || undefined,
+      occurredAt: dateInputToTimestamp(occurredAt),
+    })
+    timerRef.current?.()
+    window.dispatchEvent(new CustomEvent('moneyflow:refresh', {
+      detail: { types: ['dashboard', 'transactions'] },
+    }))
+    return created?.id ?? null
+  }
+
+  /** Removes a just-saved transaction. A mistake must cost one tap, not a trip to History. */
+  const undo = async (id: string) => {
+    try {
+      await expensesApi.remove(id)
+      track('undo_used')
+      window.dispatchEvent(new CustomEvent('moneyflow:refresh', {
+        detail: { types: ['dashboard', 'transactions'] },
+      }))
+      toast.success(t('add_undone'))
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline')))
+    }
+  }
+
+  const handleSubmit = async (e: FormEvent, andAnother = false) => {
     e.preventDefault()
-    if (!amount || !categoryId) return
+    if (!amountValid) { toast.error(t('err_amount_positive')); return }
+    if (!categoryId) return
     setSubmit(true)
     try {
-      await expensesApi.create({
-        categoryId,
-        amount: Number(amount),
-        type,
-        // Income no longer requires allocationId — it parks in total balance
-        note: note || undefined,
-        occurredAt: new Date(occurredAt).toISOString(),
-      })
+      const id = await save()
+      const undoAction = id ? { label: t('add_undo'), onPress: () => undo(id) } : undefined
+
+      if (andAnother) {
+        toast.success(t('saved'), undoAction, UNDO_WINDOW_MS)
+        resetForNext()
+        return
+      }
       setSuccess(true)
-      setTimeout(() => navigate('/'), 900)
-    } catch { setSubmit(false) }
+      // The Undo has to outlive the navigation back to Home, or it is gone before
+      // the user has registered that they picked the wrong category.
+      toast.success(t('saved'), undoAction, UNDO_WINDOW_MS)
+      setTimeout(() => navigate('/'), 700)
+    } catch (err) {
+      // Never swallow this: a silent failure is indistinguishable from a save that
+      // quietly lost the transaction.
+      setSubmit(false)
+      track('add_failed')
+      toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
+    }
   }
 
   if (success) return (
@@ -75,21 +171,25 @@ export default function AddExpense() {
         <Icon path={mdiCheckCircle} size={2.2} color="#10b981" />
       </div>
       <p className="text-lg font-bold text-base-theme">{t('saved')}</p>
+      {brief?.safeToday !== null && brief?.safeToday !== undefined && (
+        <p className="text-sm text-muted-theme">
+          {t('home_safe_today')} ฿{fmt(Math.max(0, brief.safeToday - amountNum))}
+        </p>
+      )}
     </div>
   )
 
   return (
     <div className="flex flex-col h-full bg-app">
-      {/* Header */}
-      <div className="flex items-center gap-3 px-4 pt-6 pb-4">
-        <button onClick={() => navigate(-1)}
+      <div className="flex items-center gap-3 px-4 pt-6 pb-3">
+        <button onClick={() => navigate(-1)} aria-label={t('ob_back')}
           className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 active:bg-slate-200 transition-colors">
           <Icon path={mdiChevronLeft} size={0.9} className="text-base-theme" />
         </button>
         <h1 className="text-lg font-bold text-base-theme">{t('add_transaction')}</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-4 pb-6 space-y-5">
+      <form onSubmit={e => handleSubmit(e)} className="flex-1 overflow-y-auto px-4 pb-6 space-y-4">
 
         {/* Type toggle */}
         <div className="flex bg-slate-100 dark:bg-slate-800 rounded-2xl p-1 gap-1">
@@ -109,17 +209,20 @@ export default function AddExpense() {
           ))}
         </div>
 
-        {/* Amount */}
+        {/* Amount — focused on mount, with the work-time lens right beneath it */}
         <div className="bg-card rounded-2xl border border-theme shadow-sm px-5 py-4">
-          <label className="text-xs font-semibold text-muted-theme block mb-2 uppercase tracking-wide">
+          <label htmlFor="amount" className="text-xs font-semibold text-muted-theme block mb-1 uppercase tracking-wide">
             {t('amount')}
           </label>
           <input
+            id="amount" ref={amountRef}
             type="number" inputMode="decimal" step="0.01" placeholder="0" value={amount}
-            onChange={e => setAmount(e.target.value)} required min={0}
+            onChange={e => setAmount(e.target.value)} required min={0.01}
             className="w-full text-4xl font-extrabold text-base-theme bg-transparent
                        outline-none placeholder:text-slate-200 dark:placeholder:text-slate-600 tracking-tight"
           />
+          {type === 'expense' && <WorkTimeBadge amount={amountNum} size="md" className="mt-1" />}
+
           <div className="flex gap-2 mt-3 flex-wrap">
             {QUICK.map(v => (
               <button key={v} type="button"
@@ -129,66 +232,35 @@ export default function AddExpense() {
                 +{v}
               </button>
             ))}
-            <button type="button" onClick={() => setAmount('')}
-              className="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-muted-theme
-                         text-xs font-semibold transition-colors">
-              Clear
-            </button>
+            {amount && (
+              <button type="button" onClick={() => setAmount('')}
+                className="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-muted-theme
+                           text-xs font-semibold transition-colors">
+                Clear
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Income: wallet credit preview (if category linked) or general info */}
-        {type === 'income' && categoryId && (
-          <div className={clsx(
-            'rounded-2xl px-4 py-3 flex items-center gap-3 animate-fade-up',
-            linkedIncomeAlloc
-              ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800'
-              : 'bg-slate-50 dark:bg-slate-800 border border-theme',
-          )}>
-            <Icon path={mdiWallet} size={0.8} color={linkedIncomeAlloc ? '#10b981' : '#94a3b8'} />
-            {linkedIncomeAlloc ? (
-              <div>
-                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
-                  {t('will_credit')}
-                  <IconDisplay icon={linkedIncomeAlloc.icon} size="sm" />
-                  {linkedIncomeAlloc.name}
-                </p>
-                <p className="text-[10px] text-emerald-500 mt-0.5">
-                  {t('income_linked_info')}
-                  {amount && Number(amount) > 0 && (
-                    <span className="ml-1 text-emerald-400">
-                      ฿{Number(linkedIncomeAlloc.balance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} → ฿{(Number(linkedIncomeAlloc.balance) + Number(amount)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t('after')}
-                    </span>
-                  )}
-                </p>
-              </div>
-            ) : (
-              <p className="text-xs text-muted-theme font-medium">{t('income_park_info')}</p>
+        {/* Categories — the four you actually use, everything else one tap away */}
+        <div>
+          <div className="flex items-center justify-between mb-2 px-1">
+            <label className="text-xs font-semibold text-muted-theme uppercase tracking-wide">
+              {showShortlist ? t('add_frequent') : t('category')}
+            </label>
+            {showShortlist && filteredCats.length > frequentCats.length && (
+              <button type="button" onClick={() => setShowAllCats(true)}
+                className="text-xs font-semibold text-brand-600">
+                {t('add_more_cats')}
+              </button>
             )}
           </div>
-        )}
-        {type === 'income' && !categoryId && (
-          <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-900/20
-                          border border-emerald-100 dark:border-emerald-800
-                          rounded-2xl px-4 py-3 animate-fade-up">
-            <Icon path={mdiInformationOutline} size={0.8} color="#10b981" className="flex-shrink-0 mt-0.5" />
-            <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium leading-relaxed">
-              {t('income_park_info')}
-            </p>
-          </div>
-        )}
-
-        {/* Categories */}
-        <div>
-          <label className="text-xs font-semibold text-muted-theme block mb-2 uppercase tracking-wide px-1">
-            {t('category')}
-          </label>
           <div className="grid grid-cols-4 gap-2">
             {loadingCats
-              ? Array.from({ length: 8 }).map((_, i) => (
+              ? Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-16 rounded-2xl bg-slate-200 dark:bg-slate-700 animate-pulse" />
                 ))
-              : filteredCats.map(cat => (
+              : visibleCats.map(cat => (
                   <button key={cat.id} type="button" onClick={() => setCatId(cat.id)}
                     className={clsx(
                       'flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border-2 transition-all bg-card',
@@ -208,8 +280,8 @@ export default function AddExpense() {
           </div>
         </div>
 
-        {/* Expense: wallet deduction preview */}
-        {type === 'expense' && categoryId && (
+        {/* Wallet effect — advanced mode only */}
+        {advancedMode && type === 'expense' && categoryId && (
           <div className={clsx(
             'rounded-2xl px-4 py-3 flex items-center gap-3 animate-fade-up',
             linkedAlloc
@@ -220,15 +292,15 @@ export default function AddExpense() {
             {linkedAlloc ? (
               <div>
                 <p className="text-xs font-semibold text-brand-700 dark:text-brand-300 flex items-center gap-1">
-                  {t('will_deduct')} 
+                  {t('will_deduct')}
                   <IconDisplay icon={linkedAlloc.icon} size="sm" />
                   {linkedAlloc.name}
                 </p>
                 <p className="text-[10px] text-brand-400 mt-0.5">
-                  {t('current_balance')} ฿{Number(linkedAlloc.balance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  {amount && Number(amount) > 0 && (
+                  {t('current_balance')} ฿{fmt(Number(linkedAlloc.balance))}
+                  {amountValid && (
                     <span className="ml-1 text-rose-400">
-                      → ฿{(Number(linkedAlloc.balance) - Number(amount)).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t('after')}
+                      → ฿{fmt(Number(linkedAlloc.balance) - amountNum)} {t('after')}
                     </span>
                   )}
                 </p>
@@ -239,43 +311,103 @@ export default function AddExpense() {
           </div>
         )}
 
-        {/* Date */}
-        <div className="bg-card rounded-2xl border border-theme shadow-sm px-5 py-4">
-          <label className="text-xs font-semibold text-muted-theme block mb-2 uppercase tracking-wide">
-            {t('date')}
-          </label>
-          <div className="flex items-center gap-3">
-            <Icon path={mdiCalendar} size={0.8} color="#818cf8" />
-            <input type="date" value={occurredAt} onChange={e => setDate(e.target.value)}
-              max={new Date().toISOString().slice(0, 10)} required
-              className="flex-1 text-base-theme font-semibold bg-transparent outline-none" />
+        {advancedMode && type === 'income' && categoryId && linkedIncomeAlloc && (
+          <div className="rounded-2xl px-4 py-3 flex items-center gap-3 animate-fade-up
+                          bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800">
+            <Icon path={mdiWallet} size={0.8} color="#10b981" />
+            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 flex items-center gap-1">
+              {t('will_credit')}
+              <IconDisplay icon={linkedIncomeAlloc.icon} size="sm" />
+              {linkedIncomeAlloc.name}
+            </p>
           </div>
+        )}
+
+        {type === 'income' && !advancedMode && (
+          <div className="flex items-start gap-3 bg-emerald-50 dark:bg-emerald-900/20
+                          border border-emerald-100 dark:border-emerald-800
+                          rounded-2xl px-4 py-3 animate-fade-up">
+            <Icon path={mdiInformationOutline} size={0.8} color="#10b981" className="flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-emerald-700 dark:text-emerald-300 font-medium leading-relaxed">
+              {t('income_park_info')}
+            </p>
+          </div>
+        )}
+
+        {/* Date and note are almost always "today" and "nothing" — collapsed by default */}
+        <div className="bg-card rounded-2xl border border-theme shadow-sm overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowDetails(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-3"
+          >
+            <span className="text-xs font-semibold text-muted-theme uppercase tracking-wide">
+              {t('add_more_details')}
+            </span>
+            <div className="flex items-center gap-2">
+              {occurredAt !== todayLocal() && (
+                <span className="text-[10px] font-semibold text-brand-600">{occurredAt}</span>
+              )}
+              <Icon path={mdiChevronDown} size={0.7}
+                className={clsx('text-muted-theme transition-transform', showDetails && 'rotate-180')} />
+            </div>
+          </button>
+
+          {showDetails && (
+            <div className="px-5 pb-4 space-y-3 animate-fade-up">
+              <div>
+                <label htmlFor="date" className="text-[10px] font-semibold text-muted-theme block mb-1 uppercase">
+                  {t('date')}
+                </label>
+                <div className="flex items-center gap-3">
+                  <Icon path={mdiCalendar} size={0.8} color="#818cf8" />
+                  <input id="date" type="date" value={occurredAt} onChange={e => setDate(e.target.value)}
+                    max={todayLocal()} required
+                    className="flex-1 text-base-theme font-semibold bg-transparent outline-none" />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="note" className="text-[10px] font-semibold text-muted-theme block mb-1 uppercase">
+                  {t('note_optional')}
+                </label>
+                <input id="note" type="text" placeholder={t('note_placeholder')} value={note}
+                  onChange={e => setNote(e.target.value)} maxLength={200}
+                  className="w-full text-base-theme font-medium bg-transparent outline-none placeholder:text-muted-theme" />
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Note */}
-        <div className="bg-card rounded-2xl border border-theme shadow-sm px-5 py-4">
-          <label className="text-xs font-semibold text-muted-theme block mb-2 uppercase tracking-wide">
-            {t('note_optional')}
-          </label>
-          <input type="text" placeholder={t('note_placeholder')} value={note}
-            onChange={e => setNote(e.target.value)} maxLength={200}
-            className="w-full text-base-theme font-medium bg-transparent outline-none placeholder:text-muted-theme" />
-        </div>
+        {/* Save, plus a path that keeps you here for the next one */}
+        <div className="flex gap-2">
+          <button type="submit"
+            disabled={!canSubmit}
+            className={clsx(
+              'flex-1 py-4 rounded-2xl font-bold text-white text-base transition-all',
+              'active:scale-[0.98] shadow-lg',
+              !canSubmit
+                ? 'bg-slate-300 dark:bg-slate-700 shadow-none cursor-not-allowed'
+                : type === 'expense'
+                  ? 'bg-brand-600 shadow-brand-500/30'
+                  : 'bg-emerald-500 shadow-emerald-500/30',
+            )}>
+            {submitting ? t('saving') : type === 'expense' ? t('save_expense') : t('save_income')}
+          </button>
 
-        {/* Submit — income no longer blocked by wallet selection */}
-        <button type="submit"
-          disabled={submitting || !amount || !categoryId}
-          className={clsx(
-            'w-full py-4 rounded-2xl font-bold text-white text-base transition-all',
-            'active:scale-[0.98] shadow-lg',
-            submitting || !amount || !categoryId
-              ? 'bg-slate-300 dark:bg-slate-700 shadow-none cursor-not-allowed'
-              : type === 'expense'
-                ? 'bg-brand-600 shadow-brand-500/30'
-                : 'bg-emerald-500 shadow-emerald-500/30',
-          )}>
-          {submitting ? t('saving') : type === 'expense' ? t('save_expense') : t('save_income')}
-        </button>
+          <button
+            type="button"
+            onClick={e => handleSubmit(e, true)}
+            disabled={!canSubmit}
+            aria-label={t('add_another')}
+            className={clsx(
+              'px-4 rounded-2xl font-bold text-sm transition-all active:scale-[0.98]',
+              canSubmit
+                ? 'bg-card border-2 border-brand-500 text-brand-600'
+                : 'bg-slate-100 dark:bg-slate-800 text-muted-theme cursor-not-allowed',
+            )}>
+            <Icon path={mdiPlus} size={0.9} />
+          </button>
+        </div>
       </form>
     </div>
   )

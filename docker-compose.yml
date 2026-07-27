@@ -12,7 +12,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init:/docker-entrypoint-initdb.d:ro
+      # No init scripts: the schema comes from TypeORM migrations, which the backend
+      # applies on start. Bootstrapping here as well would create a second source of
+      # truth for the schema and the two would drift.
     ports:
       - "127.0.0.1:5432:5432"      # bind to localhost only in production
     healthcheck:
@@ -31,7 +33,8 @@ services:
       target: development               # switch to `production` for prod
     container_name: expense_backend
     restart: unless-stopped
-    command: npm run start:dev
+    # Build once so the compiled migrations exist, apply them, then start in watch mode.
+    command: sh -c "npm run build && npm run migration:run && npm run start:dev"
     environment:
       NODE_ENV:     development
       DB_HOST:      db

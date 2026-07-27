@@ -73,7 +73,9 @@ export default function AuthPage() {
     try {
       const data = tab === 'login'
         ? await authApi.login({ email, password })
-        : await authApi.register({ email, name, password })
+        // `lang` decides the language of the seeded categories, which become user
+        // data — switching the UI language later will not rename them.
+        : await authApi.register({ email, name, password, lang })
       onAuthSuccess(data)
     } catch (err: any) {
       const msg = err?.response?.data?.message
@@ -86,7 +88,7 @@ export default function AuthPage() {
     onSuccess: async (tokenResponse) => {
       setSocialLoading('google')
       try {
-        const data = await authApi.googleVerify(tokenResponse.access_token)
+        const data = await authApi.googleVerify(tokenResponse.access_token, undefined, lang)
         if (data.requiresEmail) {
           setPendingSocial({ provider: 'google', token: tokenResponse.access_token, name: data.name })
           setShowEmailModal(true)
@@ -105,7 +107,7 @@ export default function AuthPage() {
 
   const processFacebookToken = async (accessToken: string) => {
     try {
-      const data = await authApi.facebookVerify(accessToken)
+      const data = await authApi.facebookVerify(accessToken, undefined, lang)
       if (data.requiresEmail) {
         setPendingSocial({ provider: 'facebook', token: accessToken, name: data.name })
         setShowEmailModal(true)
@@ -134,8 +136,8 @@ export default function AuthPage() {
     setSocialLoading(pendingSocial.provider)
     try {
       const data = pendingSocial.provider === 'google'
-        ? await authApi.googleVerify(pendingSocial.token, modalEmail)
-        : await authApi.facebookVerify(pendingSocial.token, modalEmail)
+        ? await authApi.googleVerify(pendingSocial.token, modalEmail, lang)
+        : await authApi.facebookVerify(pendingSocial.token, modalEmail, lang)
       setShowEmailModal(false)
       onAuthSuccess(data)
     } catch (err: any) {

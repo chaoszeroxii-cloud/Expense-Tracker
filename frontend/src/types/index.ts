@@ -221,6 +221,65 @@ export interface EmergencyFundSummary {
   walletName: string | null
 }
 
+// ── Daily Brief ───────────────────────────────────────────────
+// The single payload behind the home screen. Replaces the eleven requests the
+// dashboard used to fire before it could render anything.
+//
+// `monthlyLimit` and `safeToday` are `null` when no plan is set — never 0, which
+// would read as "you may not spend anything today".
+export type PlanStatus = 'no_plan' | 'on_track' | 'close' | 'over'
+export type TrackingMode = 'plan' | 'track_only'
+
+export interface DailyBriefTransaction {
+  id: string
+  amount: number
+  type: EntryType
+  note: string | null
+  occurredAt: string
+  categoryId: string | null
+  categoryName: string | null
+  categoryIcon: string | null
+  categoryColor: string | null
+}
+
+export interface DailyBrief {
+  date: string
+  timezone: string
+  mode: TrackingMode
+  spentToday: number
+  monthSpent: number
+  monthlyLimit: number | null
+  /** A *planned* allowance, never a real cash balance. Label it as such in the UI. */
+  safeToday: number | null
+  daysRemaining: number
+  planStatus: PlanStatus
+  transactionsToday: number
+  recentCategoryIds: string[]
+  recentTransactions: DailyBriefTransaction[]
+  hourlyRate: number | null
+  showWorkTime: boolean
+}
+
+// ── Preferences ───────────────────────────────────────────────
+export interface UpdatePreferencesPayload {
+  trackingMode?: TrackingMode
+  /** `null` clears the plan; omit the key to leave it untouched. */
+  monthlySpendingLimit?: number | null
+  timezone?: string
+  workHoursPerDay?: number
+  workDaysPerMonth?: number
+  showWorkTime?: boolean
+  advancedMode?: boolean
+  expectedMonthlyIncome?: number
+}
+
+export interface CompleteOnboardingPayload {
+  trackingMode: TrackingMode
+  monthlySpendingLimit?: number
+  timezone?: string
+  lang?: 'th' | 'en'
+}
+
 // ── AI Recommendations ────────────────────────────────────────
 export interface AiRecommendation {
   type: 'warning' | 'tip' | 'good'

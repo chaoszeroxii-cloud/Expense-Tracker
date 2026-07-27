@@ -26,7 +26,8 @@ export class Expense {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   amount: number
 
-  @Column({ type: 'enum', enum: ['expense', 'income'] })
+  // See Category.type — varchar + CHECK, matching the deployed schema.
+  @Column({ type: 'varchar', length: 10 })
   type: EntryType
 
   @Column({ type: 'text', nullable: true })
@@ -50,9 +51,9 @@ export class Expense {
   @JoinColumn({ name: 'allocation_id' })
   allocation: Allocation
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date
 }

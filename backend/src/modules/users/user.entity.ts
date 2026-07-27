@@ -59,6 +59,44 @@ export class User {
   })
   expectedMonthlyIncome: number | null
 
+  // ── Spending plan ───────────────────────────────────────────
+  // The one number "safe to spend today" derives from. NULL means the user has
+  // not set a plan — which is NOT the same as a limit of 0, so callers must
+  // keep the distinction and never coerce it to a number.
+  @Column({
+    name: 'monthly_spending_limit',
+    type: 'numeric',
+    precision: 14,
+    scale: 2,
+    nullable: true,
+  })
+  monthlySpendingLimit: number | null
+
+  // 'track_only' users record transactions without committing to a limit.
+  @Column({ name: 'tracking_mode', length: 20, default: 'plan' })
+  trackingMode: 'plan' | 'track_only'
+
+  // IANA zone deciding what "today" and "this month" mean for this user.
+  @Column({ name: 'timezone', length: 64, default: 'Asia/Bangkok' })
+  timezone: string
+
+  // ── Work-time lens ──────────────────────────────────────────
+  // Hourly rate comes from `expectedMonthlyIncome / (workDaysPerMonth * workHoursPerDay)`.
+  // These lived in localStorage and were lost on every device change.
+  @Column({ name: 'work_hours_per_day', type: 'numeric', precision: 4, scale: 2, default: 8 })
+  workHoursPerDay: number
+
+  @Column({ name: 'work_days_per_month', type: 'int', default: 22 })
+  workDaysPerMonth: number
+
+  @Column({ name: 'show_work_time', default: true })
+  showWorkTime: boolean
+
+  // Reveals envelope wallets, loans, investments and tax. Backfilled to true for
+  // anyone who already had that data — see 07-spending-plan.sql.
+  @Column({ name: 'advanced_mode', default: false })
+  advancedMode: boolean
+
   @OneToMany(() => Category, (c) => c.user)
   categories: Category[]
 

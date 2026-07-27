@@ -341,6 +341,7 @@ const dict = {
     action_dismiss:       'Dismiss',
     action_edit:          'Edit',
     action_delete:        'Delete',
+    action_cancel:        'Cancel',
     action_add_first:     'Add your first transaction',
     action_clear_filter:  'Clear filter',
     empty_no_tx_title:    'Nothing recorded yet',
@@ -373,6 +374,87 @@ const dict = {
     ob_start_with:   'Get started with',
     ob_wallets_unit: 'wallets',
     ob_pick_minimum: 'Use the minimum (3 wallets)',
+
+    // ── Home: the daily decision ────────────────────────────
+    home_safe_today:      "Today you can spend",
+    home_safe_caveat:     'Planned allowance — not your bank balance',
+    home_spent_today:     'Spent today',
+    home_month_used:      'Used this month',
+    home_days_left:       'days left',
+    home_no_plan_title:   'No plan set yet',
+    home_no_plan_body:    'Set one monthly limit and this becomes a daily number you can act on.',
+    home_set_plan:        'Set a monthly limit',
+    home_track_only:      'Track-only mode',
+    home_track_only_body: 'Recording only — no limit to compare against.',
+    home_status_on_track: 'On track',
+    home_status_close:    'Close to your limit',
+    home_status_over:     'Over plan',
+    home_adjust_hint:     'Adjust the remaining days to',
+    home_recent:          'Recent',
+    home_view_reports:    'View reports',
+    home_add_expense:     'Add expense',
+    home_no_recent:       'Nothing recorded yet today',
+
+    // ── Quick capture ───────────────────────────────────────
+    qc_placeholder: 'coffee 45 · taxi 30 · or ask anything',
+    qc_send:        'Send',
+    qc_hint:        'Type it in plain language — the assistant fills in the rest.',
+
+    // ── Work-time lens ──────────────────────────────────────
+    wt_unit_day:      'd',
+    wt_unit_hour:     'h',
+    wt_unit_minute:   'm',
+    wt_of_work:       'of work',
+    wt_toggle_label:  'Show prices as work time',
+    wt_toggle_desc:   'Turns an amount into the hours of your own work it costs',
+    wt_needs_income:  'Add your monthly income to see prices as work time',
+
+    // ── Add: quick entry ────────────────────────────────────
+    add_frequent:      'Frequent',
+    add_more_cats:     'More categories',
+    add_more_details:  'More details',
+    add_another:       'Add another',
+    add_undo:          'Undo',
+    add_undone:        'Removed',
+
+    // ── Onboarding: three screens ───────────────────────────
+    ob_step:            'Step',
+    ob_goal_title:      'What should MoneyFlow help with?',
+    ob_goal_plan:       'Keep daily spending in check',
+    ob_goal_plan_desc:  'Get one number each day: what you can still spend',
+    ob_goal_track:      'Just record what I spend',
+    ob_goal_track_desc: 'No limits, no targets — a clean ledger',
+    ob_limit_title:     'How much do you want to spend this month?',
+    ob_limit_hint:      'Everyday spending only — rent and bills can stay out of it. You can change this any time.',
+    ob_limit_label:     'Monthly limit',
+    ob_limit_skip:      "Not sure yet — skip",
+    ob_first_title:     'Record your first transaction',
+    ob_first_hint:      'Anything from today. It takes a few seconds.',
+    ob_first_skip:      'Skip for now',
+    ob_next:            'Continue',
+    ob_finish:          'Get started',
+    ob_back:            'Back',
+
+    // ── Plan & advanced settings ────────────────────────────
+    plan_title:          'Spending plan',
+    plan_mode_label:     'Mode',
+    plan_mode_plan:      'Daily limit',
+    plan_mode_track:     'Track only',
+    plan_limit_label:    'Monthly limit',
+    plan_saved:          'Plan saved',
+    plan_cleared:        'Plan cleared',
+    advanced_title:      'Advanced mode',
+    advanced_desc:       'Shows envelope wallets, loans, investments and tax',
+    prefs_saved:         'Saved',
+
+    // ── Reports ─────────────────────────────────────────────
+    reports_title:    'Reports',
+    reports_subtitle: 'Charts and longer-term trends',
+
+    // ── Envelope wallets (opt-in) ───────────────────────────
+    wallets_starter_cta:  'Create 3 starter wallets',
+    wallets_starter_hint: 'Emergency fund · Daily spending · Savings goal',
+    wallets_starter_done: 'Wallets created',
 
     // ── AI insights (now on demand) ─────────────────────────
     ai_run_analysis:     'Analyse my spending',
@@ -697,7 +779,9 @@ const dict = {
     fin_inv_desc:         'ติดตามพอร์ตกองทุน หุ้น ต้นทุนและกำไร',
     fin_tax_title:        'วางแผนภาษี',
     fin_tax_desc:         'คำนวณภาษี ค่าลดหย่อน AI แนะนำการประหยัดภาษี',
-    fin_wallets_title:    'กระเป๋าเงิน',
+    // "ซองเงิน" is the domain term fixed in CONTEXT.md and used by the nav; the More
+    // page used to call the same destination "กระเป๋าเงิน".
+    fin_wallets_title:    'ซองเงิน',
     fin_wallets_desc:     'จัดการ wallet และ envelope budgeting',
 
     // Work Time Calculator
@@ -736,6 +820,7 @@ const dict = {
     action_dismiss:       'ปิด',
     action_edit:          'แก้ไข',
     action_delete:        'ลบ',
+    action_cancel:        'ยกเลิก',
     action_add_first:     'บันทึกรายการแรก',
     action_clear_filter:  'ล้างตัวกรอง',
     empty_no_tx_title:    'ยังไม่มีรายการ',
@@ -768,6 +853,87 @@ const dict = {
     ob_start_with:   'เริ่มใช้งาน',
     ob_wallets_unit: 'ซอง',
     ob_pick_minimum: 'เลือกขั้นต่ำ (3 ซอง)',
+
+    // ── Home: the daily decision ────────────────────────────
+    home_safe_today:      'วันนี้ใช้ได้อีก',
+    home_safe_caveat:     'ตามแผนที่ตั้งไว้ ไม่ใช่ยอดเงินในบัญชี',
+    home_spent_today:     'วันนี้ใช้ไป',
+    home_month_used:      'เดือนนี้ใช้แล้ว',
+    home_days_left:       'วันที่เหลือ',
+    home_no_plan_title:   'ยังไม่ได้ตั้งแผน',
+    home_no_plan_body:    'ตั้งวงเงินต่อเดือนค่าเดียว แล้วตรงนี้จะกลายเป็นตัวเลขรายวันที่ใช้ตัดสินใจได้',
+    home_set_plan:        'ตั้งวงเงินเดือนนี้',
+    home_track_only:      'โหมดจดอย่างเดียว',
+    home_track_only_body: 'บันทึกรายการเท่านั้น ยังไม่มีวงเงินให้เทียบ',
+    home_status_on_track: 'อยู่ในแผน',
+    home_status_close:    'ใกล้เต็มวงเงิน',
+    home_status_over:     'เกินแผน',
+    home_adjust_hint:     'ปรับวันที่เหลือเป็นวันละ',
+    home_recent:          'รายการล่าสุด',
+    home_view_reports:    'ดูรายงาน',
+    home_add_expense:     'บันทึกรายจ่าย',
+    home_no_recent:       'วันนี้ยังไม่มีรายการ',
+
+    // ── Quick capture ───────────────────────────────────────
+    qc_placeholder: 'กาแฟ 45 · ค่าวิน 30 · หรือถามอะไรก็ได้',
+    qc_send:        'ส่ง',
+    qc_hint:        'พิมพ์เป็นภาษาคนได้เลย ผู้ช่วยจะเติมที่เหลือให้',
+
+    // ── Work-time lens ──────────────────────────────────────
+    wt_unit_day:      'วัน',
+    wt_unit_hour:     'ชม.',
+    wt_unit_minute:   'น.',
+    wt_of_work:       'ของการทำงาน',
+    wt_toggle_label:  'แสดงราคาเป็นเวลาทำงาน',
+    wt_toggle_desc:   'เปลี่ยนจำนวนเงินให้เห็นว่าคิดเป็นเวลาทำงานของคุณเท่าไหร่',
+    wt_needs_income:  'ใส่รายได้ต่อเดือนเพื่อดูราคาเป็นเวลาทำงาน',
+
+    // ── Add: quick entry ────────────────────────────────────
+    add_frequent:      'ใช้บ่อย',
+    add_more_cats:     'หมวดอื่น',
+    add_more_details:  'รายละเอียดเพิ่มเติม',
+    add_another:       'เพิ่มอีก',
+    add_undo:          'เลิกทำ',
+    add_undone:        'ลบรายการแล้ว',
+
+    // ── Onboarding: three screens ───────────────────────────
+    ob_step:            'ขั้นที่',
+    ob_goal_title:      'อยากให้ MoneyFlow ช่วยเรื่องอะไร?',
+    ob_goal_plan:       'คุมรายจ่ายรายวัน',
+    ob_goal_plan_desc:  'ได้ตัวเลขวันละหนึ่งค่า ว่าวันนี้ใช้ได้อีกเท่าไหร่',
+    ob_goal_track:      'จดรายจ่ายอย่างเดียว',
+    ob_goal_track_desc: 'ไม่ตั้งวงเงิน ไม่ตั้งเป้า แค่บันทึกให้ครบ',
+    ob_limit_title:     'เดือนนี้อยากใช้ไม่เกินเท่าไหร่?',
+    ob_limit_hint:      'นับแค่ค่าใช้จ่ายประจำวัน ค่าเช่ากับบิลไม่ต้องรวมก็ได้ แก้ทีหลังได้ตลอด',
+    ob_limit_label:     'วงเงินต่อเดือน',
+    ob_limit_skip:      'ยังไม่แน่ใจ ข้ามก่อน',
+    ob_first_title:     'บันทึกรายการแรก',
+    ob_first_hint:      'อะไรก็ได้ที่ใช้ไปวันนี้ ใช้เวลาไม่กี่วินาที',
+    ob_first_skip:      'ข้ามไปก่อน',
+    ob_next:            'ต่อไป',
+    ob_finish:          'เริ่มใช้งาน',
+    ob_back:            'ย้อนกลับ',
+
+    // ── Plan & advanced settings ────────────────────────────
+    plan_title:          'แผนการใช้จ่าย',
+    plan_mode_label:     'โหมด',
+    plan_mode_plan:      'คุมรายวัน',
+    plan_mode_track:     'จดอย่างเดียว',
+    plan_limit_label:    'วงเงินต่อเดือน',
+    plan_saved:          'บันทึกแผนแล้ว',
+    plan_cleared:        'ล้างแผนแล้ว',
+    advanced_title:      'โหมดขั้นสูง',
+    advanced_desc:       'แสดงซองเงิน หนี้สิน การลงทุน และภาษี',
+    prefs_saved:         'บันทึกแล้ว',
+
+    // ── Reports ─────────────────────────────────────────────
+    reports_title:    'รายงาน',
+    reports_subtitle: 'กราฟและแนวโน้มระยะยาว',
+
+    // ── Envelope wallets (opt-in) ───────────────────────────
+    wallets_starter_cta:  'สร้างซองแนะนำ 3 ซอง',
+    wallets_starter_hint: 'เงินสำรองฉุกเฉิน · ค่าใช้จ่ายประจำวัน · เป้าหมายการออม',
+    wallets_starter_done: 'สร้างซองเงินแล้ว',
 
     // ── AI insights (now on demand) ─────────────────────────
     ai_run_analysis:     'วิเคราะห์การใช้จ่ายของฉัน',

@@ -5,11 +5,13 @@ import {
   mdiClose, mdiChevronDown, mdiChevronUp, mdiLockOutline,
 } from '@mdi/js'
 import clsx from 'clsx'
-import { allocationsApi } from '../../api'
+import { allocationsApi, authApi } from '../../api'
 import { useAllocations, useCategories } from '../../hooks'
 import { Card, Skeleton, IconDisplay, ConfirmModal } from '../ui'
 import { ALLOCATION_ICONS } from '../../utils/iconMap'
-import { useT } from '../../store/i18n.store'
+import { useT, useI18n } from '../../store/i18n.store'
+import { toast } from '../../store/toast.store'
+import { apiErrorMessage } from '../../utils/apiError'
 import type { Allocation, EntryType } from '../../types'
 
 const PRESET_COLORS = [
@@ -22,8 +24,25 @@ const EMPTY: FormState = { name:'', icon:'salary', color:'#6366f1', categoryIds:
 
 export default function AllocationManager() {
   const t = useT()
+  const { lang } = useI18n()
   const { data: allocations, loading: loadingA, refetch } = useAllocations()
   const { data: categories,  loading: loadingC }          = useCategories()
+  const [seeding, setSeeding] = useState(false)
+
+  // Onboarding no longer creates wallets, so an account that opts into envelopes
+  // starts empty. Offer the common three rather than making them build the set by hand.
+  const createStarterWallets = async () => {
+    setSeeding(true)
+    try {
+      await authApi.createStarterWallets(['emergency', 'daily', 'savings'], lang)
+      toast.success(t('wallets_starter_done'))
+      refetch()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline')))
+    } finally {
+      setSeeding(false)
+    }
+  }
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -287,7 +306,18 @@ export default function AllocationManager() {
             {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
           </div>
         ) : !allocations?.length ? (
-          <p className="text-center text-sm text-muted-theme py-8">{t('no_wallet_items')}</p>
+          <div className="flex flex-col items-center gap-2 py-8 px-5 text-center">
+            <p className="text-sm text-muted-theme">{t('no_wallet_items')}</p>
+            <p className="text-xs text-muted-theme">{t('wallets_starter_hint')}</p>
+            <button
+              onClick={createStarterWallets}
+              disabled={seeding}
+              className="mt-2 px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold
+                         active:scale-95 transition-transform disabled:opacity-50"
+            >
+              {seeding ? t('saving') : t('wallets_starter_cta')}
+            </button>
+          </div>
         ) : (
           <ul className="divide-y divide-theme">
             {allocations.map(a => (

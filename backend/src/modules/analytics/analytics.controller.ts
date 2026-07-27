@@ -16,6 +16,15 @@ class AnalyticsQueryDto {
 export class AnalyticsController {
   constructor(private readonly service: AnalyticsService) {}
 
+  // GET /api/analytics/daily-brief
+  // → everything the home screen needs above the fold, in one round trip.
+  //   Timezone comes from the user's profile, not the client, so the figures
+  //   cannot be shifted by a device with a wrong clock.
+  @Get('daily-brief')
+  getDailyBrief(@CurrentUser() user: User) {
+    return this.service.getDailyBrief(user.id)
+  }
+
   @Get('summary')
   getSummary(@Query() q: AnalyticsQueryDto, @CurrentUser() user: User) {
     return this.service.getPeriodSummary(user.id, q.month, q.year)

@@ -4,7 +4,7 @@ import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
   BudgetItem, LoanSummary, EmergencyFundSummary, AiRecommendation,
-  AllocationPlanPreview,
+  AllocationPlanPreview, DailyBrief,
 } from '../types'
 
 // Current month helper — returns "YYYY-MM" from the *local* calendar.
@@ -36,6 +36,17 @@ function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
 }
 
 // ── Domain hooks ──────────────────────────────────────────────
+
+/**
+ * The home screen's single above-the-fold request.
+ *
+ * Replaces the seven hooks Dashboard used to mount (plus three from the wallet widget
+ * and one plan preview) before it could display anything.
+ */
+export function useDailyBrief() {
+  return useFetch<DailyBrief>(() => analyticsApi.getDailyBrief())
+}
+
 export function useSummary(month: string) {
   return useFetch<PeriodSummary>(() => analyticsApi.getSummary(month), [month])
 }

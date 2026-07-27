@@ -2,7 +2,17 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Stamped into the bundle so telemetry can attribute an event to a release without
+// the client having to guess or the server having to infer it.
+const appVersion = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7)
+  ?? process.env.APP_VERSION
+  ?? 'dev'
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
+
   plugins: [
     react(),
     VitePWA({

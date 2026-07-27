@@ -15,6 +15,7 @@ import { InvestmentsModule } from './modules/investments/investments.module'
 import { TaxModule } from './modules/tax/tax.module'
 import { AdminModule } from './modules/admin/admin.module'
 import { ChatModule } from './modules/chat/chat.module'
+import { TelemetryModule } from './modules/telemetry/telemetry.module'
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard'
 import { HealthController } from './health.controller'
 
@@ -35,6 +36,7 @@ import { HealthController } from './health.controller'
     TaxModule,
     AdminModule,
     ChatModule,
+    TelemetryModule,
   ],
   providers: [
     // Rate-limit first (per IP), then authenticate. Registering ThrottlerGuard

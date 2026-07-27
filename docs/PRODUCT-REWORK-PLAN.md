@@ -1,9 +1,33 @@
 # MoneyFlow — แผนปรับปรุงให้ตอบโจทย์ผู้ใช้จริง
 
-> สถานะ: **ร่างเพื่อพิจารณา** — ยังไม่มีการแก้โค้ด
 > วันที่: 27 กรกฎาคม 2026 · branch `v2`
 > ที่มา: ระดมสมองร่วมระหว่าง Claude (Opus 5) และ Codex (GPT-5.6-sol, xhigh) + งานวิจัยด้าน retention/behavioral finance
 > ทุกข้อในหมวด "บั๊ก" ตรวจสอบยืนยันกับโค้ดจริงแล้ว
+
+## สถานะการส่งมอบ
+
+| ชุด | สถานะ | หมายเหตุ |
+|---|---|---|
+| **P0A** — trust bugs + ตัด noise | ✅ ส่งแล้ว | API 10/10 · UI 19/19 ผ่านบนเบราว์เซอร์จริง |
+| **P0B** — activation + daily value | ✅ ส่งแล้ว | API 23/23 · UI 25/25 · production build 3/3 |
+| **P1** — habit | ⬜ ยังไม่เริ่ม | 7-day coverage, budget rollover, weekly review, push, offline queue |
+| **P2** — advanced | ⬜ ยังไม่เริ่ม | envelope mode, accounts/opening balance, ledger linking |
+
+### ⚠️ ต้องทำก่อน deploy P0B ขึ้น production
+
+Migration **ไม่ได้รันอัตโนมัติ** บน Render — `synchronize` เปิดเฉพาะ non-production
+ต้องรันสองไฟล์นี้กับฐานข้อมูล production **ก่อน** ปล่อยโค้ดใหม่:
+
+```bash
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/07-spending-plan.sql
+psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/08-product-events.sql
+```
+
+ทั้งสองไฟล์ idempotent รันซ้ำได้ `07` จะ backfill `advanced_mode = true`
+ให้ผู้ใช้เดิมที่มี wallet / หนี้สิน / การลงทุน / ภาษี อยู่แล้วโดยอัตโนมัติ
+เพื่อไม่ให้ฟีเจอร์ที่เขาใช้อยู่หายไปเฉยๆ (ทดสอบแล้วบน dev: อัปเดต 7 จาก 10 users)
+
+---
 
 ---
 

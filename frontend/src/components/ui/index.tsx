@@ -100,3 +100,4 @@ export function ErrorState({ message, onRetry, retryLabel, compact }: {
 export { default as IconDisplay } from './IconDisplay'
 export { default as ConfirmModal } from './ConfirmModal'
 export { default as ToastHost } from './ToastHost'
+export { default as WorkTimeBadge } from './WorkTimeBadge'

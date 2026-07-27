@@ -9,6 +9,17 @@ interface AuthUser {
   onboardingCompleted: boolean
   hasPassword: boolean
   expectedMonthlyIncome: number | null
+  // ── Spending plan ──
+  // `null` means no plan set — distinct from a limit of 0.
+  trackingMode: 'plan' | 'track_only'
+  monthlySpendingLimit: number | null
+  timezone: string
+  // ── Work-time lens (moved off localStorage so it survives a device change) ──
+  workHoursPerDay: number
+  workDaysPerMonth: number
+  showWorkTime: boolean
+  // Reveals envelope wallets, loans, investments and tax.
+  advancedMode: boolean
 }
 
 interface AuthState {

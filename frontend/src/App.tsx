@@ -16,6 +16,7 @@ const Settings      = lazy(() => import('./pages/Settings/Settings'))
 const Wallets       = lazy(() => import('./pages/Wallets/Wallets'))
 const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
 const More          = lazy(() => import('./pages/More/More'))
+const Reports       = lazy(() => import('./pages/Reports/Reports'))
 const Budget        = lazy(() => import('./pages/Budget/Budget'))
 const Loans         = lazy(() => import('./pages/Loans/Loans'))
 const Investments   = lazy(() => import('./pages/Investments/Investments'))
@@ -59,6 +60,7 @@ export default function App() {
             <Route path="/wallets"    element={<Lazy><Wallets /></Lazy>} />
             <Route path="/settings"   element={<Lazy><Settings /></Lazy>} />
             <Route path="/more"       element={<Lazy><More /></Lazy>} />
+            <Route path="/reports"    element={<Lazy><Reports /></Lazy>} />
             {/* Finance was the old hub; keep the URL working for existing bookmarks. */}
             <Route path="/finance"    element={<Navigate to="/more" replace />} />
             <Route path="/budget"     element={<Lazy><Budget /></Lazy>} />

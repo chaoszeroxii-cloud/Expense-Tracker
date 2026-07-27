@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import axios from 'axios';
@@ -53,6 +53,38 @@ export interface BalanceSummary {
   unallocatedBalance: number;
 }
 
+export interface DailyBriefTransaction {
+  id: string;
+  amount: number;
+  type: 'expense' | 'income';
+  note: string | null;
+  occurredAt: string;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  categoryColor: string | null;
+}
+
+export interface DailyBrief {
+  date: string;
+  timezone: string;
+  mode: 'plan' | 'track_only';
+  spentToday: number;
+  monthSpent: number;
+  /** `null` when no plan is set — never 0, which would read as "spend nothing". */
+  monthlyLimit: number | null;
+  /** `null` when no plan is set. Always a *planned* allowance, never real cash. */
+  safeToday: number | null;
+  daysRemaining: number;
+  planStatus: 'no_plan' | 'on_track' | 'close' | 'over';
+  transactionsToday: number;
+  recentCategoryIds: string[];
+  recentTransactions: DailyBriefTransaction[];
+  /** Hourly rate for the work-time lens; `null` until the user supplies an income. */
+  hourlyRate: number | null;
+  showWorkTime: boolean;
+}
+
 @Injectable()
 export class AnalyticsService {
   constructor(
@@ -60,8 +92,147 @@ export class AnalyticsService {
     private readonly repo: Repository<Expense>,
     @InjectRepository(AllocationMovement)
     private readonly movementRepo: Repository<AllocationMovement>,
+    @InjectRepository(User)
+    private readonly users: Repository<User>,
     private readonly dataSource: DataSource,
   ) {}
+
+  // ─── 0. Daily brief — the single request behind the home screen ───────────
+  //
+  // Home used to mount eleven requests (seven of its own, three from the wallet
+  // widget, one plan preview) before it could show anything. This replaces the
+  // above-the-fold portion with one round trip: two aggregate queries plus a
+  // short recent-activity list.
+  //
+  // Everything is computed in the user's own timezone. A UTC "today" reports
+  // yesterday's spending until 07:00 in Asia/Bangkok.
+  async getDailyBrief(userId: string): Promise<DailyBrief> {
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const tz = this.safeTimezone(user.timezone);
+    const today = this.localToday(tz);            // YYYY-MM-DD
+    const month = today.slice(0, 7);              // YYYY-MM
+    const [y, m, d] = today.split('-').map(Number);
+    const daysInMonth = new Date(y, m, 0).getDate();
+    const daysRemaining = daysInMonth - d + 1;    // includes today
+
+    // `occurred_at AT TIME ZONE $tz` turns the stored timestamptz into the
+    // user's wall clock, so day and month boundaries land where they expect.
+    const totals = await this.repo
+      .createQueryBuilder('e')
+      .select([
+        `COALESCE(SUM(CASE WHEN e.type = 'expense' AND (e.occurred_at AT TIME ZONE :tz)::date = :today::date THEN e.amount ELSE 0 END), 0) AS "spentToday"`,
+        `COALESCE(SUM(CASE WHEN e.type = 'expense' THEN e.amount ELSE 0 END), 0) AS "monthSpent"`,
+        `COALESCE(SUM(CASE WHEN e.type = 'expense' AND (e.occurred_at AT TIME ZONE :tz)::date < :today::date THEN e.amount ELSE 0 END), 0) AS "spentBeforeToday"`,
+        `COUNT(*) FILTER (WHERE (e.occurred_at AT TIME ZONE :tz)::date = :today::date) AS "transactionsToday"`,
+      ])
+      .where('e.user_id = :userId', { userId })
+      .andWhere(`TO_CHAR(e.occurred_at AT TIME ZONE :tz, 'YYYY-MM') = :month`)
+      .setParameters({ userId, tz, today, month })
+      .getRawOne();
+
+    const spentToday       = round2(parseFloat(totals.spentToday) || 0);
+    const monthSpent       = round2(parseFloat(totals.monthSpent) || 0);
+    const spentBeforeToday = round2(parseFloat(totals.spentBeforeToday) || 0);
+    const transactionsToday = parseInt(totals.transactionsToday) || 0;
+
+    // ── Safe to spend, strictly from the user's own plan ────────────────────
+    // Deliberately NOT derived from `totalBalance`: that column starts at zero
+    // and only reflects transactions recorded in this app, so a new user goes
+    // negative on their first coffee. Calling that "safe to spend" would be a
+    // number the user cannot act on.
+    const limitRaw = user.monthlySpendingLimit === null ? null : Number(user.monthlySpendingLimit);
+    const hasPlan  = user.trackingMode === 'plan' && limitRaw !== null && limitRaw > 0;
+
+    let safeToday: number | null = null;
+    let planStatus: DailyBrief['planStatus'] = 'no_plan';
+
+    if (hasPlan) {
+      const remainingBeforeToday = limitRaw! - spentBeforeToday;
+      const baseToday = Math.max(0, remainingBeforeToday / daysRemaining);
+      safeToday = round2(Math.max(0, baseToday - spentToday));
+
+      if (monthSpent > limitRaw!)      planStatus = 'over';
+      else if (safeToday === 0)        planStatus = 'close';
+      else if (monthSpent > limitRaw! * 0.8) planStatus = 'close';
+      else                             planStatus = 'on_track';
+    }
+
+    // ── Categories to offer first in Quick Add ──────────────────────────────
+    // Weighted by how often they were used recently rather than pure recency, so
+    // a one-off purchase does not displace a daily habit.
+    const recentCats = await this.repo
+      .createQueryBuilder('e')
+      .select(['e.category_id AS "categoryId"'])
+      .where('e.user_id = :userId', { userId })
+      .andWhere(`e.type = 'expense'`)
+      .andWhere('e.category_id IS NOT NULL')
+      .andWhere(`e.occurred_at >= NOW() - INTERVAL '60 days'`)
+      .groupBy('e.category_id')
+      .orderBy('COUNT(*)', 'DESC')
+      .addOrderBy('MAX(e.occurred_at)', 'DESC')
+      .limit(4)
+      .setParameters({ userId })
+      .getRawMany();
+
+    const recent = await this.repo.find({
+      where: { userId },
+      relations: ['category'],
+      order: { occurredAt: 'DESC', createdAt: 'DESC' },
+      take: 3,
+    });
+
+    // ── Work-time lens ──────────────────────────────────────────────────────
+    const income = user.expectedMonthlyIncome === null ? null : Number(user.expectedMonthlyIncome);
+    const workHours = Number(user.workHoursPerDay) * Number(user.workDaysPerMonth);
+    const hourlyRate = income && income > 0 && workHours > 0 ? round2(income / workHours) : null;
+
+    return {
+      date: today,
+      timezone: tz,
+      mode: user.trackingMode,
+      spentToday,
+      monthSpent,
+      monthlyLimit: hasPlan ? round2(limitRaw!) : null,
+      safeToday,
+      daysRemaining,
+      planStatus,
+      transactionsToday,
+      recentCategoryIds: recentCats.map((r) => r.categoryId),
+      recentTransactions: recent.map((e) => ({
+        id: e.id,
+        amount: Number(e.amount),
+        type: e.type as 'expense' | 'income',
+        note: e.note ?? null,
+        occurredAt: e.occurredAt instanceof Date ? e.occurredAt.toISOString() : String(e.occurredAt),
+        categoryId: e.categoryId ?? null,
+        categoryName: e.category?.name ?? null,
+        categoryIcon: e.category?.icon ?? null,
+        categoryColor: e.category?.color ?? null,
+      })),
+      hourlyRate,
+      showWorkTime: user.showWorkTime,
+    };
+  }
+
+  /** An unknown IANA zone makes `Intl` throw; fall back rather than 500 the home screen. */
+  private safeTimezone(tz: string | null | undefined): string {
+    const candidate = tz || 'Asia/Bangkok';
+    try {
+      new Intl.DateTimeFormat('en-CA', { timeZone: candidate });
+      return candidate;
+    } catch {
+      return 'Asia/Bangkok';
+    }
+  }
+
+  /** `YYYY-MM-DD` for "now" in the given zone. `en-CA` formats as ISO by default. */
+  private localToday(tz: string): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+  }
 
   // ─── 1. Summary for a given period ────────────────────────────────────────
   async getPeriodSummary(userId: string, month?: string, year?: string): Promise<PeriodSummary> {

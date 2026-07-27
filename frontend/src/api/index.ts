@@ -6,7 +6,8 @@ import type {
   BudgetItem, Loan, LoanSummary, Investment, InvestmentTransaction,
   TaxDeduction, TaxCalculationResult, TaxDeductionType,
   EmergencyFundSummary, AdminUser, AdminStats, AiRecommendation,
-  AllocationPlanPreview,
+  AllocationPlanPreview, DailyBrief, UpdatePreferencesPayload,
+  CompleteOnboardingPayload,
 } from '../types'
 
 const http = axios.create({
@@ -36,7 +37,9 @@ http.interceptors.response.use(
 
 // ── Auth ─────────────────────────────────────────────────────
 export const authApi = {
-  register: (payload: { email: string; name: string; password: string }) =>
+  // `lang` decides which language the starter categories are seeded in — they are
+  // user data from then on, so it cannot be corrected by switching the UI later.
+  register: (payload: { email: string; name: string; password: string; lang?: 'th' | 'en' }) =>
     http.post('/auth/register', payload).then(r => r.data),
 
   login: (payload: { email: string; password: string }) =>
@@ -47,17 +50,25 @@ export const authApi = {
   updateProfile: (payload: { name: string; expectedMonthlyIncome?: number }) =>
     http.patch('/auth/profile', payload).then(r => r.data),
 
+  updatePreferences: (payload: UpdatePreferencesPayload) =>
+    http.patch('/auth/preferences', payload).then(r => r.data),
+
   getOnboardingWallets: () =>
     http.get('/auth/onboarding/wallets').then(r => r.data),
 
-  completeOnboarding: (wallets: string[], lang: 'th' | 'en' = 'th') =>
-    http.post('/auth/onboarding', { wallets, lang }).then(r => r.data),
+  // Sets the spending plan only. Envelope wallets are no longer created here —
+  // see createStarterWallets, which is an explicit opt-in from advanced mode.
+  completeOnboarding: (payload: CompleteOnboardingPayload) =>
+    http.post('/auth/onboarding', payload).then(r => r.data),
 
-  googleVerify: (token: string, email?: string) =>
-    http.post('/auth/google/verify', { token, ...(email ? { email } : {}) }).then(r => r.data),
+  createStarterWallets: (wallets: string[], lang: 'th' | 'en' = 'th') =>
+    http.post('/auth/starter-wallets', { wallets, lang }).then(r => r.data),
 
-  facebookVerify: (accessToken: string, email?: string) =>
-    http.post('/auth/facebook/verify', { accessToken, ...(email ? { email } : {}) }).then(r => r.data),
+  googleVerify: (token: string, email?: string, lang?: 'th' | 'en') =>
+    http.post('/auth/google/verify', { token, ...(email ? { email } : {}), ...(lang ? { lang } : {}) }).then(r => r.data),
+
+  facebookVerify: (accessToken: string, email?: string, lang?: 'th' | 'en') =>
+    http.post('/auth/facebook/verify', { accessToken, ...(email ? { email } : {}), ...(lang ? { lang } : {}) }).then(r => r.data),
   changePassword: (payload: { currentPassword?: string; newPassword: string }) =>
     http.patch('/auth/change-password', payload).then(r => r.data),
 
@@ -70,6 +81,10 @@ export const authApi = {
 
 // ── Analytics ────────────────────────────────────────────────
 export const analyticsApi = {
+  // Everything the home screen needs above the fold, in one request.
+  getDailyBrief: () =>
+    http.get<DailyBrief>('/analytics/daily-brief').then(r => r.data),
+
   getSummary: (month?: string, year?: string) =>
     http.get<PeriodSummary>('/analytics/summary', { params: { month, year } }).then(r => r.data),
 

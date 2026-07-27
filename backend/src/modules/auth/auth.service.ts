@@ -10,7 +10,10 @@ import axios from 'axios'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { Allocation } from '../allocations/allocation.entity'
-import { RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto, ChangePasswordDto } from './auth.dto'
+import {
+  RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto,
+  ChangePasswordDto, UpdatePreferencesDto, CompleteOnboardingDto,
+} from './auth.dto'
 
 const SALT_ROUNDS = 12
 
@@ -24,20 +27,25 @@ export const DEFAULT_WALLETS = [
   { key: 'health',     name: 'สุขภาพ/ประกัน',     nameEn: 'Health / Insurance', icon: '🏥', color: '#ef4444', pct: 5  },
 ]
 
+// Seeded once per account. Category names are user data — they are stored in the
+// language the account was created in and are renameable afterwards, so a Thai
+// account must not start life with an English category list.
+// The first four expense entries double as the Quick Add starter set for users
+// with no history yet, so keep the everyday ones at the top.
 const DEFAULT_CATEGORIES = [
-  { name: 'Food & Drink',   icon: '🍜', color: '#f97316', type: 'expense' },
-  { name: 'Transport',      icon: '🚗', color: '#3b82f6', type: 'expense' },
-  { name: 'Shopping',       icon: '🛍️', color: '#a855f7', type: 'expense' },
-  { name: 'Health',         icon: '💊', color: '#ef4444', type: 'expense' },
-  { name: 'Entertainment',  icon: '🎮', color: '#ec4899', type: 'expense' },
-  { name: 'Utilities',      icon: '💡', color: '#eab308', type: 'expense' },
-  { name: 'Housing',        icon: '🏠', color: '#14b8a6', type: 'expense' },
-  { name: 'Education',      icon: '📚', color: '#6366f1', type: 'expense' },
-  { name: 'Other',          icon: '📦', color: '#94a3b8', type: 'expense' },
-  { name: 'Salary',         icon: '💼', color: '#22c55e', type: 'income' },
-  { name: 'Freelance',      icon: '💻', color: '#10b981', type: 'income' },
-  { name: 'Investment',     icon: '📈', color: '#06b6d4', type: 'income' },
-  { name: 'Other Income',   icon: '💰', color: '#84cc16', type: 'income' },
+  { nameEn: 'Food & Drink',  nameTh: 'อาหารและเครื่องดื่ม', icon: '🍜', color: '#f97316', type: 'expense' },
+  { nameEn: 'Transport',     nameTh: 'เดินทาง',              icon: '🚗', color: '#3b82f6', type: 'expense' },
+  { nameEn: 'Shopping',      nameTh: 'ช้อปปิ้ง',             icon: '🛍️', color: '#a855f7', type: 'expense' },
+  { nameEn: 'Utilities',     nameTh: 'บิล/ค่าน้ำค่าไฟ',      icon: '💡', color: '#eab308', type: 'expense' },
+  { nameEn: 'Health',        nameTh: 'สุขภาพ',               icon: '💊', color: '#ef4444', type: 'expense' },
+  { nameEn: 'Entertainment', nameTh: 'บันเทิง',              icon: '🎮', color: '#ec4899', type: 'expense' },
+  { nameEn: 'Housing',       nameTh: 'ที่อยู่อาศัย',          icon: '🏠', color: '#14b8a6', type: 'expense' },
+  { nameEn: 'Education',     nameTh: 'การศึกษา',             icon: '📚', color: '#6366f1', type: 'expense' },
+  { nameEn: 'Other',         nameTh: 'อื่นๆ',                icon: '📦', color: '#94a3b8', type: 'expense' },
+  { nameEn: 'Salary',        nameTh: 'เงินเดือน',            icon: '💼', color: '#22c55e', type: 'income'  },
+  { nameEn: 'Freelance',     nameTh: 'งานฟรีแลนซ์',          icon: '💻', color: '#10b981', type: 'income'  },
+  { nameEn: 'Investment',    nameTh: 'ผลตอบแทนการลงทุน',     icon: '📈', color: '#06b6d4', type: 'income'  },
+  { nameEn: 'Other Income',  nameTh: 'รายรับอื่นๆ',          icon: '💰', color: '#84cc16', type: 'income'  },
 ] as const
 
 @Injectable()
@@ -66,14 +74,25 @@ export class AuthService {
       this.users.create({ email: dto.email, name: dto.name, passwordHash: hash }),
     )
 
-    // Seed default categories for new user
-    await this.categories.save(
-      DEFAULT_CATEGORIES.map(c =>
-        this.categories.create({ ...c, userId: user.id, isDefault: true }),
-      ),
-    )
+    await this.seedCategories(user.id, dto.lang ?? 'th')
 
     return this.signToken(user)
+  }
+
+  /** Seeds the starter category list in the account's language. */
+  private async seedCategories(userId: string, lang: 'th' | 'en') {
+    await this.categories.save(
+      DEFAULT_CATEGORIES.map(c =>
+        this.categories.create({
+          name:  lang === 'en' ? c.nameEn : c.nameTh,
+          icon:  c.icon,
+          color: c.color,
+          type:  c.type,
+          userId,
+          isDefault: true,
+        }),
+      ),
+    )
   }
 
   // ── Login ───────────────────────────────────────────────────
@@ -116,6 +135,7 @@ export class AuthService {
       clientEmail: dto.email,
       name: googleProfile.name,
       authProvider: 'google',
+      lang: dto.lang,
     })
   }
 
@@ -143,6 +163,7 @@ export class AuthService {
       clientEmail: dto.email,
       name: fbProfile.name,
       authProvider: 'facebook',
+      lang: dto.lang,
     })
   }
 
@@ -158,8 +179,10 @@ export class AuthService {
     clientEmail?: string
     name: string
     authProvider: 'google' | 'facebook'
+    lang?: 'th' | 'en'
   }) {
     const { providerKey, providerId, providerEmail, clientEmail, name, authProvider } = params
+    const lang = params.lang ?? 'th'
 
     // 1. Returning social user — matched by provider id, always safe.
     const existingByProvider = await this.users.findOne({ where: { [providerKey]: providerId } as any })
@@ -173,7 +196,7 @@ export class AuthService {
         existingByEmail[providerKey] = providerId
         return this.signToken(existingByEmail)
       }
-      return this.createSocialUser(providerEmail, name, authProvider, providerKey, providerId)
+      return this.createSocialUser(providerEmail, name, authProvider, providerKey, providerId, lang)
     }
 
     // 3. No verified email from the provider — ask the client for one.
@@ -185,7 +208,7 @@ export class AuthService {
     if (clash) {
       throw new ConflictException('An account with this email already exists. Please sign in with your password.')
     }
-    return this.createSocialUser(clientEmail, name, authProvider, providerKey, providerId)
+    return this.createSocialUser(clientEmail, name, authProvider, providerKey, providerId, lang)
   }
 
   private async createSocialUser(
@@ -194,16 +217,13 @@ export class AuthService {
     authProvider: 'google' | 'facebook',
     providerKey: 'googleId' | 'facebookId',
     providerId: string,
+    lang: 'th' | 'en' = 'th',
   ) {
     const partial: Partial<User> = { email, name, authProvider }
     if (providerKey === 'googleId') partial.googleId = providerId
     else partial.facebookId = providerId
     const newUser = await this.users.save(this.users.create(partial as User))
-    await this.categories.save(
-      DEFAULT_CATEGORIES.map(c =>
-        this.categories.create({ ...c, userId: newUser.id, isDefault: true }),
-      ),
-    )
+    await this.seedCategories(newUser.id, lang)
     return this.signToken(newUser)
   }
 
@@ -252,6 +272,48 @@ export class AuthService {
     return user ? this.toProfile(user) : null
   }
 
+  // ── Preferences ─────────────────────────────────────────────
+  // Only fields actually present in the request are written, so the client can
+  // change one setting without having to echo back the rest of the user's state.
+  async updatePreferences(userId: string, dto: UpdatePreferencesDto) {
+    const patch: Partial<User> = {}
+
+    if (dto.trackingMode !== undefined) patch.trackingMode = dto.trackingMode
+    if (dto.timezone !== undefined)     patch.timezone = this.assertTimezone(dto.timezone)
+    if (dto.workHoursPerDay !== undefined)  patch.workHoursPerDay = dto.workHoursPerDay
+    if (dto.workDaysPerMonth !== undefined) patch.workDaysPerMonth = dto.workDaysPerMonth
+    if (dto.showWorkTime !== undefined)     patch.showWorkTime = dto.showWorkTime
+    if (dto.advancedMode !== undefined)     patch.advancedMode = dto.advancedMode
+    if (dto.expectedMonthlyIncome !== undefined) patch.expectedMonthlyIncome = dto.expectedMonthlyIncome
+
+    // An explicit null clears the plan. `undefined` (absent) leaves it alone —
+    // these must not collapse into the same thing.
+    if (dto.monthlySpendingLimit !== undefined) {
+      patch.monthlySpendingLimit = dto.monthlySpendingLimit
+    }
+
+    // Switching to track-only drops the limit rather than keeping a stale number
+    // that would reappear if the user switched back weeks later.
+    if (dto.trackingMode === 'track_only' && dto.monthlySpendingLimit === undefined) {
+      patch.monthlySpendingLimit = null
+    }
+
+    if (Object.keys(patch).length > 0) await this.users.update(userId, patch)
+
+    const user = await this.users.findOne({ where: { id: userId } })
+    return user ? this.toProfile(user) : null
+  }
+
+  /** Reject a timezone Intl cannot resolve — otherwise the daily brief silently drifts. */
+  private assertTimezone(tz: string): string {
+    try {
+      new Intl.DateTimeFormat('en-CA', { timeZone: tz })
+      return tz
+    } catch {
+      throw new BadRequestException(`Unknown timezone: ${tz}`)
+    }
+  }
+
   // ── Me ──────────────────────────────────────────────────────
   me(user: User) {
     return this.toProfile(user)
@@ -278,16 +340,45 @@ export class AuthService {
   }
 
   // ── Onboarding ──────────────────────────────────────────────
-  async completeOnboarding(userId: string, selectedWalletKeys: string[], lang: 'th' | 'en' = 'th') {
+  //
+  // Sets up the one thing the daily loop needs — a spending plan — and nothing else.
+  //
+  // It used to create up to seven envelope wallets, each at a zero balance and with no
+  // category links, while the UI advertised a "recommended %" this method never applied.
+  // That was pure setup cost at the moment motivation is weakest, and the envelope
+  // system still did nothing until the user went to Wallets and linked categories by
+  // hand. Wallets are now opt-in via advanced mode instead.
+  async completeOnboarding(userId: string, dto: CompleteOnboardingDto) {
     const user = await this.users.findOne({ where: { id: userId } })
-    if (!user) return
+    if (!user) throw new UnauthorizedException()
 
-    const wallets = DEFAULT_WALLETS.filter((w) => selectedWalletKeys.includes(w.key))
-    if (wallets.length === 0) {
-      wallets.push(DEFAULT_WALLETS[0], DEFAULT_WALLETS[2], DEFAULT_WALLETS[3])
+    const patch: Partial<User> = {
+      onboardingCompleted: true,
+      trackingMode: dto.trackingMode,
+      // Track-only means the user declined to commit to a number; storing one anyway
+      // would make the home screen claim a plan they never set.
+      monthlySpendingLimit: dto.trackingMode === 'plan' ? (dto.monthlySpendingLimit ?? null) : null,
     }
+    if (dto.timezone) patch.timezone = this.assertTimezone(dto.timezone)
 
-    await this.allocations.save(
+    await this.users.update(userId, patch)
+
+    const refreshed = await this.users.findOne({ where: { id: userId } })
+    return { success: true, user: refreshed ? this.toProfile(refreshed) : null }
+  }
+
+  /**
+   * Creates the starter envelope wallets — now an explicit opt-in from advanced mode
+   * rather than something onboarding does on the user's behalf.
+   */
+  async createStarterWallets(userId: string, walletKeys: string[], lang: 'th' | 'en' = 'th') {
+    const wallets = DEFAULT_WALLETS.filter((w) => walletKeys.includes(w.key))
+    if (wallets.length === 0) throw new BadRequestException('Pick at least one wallet')
+
+    const existing = await this.allocations.count({ where: { userId } })
+    if (existing > 0) throw new ConflictException('Wallets already exist for this account')
+
+    const created = await this.allocations.save(
       wallets.map((w) => this.allocations.create({
         userId,
         name: lang === 'en' ? w.nameEn : w.name,
@@ -295,8 +386,8 @@ export class AuthService {
         color: w.color,
       })),
     )
-    await this.users.update(userId, { onboardingCompleted: true })
-    return { success: true, created: wallets.length }
+    await this.users.update(userId, { advancedMode: true })
+    return { success: true, created: created.length }
   }
 
   // ── Forgot Password ─────────────────────────────────────────
@@ -358,6 +449,16 @@ export class AuthService {
       expectedMonthlyIncome: user.expectedMonthlyIncome,
       createdAt: user.createdAt,
       hasPassword: user.passwordHash != null,
+      // Spending plan. `monthlySpendingLimit: null` means no plan — not a limit of 0.
+      trackingMode: user.trackingMode,
+      monthlySpendingLimit: user.monthlySpendingLimit,
+      timezone: user.timezone,
+      // Work-time lens
+      workHoursPerDay: Number(user.workHoursPerDay),
+      workDaysPerMonth: user.workDaysPerMonth,
+      showWorkTime: user.showWorkTime,
+      // Reveals wallets, loans, investments and tax
+      advancedMode: user.advancedMode,
     }
   }
 

@@ -456,6 +456,48 @@ const dict = {
     wallets_starter_hint: 'Emergency fund · Daily spending · Savings goal',
     wallets_starter_done: 'Wallets created',
 
+    // ── Seven-day coverage (not a streak) ───────────────────
+    cov_title:        'Last 7 days',
+    cov_counted:      'accounted for',
+    cov_no_spend_cta: 'Nothing spent today',
+    cov_no_spend_yesterday: 'Nothing spent yesterday either',
+    cov_marked:       'Marked as a no-spend day',
+    cov_undo:         'Undo',
+    cov_all_done:     'All seven days accounted for',
+    cov_hint:         'A day with no spending counts too — mark it and it stays counted.',
+
+    // ── Weekly review ───────────────────────────────────────
+    wk_title:          'This week',
+    wk_spent:          'Spent',
+    wk_vs_last:        'vs last week',
+    wk_daily_avg:      'Daily average',
+    wk_top_category:   'Biggest category',
+    wk_biggest_day:    'Biggest day',
+    wk_act_down:       'Spending is down',
+    wk_act_over:       'Ahead of your plan by',
+    wk_act_reduce:     'Most of this week went to',
+    wk_act_set_plan:   'Set a monthly limit to see how the week compares',
+    wk_act_more_data:  'Record a few days and a comparison appears here',
+    wk_no_data:        'Nothing recorded in the last 7 days',
+
+    // ── Budget rollover ─────────────────────────────────────
+    bud_copy_previous:   "Use last month's budgets",
+    bud_copy_done:       'Copied',
+    bud_suggestions:     'Suggested from your spending',
+    bud_suggest_apply:   'Apply suggestions',
+    bud_prev_amount:     'Last month',
+    bud_avg_actual:      '3-month average',
+    bud_nothing_to_copy: 'No budgets last month to copy',
+    bud_empty_hint:      'Set a limit for the categories that matter. Next month can carry them forward in one tap.',
+
+    // ── Offline capture ─────────────────────────────────────
+    offline_queued:   'No connection — saved on this device, will sync automatically',
+    offline_pending:  'waiting to sync',
+    offline_syncing:  'Syncing…',
+    offline_synced:   'Synced',
+    offline_dropped:  'Could not sync and were discarded:',
+    offline_sync_now: 'Sync now',
+
     // ── AI insights (now on demand) ─────────────────────────
     ai_run_analysis:     'Analyse my spending',
     ai_run_hint:         'Sends a summary of this month to the AI. Nothing is sent until you tap.',
@@ -934,6 +976,48 @@ const dict = {
     wallets_starter_cta:  'สร้างซองแนะนำ 3 ซอง',
     wallets_starter_hint: 'เงินสำรองฉุกเฉิน · ค่าใช้จ่ายประจำวัน · เป้าหมายการออม',
     wallets_starter_done: 'สร้างซองเงินแล้ว',
+
+    // ── Seven-day coverage (not a streak) ───────────────────
+    cov_title:        '7 วันล่าสุด',
+    cov_counted:      'วันที่บันทึกครบ',
+    cov_no_spend_cta: 'วันนี้ไม่มีรายจ่าย',
+    cov_no_spend_yesterday: 'เมื่อวานก็ไม่มีรายจ่าย',
+    cov_marked:       'บันทึกว่าเป็นวันไม่มีรายจ่ายแล้ว',
+    cov_undo:         'เลิกทำ',
+    cov_all_done:     'ครบทั้ง 7 วันแล้ว',
+    cov_hint:         'วันที่ไม่ได้ใช้เงินก็นับ — กดบอกไว้แล้วมันจะยังนับให้',
+
+    // ── Weekly review ───────────────────────────────────────
+    wk_title:          'สัปดาห์นี้',
+    wk_spent:          'ใช้ไป',
+    wk_vs_last:        'เทียบสัปดาห์ก่อน',
+    wk_daily_avg:      'เฉลี่ยต่อวัน',
+    wk_top_category:   'หมวดที่ใช้มากสุด',
+    wk_biggest_day:    'วันที่ใช้มากสุด',
+    wk_act_down:       'ใช้ลดลง',
+    wk_act_over:       'เกินจังหวะที่แผนตั้งไว้',
+    wk_act_reduce:     'สัปดาห์นี้ส่วนใหญ่หมดไปกับ',
+    wk_act_set_plan:   'ตั้งวงเงินต่อเดือน แล้วจะเทียบให้เห็นว่าสัปดาห์นี้เป็นยังไง',
+    wk_act_more_data:  'บันทึกอีกสัก 2-3 วัน แล้วจะมีตัวเปรียบเทียบขึ้นตรงนี้',
+    wk_no_data:        '7 วันที่ผ่านมายังไม่มีรายการ',
+
+    // ── Budget rollover ─────────────────────────────────────
+    bud_copy_previous:   'ใช้งบเดือนที่แล้ว',
+    bud_copy_done:       'คัดลอกแล้ว',
+    bud_suggestions:     'ค่าแนะนำจากการใช้จ่ายจริง',
+    bud_suggest_apply:   'ใช้ค่าแนะนำ',
+    bud_prev_amount:     'เดือนที่แล้ว',
+    bud_avg_actual:      'เฉลี่ย 3 เดือน',
+    bud_nothing_to_copy: 'เดือนที่แล้วยังไม่มีงบให้คัดลอก',
+    bud_empty_hint:      'ตั้งวงเงินเฉพาะหมวดที่สำคัญพอ เดือนหน้ากดปุ่มเดียวก็ยกมาได้',
+
+    // ── Offline capture ─────────────────────────────────────
+    offline_queued:   'ไม่มีเน็ต — เก็บไว้ในเครื่องแล้ว จะซิงก์ให้อัตโนมัติ',
+    offline_pending:  'รอซิงก์',
+    offline_syncing:  'กำลังซิงก์...',
+    offline_synced:   'ซิงก์แล้ว',
+    offline_dropped:  'ซิงก์ไม่สำเร็จและถูกทิ้ง:',
+    offline_sync_now: 'ซิงก์เดี๋ยวนี้',
 
     // ── AI insights (now on demand) ─────────────────────────
     ai_run_analysis:     'วิเคราะห์การใช้จ่ายของฉัน',

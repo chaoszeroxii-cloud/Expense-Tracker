@@ -5,6 +5,8 @@ import { mdiChartTimelineVariant, mdiChevronRight, mdiWallet } from '@mdi/js'
 import { Card, Skeleton, ErrorState, Empty, Amount, IconDisplay, WorkTimeBadge } from '../../components/ui'
 import SafeToSpendCard from '../../components/home/SafeToSpendCard'
 import QuickCaptureBar from '../../components/home/QuickCaptureBar'
+import CoverageStrip from '../../components/home/CoverageStrip'
+import PendingSyncBanner from '../../components/home/PendingSyncBanner'
 import AllocationWallets from '../../components/allocations/AllocationWallets'
 import { useDailyBrief } from '../../hooks'
 import { useT, useI18n } from '../../store/i18n.store'
@@ -26,7 +28,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const advancedMode = useAuthStore(s => s.user?.advancedMode ?? false)
 
-  const { data: brief, loading, error, refetch } = useDailyBrief()
+  const { data: brief, loading, error, refetch, setData } = useDailyBrief()
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -58,8 +60,19 @@ export default function Dashboard() {
         <SafeToSpendCard brief={brief} />
       ) : null}
 
+      {/* ── Anything captured offline, still waiting for a connection ── */}
+      <PendingSyncBanner />
+
       {/* ── Fastest way in: plain language straight to the assistant ── */}
       <QuickCaptureBar />
+
+      {/* ── Seven-day coverage. Not a streak: see CoverageStrip. ── */}
+      {brief && (
+        <CoverageStrip
+          coverage={brief.coverage}
+          onChange={next => setData({ ...brief, coverage: next })}
+        />
+      )}
 
       {/* ── What just happened ── */}
       <Card>

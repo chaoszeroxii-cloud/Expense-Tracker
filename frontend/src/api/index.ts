@@ -7,7 +7,7 @@ import type {
   TaxDeduction, TaxCalculationResult, TaxDeductionType,
   EmergencyFundSummary, AdminUser, AdminStats, AiRecommendation,
   AllocationPlanPreview, DailyBrief, UpdatePreferencesPayload,
-  CompleteOnboardingPayload,
+  CompleteOnboardingPayload, Coverage, WeeklyReview, BudgetSuggestion,
 } from '../types'
 
 const http = axios.create({
@@ -105,6 +105,20 @@ export const analyticsApi = {
 
   getRecommendations: () =>
     http.get<AiRecommendation[]>('/analytics/recommendations').then(r => r.data),
+
+  // Deterministic SQL, no model call — fast, free and explainable.
+  getWeeklyReview: () =>
+    http.get<WeeklyReview>('/analytics/weekly-review').then(r => r.data),
+}
+
+// ── Check-ins ────────────────────────────────────────────────
+export const checkInsApi = {
+  /** Declares a day as no-spend. Idempotent; only today or yesterday are accepted. */
+  markNoSpend: (date: string) =>
+    http.put<Coverage>(`/check-ins/${date}`).then(r => r.data),
+
+  undo: (date: string) =>
+    http.delete<Coverage>(`/check-ins/${date}`).then(r => r.data),
 }
 
 // ── Expenses ─────────────────────────────────────────────────
@@ -184,6 +198,17 @@ export const budgetsApi = {
 
   remove: (id: string) =>
     http.delete(`/budgets/${id}`).then(r => r.data),
+
+  /** What to prefill a new month with: last month's figures, else actual spend. */
+  getSuggestions: (month?: string) =>
+    http.get<BudgetSuggestion[]>('/budgets/suggestions', { params: { month } }).then(r => r.data),
+
+  copyPrevious: (month: string) =>
+    http.post<{ copied: number; skipped: number }>('/budgets/copy-previous', { month }).then(r => r.data),
+
+  /** Saves a whole month at once. An amount of 0 removes that category's budget. */
+  saveBatch: (month: string, items: { categoryId: string; amount: number }[]) =>
+    http.put<{ saved: number; removed: number }>('/budgets/batch', { month, items }).then(r => r.data),
 }
 
 // ── Loans ─────────────────────────────────────────────────────

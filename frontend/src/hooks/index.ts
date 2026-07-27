@@ -4,7 +4,7 @@ import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
   BudgetItem, LoanSummary, EmergencyFundSummary, AiRecommendation,
-  AllocationPlanPreview, DailyBrief,
+  AllocationPlanPreview, DailyBrief, WeeklyReview, BudgetSuggestion,
 } from '../types'
 
 // Current month helper — returns "YYYY-MM" from the *local* calendar.
@@ -32,7 +32,9 @@ function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
 
   useEffect(() => { fetch() }, [fetch])
 
-  return { data, loading, error, refetch: fetch }
+  // `setData` lets a caller apply a server response it already has in hand — marking a
+  // no-spend day returns the new coverage — instead of refetching the whole payload.
+  return { data, loading, error, refetch: fetch, setData }
 }
 
 // ── Domain hooks ──────────────────────────────────────────────
@@ -45,6 +47,15 @@ function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
  */
 export function useDailyBrief() {
   return useFetch<DailyBrief>(() => analyticsApi.getDailyBrief())
+}
+
+/** Deterministic weekly summary — SQL only, no model call. */
+export function useWeeklyReview() {
+  return useFetch<WeeklyReview>(() => analyticsApi.getWeeklyReview())
+}
+
+export function useBudgetSuggestions(month: string) {
+  return useFetch<BudgetSuggestion[]>(() => budgetsApi.getSuggestions(month), [month])
 }
 
 export function useSummary(month: string) {

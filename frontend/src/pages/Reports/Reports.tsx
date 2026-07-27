@@ -4,9 +4,10 @@ import Icon from '@mdi/react'
 import { mdiChevronLeft, mdiChevronRight, mdiTrendingUp, mdiSwapVertical, mdiTrendingDown } from '@mdi/js'
 import { Card, Skeleton, Amount, ErrorState } from '../../components/ui'
 import SpendingPieChart from '../../components/charts/SpendingPieChart'
+import WeeklyReviewCard from '../../components/charts/WeeklyReviewCard'
 import {
   useSummary, useCategoryBreakdown, useMonthlyTrend, currentMonth,
-  useEmergencyFund, useRecommendationsOnDemand,
+  useEmergencyFund, useRecommendationsOnDemand, useWeeklyReview,
 } from '../../hooks'
 import { useT, useI18n } from '../../store/i18n.store'
 import { monthOffset } from '../../utils/localDate'
@@ -43,6 +44,7 @@ export default function Reports() {
   const { data: categories, loading: loadingCat,   error: errorCat,   refetch: refetchCat }   = useCategoryBreakdown(month, 'expense')
   const { data: trend,      loading: loadingTrend }                                            = useMonthlyTrend()
   const { data: efData,     loading: loadingEF }                                               = useEmergencyFund(6)
+  const { data: weekly, loading: loadingWeekly, error: errorWeekly, refetch: refetchWeekly }   = useWeeklyReview()
   const aiInsights = useRecommendationsOnDemand()
 
   useEffect(() => {
@@ -60,6 +62,14 @@ export default function Reports() {
         <h1 className="text-2xl font-extrabold text-base-theme">{t('reports_title')}</h1>
         <p className="text-sm text-muted-theme mt-0.5">{t('reports_subtitle')}</p>
       </div>
+
+      {/* ── This week, from SQL rather than a model ── */}
+      <WeeklyReviewCard
+        data={weekly}
+        loading={loadingWeekly}
+        error={errorWeekly}
+        onRetry={refetchWeekly}
+      />
 
       {/* ── Month selector + totals ── */}
       <Card>

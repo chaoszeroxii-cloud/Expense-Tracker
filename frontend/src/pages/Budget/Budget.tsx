@@ -8,6 +8,7 @@ import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
 import ConfirmModal from '../../components/ui/ConfirmModal'
 import MonthlyPlanCard from '../../components/plan/MonthlyPlanCard'
+import BudgetRollover from '../../components/plan/BudgetRollover'
 import { currentMonthLocal as currentMonth } from '../../utils/localDate'
 
 function fmt(n: number) {
@@ -144,11 +145,9 @@ export default function Budget() {
           {[1,2,3].map(i => <div key={i} className="h-20 bg-card rounded-2xl animate-pulse border border-[var(--border)]" />)}
         </div>
       ) : budgets.length === 0 ? (
-        <div className="text-center py-12 text-muted-theme">
-          <div className="text-4xl mb-2">📊</div>
-          <p className="font-semibold">{t('no_budget')}</p>
-          <p className="text-sm mt-1">{t('add_budget_hint')}</p>
-        </div>
+        /* An empty month is where the old flow died — a blank page and no starting
+           point. Offer last month's figures or the user's real averages instead. */
+        <BudgetRollover month={month} onApplied={load} />
       ) : (
         <div className="space-y-3">
           {budgets.map(b => {

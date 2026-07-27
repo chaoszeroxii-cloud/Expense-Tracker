@@ -15,6 +15,7 @@ import { toast, UNDO_WINDOW_MS } from '../../store/toast.store'
 import { round2, fmt } from '../../utils/money'
 import { todayLocal, dateInputToTimestamp } from '../../utils/localDate'
 import { apiErrorMessage } from '../../utils/apiError'
+import { enqueue } from '../../utils/offlineQueue'
 import { track, startTimer } from '../../utils/telemetry'
 import type { EntryType, Category } from '../../types'
 
@@ -108,19 +109,42 @@ export default function AddExpense() {
     amountRef.current?.focus()
   }
 
-  const save = async (): Promise<string | null> => {
-    const created = await expensesApi.create({
+  /**
+   * Saves, or queues the transaction if the network is unreachable.
+   *
+   * Returns the created id when it reached the server, or `'queued'` when it is waiting
+   * on the device. A save made in a basement food court must not evaporate — that single
+   * loss is what teaches someone the app cannot be trusted with their records.
+   */
+  const save = async (): Promise<{ id: string | null; queued: boolean }> => {
+    const payload = {
       categoryId,
       amount: amountNum,
       type,
       note: note || undefined,
       occurredAt: dateInputToTimestamp(occurredAt),
-    })
-    timerRef.current?.()
-    window.dispatchEvent(new CustomEvent('moneyflow:refresh', {
-      detail: { types: ['dashboard', 'transactions'] },
-    }))
-    return created?.id ?? null
+    }
+
+    try {
+      const created = await expensesApi.create(payload)
+      timerRef.current?.()
+      window.dispatchEvent(new CustomEvent('moneyflow:refresh', {
+        detail: { types: ['dashboard', 'transactions'] },
+      }))
+      return { id: created?.id ?? null, queued: false }
+    } catch (err) {
+      // Only a transport failure is queued. A rejection carrying a response means the
+      // server understood and refused it, and replaying that would never succeed.
+      const reachedServer = !!(err as { response?: unknown })?.response
+      if (reachedServer || !user?.id) throw err
+
+      const entry = await enqueue(user.id, payload)
+      if (!entry) throw err          // IndexedDB unavailable — surface the real error
+
+      timerRef.current?.()
+      window.dispatchEvent(new CustomEvent('moneyflow:queued'))
+      return { id: null, queued: true }
+    }
   }
 
   /** Removes a just-saved transaction. A mistake must cost one tap, not a trip to History. */
@@ -143,18 +167,22 @@ export default function AddExpense() {
     if (!categoryId) return
     setSubmit(true)
     try {
-      const id = await save()
+      const { id, queued } = await save()
+      // Undo deletes a server-side row, so it is only offered for one that exists.
       const undoAction = id ? { label: t('add_undo'), onPress: () => undo(id) } : undefined
+      const message = queued ? t('offline_queued') : t('saved')
 
       if (andAnother) {
-        toast.success(t('saved'), undoAction, UNDO_WINDOW_MS)
+        if (queued) toast.info(message, undefined, UNDO_WINDOW_MS)
+        else toast.success(message, undoAction, UNDO_WINDOW_MS)
         resetForNext()
         return
       }
       setSuccess(true)
       // The Undo has to outlive the navigation back to Home, or it is gone before
       // the user has registered that they picked the wrong category.
-      toast.success(t('saved'), undoAction, UNDO_WINDOW_MS)
+      if (queued) toast.info(message, undefined, UNDO_WINDOW_MS)
+      else toast.success(message, undoAction, UNDO_WINDOW_MS)
       setTimeout(() => navigate('/'), 700)
     } catch (err) {
       // Never swallow this: a silent failure is indistinguishable from a save that

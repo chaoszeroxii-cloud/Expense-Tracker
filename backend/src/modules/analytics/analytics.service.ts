@@ -7,6 +7,8 @@ import { AllocationMovement } from '../allocations/allocation-movement.entity';
 import { Allocation } from '../allocations/allocation.entity';
 import { User } from '../users/user.entity';
 import { round2 } from '../../common/money.util';
+import { safeTimezone, localToday, shiftDate } from '../../common/local-date.util';
+import { CheckinsService, Coverage } from '../checkins/checkins.service';
 
 export interface AiRecommendation {
   type: 'warning' | 'tip' | 'good';
@@ -65,6 +67,29 @@ export interface DailyBriefTransaction {
   categoryColor: string | null;
 }
 
+export interface WeeklyReview {
+  timezone: string
+  /** Inclusive `YYYY-MM-DD` bounds of the seven days ending today. */
+  from: string
+  to: string
+  thisWeek: number
+  lastWeek: number
+  /** `thisWeek - lastWeek`; negative means spending came down. */
+  delta: number
+  deltaPct: number | null
+  topCategory: { name: string; icon: string | null; color: string | null; total: number; share: number } | null
+  biggestDay: { date: string; total: number } | null
+  dailyAverage: number
+  /** One deterministic suggestion, or null when the data does not support one. */
+  action:
+    | { kind: 'reduce_category'; categoryName: string; amount: number }
+    | { kind: 'spending_down'; amount: number }
+    | { kind: 'over_plan'; amount: number }
+    | { kind: 'set_plan' }
+    | { kind: 'need_more_data' }
+    | null
+}
+
 export interface DailyBrief {
   date: string;
   timezone: string;
@@ -83,6 +108,8 @@ export interface DailyBrief {
   /** Hourly rate for the work-time lens; `null` until the user supplies an income. */
   hourlyRate: number | null;
   showWorkTime: boolean;
+  /** Seven-day check-in coverage. Folded in here so Home stays a single request. */
+  coverage: Coverage;
 }
 
 @Injectable()
@@ -94,6 +121,7 @@ export class AnalyticsService {
     private readonly movementRepo: Repository<AllocationMovement>,
     @InjectRepository(User)
     private readonly users: Repository<User>,
+    private readonly checkins: CheckinsService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -110,8 +138,8 @@ export class AnalyticsService {
     const user = await this.users.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const tz = this.safeTimezone(user.timezone);
-    const today = this.localToday(tz);            // YYYY-MM-DD
+    const tz = safeTimezone(user.timezone);
+    const today = localToday(tz);                 // YYYY-MM-DD
     const month = today.slice(0, 7);              // YYYY-MM
     const [y, m, d] = today.split('-').map(Number);
     const daysInMonth = new Date(y, m, 0).getDate();
@@ -176,12 +204,15 @@ export class AnalyticsService {
       .setParameters({ userId })
       .getRawMany();
 
-    const recent = await this.repo.find({
-      where: { userId },
-      relations: ['category'],
-      order: { occurredAt: 'DESC', createdAt: 'DESC' },
-      take: 3,
-    });
+    const [recent, coverage] = await Promise.all([
+      this.repo.find({
+        where: { userId },
+        relations: ['category'],
+        order: { occurredAt: 'DESC', createdAt: 'DESC' },
+        take: 3,
+      }),
+      this.checkins.getCoverage(userId, tz),
+    ]);
 
     // ── Work-time lens ──────────────────────────────────────────────────────
     const income = user.expectedMonthlyIncome === null ? null : Number(user.expectedMonthlyIncome);
@@ -213,25 +244,128 @@ export class AnalyticsService {
       })),
       hourlyRate,
       showWorkTime: user.showWorkTime,
+      coverage,
     };
   }
 
-  /** An unknown IANA zone makes `Intl` throw; fall back rather than 500 the home screen. */
-  private safeTimezone(tz: string | null | undefined): string {
-    const candidate = tz || 'Asia/Bangkok';
-    try {
-      new Intl.DateTimeFormat('en-CA', { timeZone: candidate });
-      return candidate;
-    } catch {
-      return 'Asia/Bangkok';
-    }
+  // ─── 0b. Weekly review — deterministic, no model involved ─────────────────
+  //
+  // Plain SQL rather than an LLM: the figures are exact, it costs nothing, it cannot
+  // time out, and every line it produces traces back to a query. An LLM would add
+  // latency and a bill for arithmetic Postgres already does correctly.
+  async getWeeklyReview(userId: string): Promise<WeeklyReview> {
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const tz = safeTimezone(user.timezone);
+    const to = localToday(tz);
+    const from = shiftDate(to, -6);
+    const prevTo = shiftDate(from, -1);
+    const prevFrom = shiftDate(prevTo, -6);
+
+    const day = `(e.occurred_at AT TIME ZONE :tz)::date`;
+    const base = () => this.repo
+      .createQueryBuilder('e')
+      .where('e.user_id = :userId')
+      .andWhere(`e.type = 'expense'`)
+      .setParameters({ userId, tz, from, to, prevFrom, prevTo });
+
+    const [totals, categories, days] = await Promise.all([
+      base()
+        .select([
+          `COALESCE(SUM(CASE WHEN ${day} BETWEEN :from::date AND :to::date THEN e.amount ELSE 0 END), 0) AS "thisWeek"`,
+          `COALESCE(SUM(CASE WHEN ${day} BETWEEN :prevFrom::date AND :prevTo::date THEN e.amount ELSE 0 END), 0) AS "lastWeek"`,
+        ])
+        .andWhere(`${day} BETWEEN :prevFrom::date AND :to::date`)
+        .getRawOne(),
+
+      base()
+        .select(['c.name AS name', 'c.icon AS icon', 'c.color AS color', 'SUM(e.amount) AS total'])
+        .leftJoin('e.category', 'c')
+        .andWhere(`${day} BETWEEN :from::date AND :to::date`)
+        .groupBy('c.name, c.icon, c.color')
+        .orderBy('total', 'DESC')
+        .limit(1)
+        .getRawMany(),
+
+      base()
+        .select([`${day}::text AS date`, 'SUM(e.amount) AS total'])
+        .andWhere(`${day} BETWEEN :from::date AND :to::date`)
+        .groupBy(day)
+        .orderBy('total', 'DESC')
+        .limit(1)
+        .getRawMany(),
+    ]);
+
+    const thisWeek = round2(parseFloat(totals?.thisWeek) || 0);
+    const lastWeek = round2(parseFloat(totals?.lastWeek) || 0);
+    const delta = round2(thisWeek - lastWeek);
+
+    const top = categories[0]
+      ? {
+          name: categories[0].name ?? 'Uncategorized',
+          icon: categories[0].icon ?? null,
+          color: categories[0].color ?? null,
+          total: round2(parseFloat(categories[0].total)),
+          share: thisWeek > 0 ? Math.round((parseFloat(categories[0].total) / thisWeek) * 100) : 0,
+        }
+      : null;
+
+    return {
+      timezone: tz,
+      from,
+      to,
+      thisWeek,
+      lastWeek,
+      delta,
+      deltaPct: lastWeek > 0 ? Math.round((delta / lastWeek) * 100) : null,
+      topCategory: top,
+      biggestDay: days[0]
+        ? { date: days[0].date, total: round2(parseFloat(days[0].total)) }
+        : null,
+      dailyAverage: round2(thisWeek / 7),
+      action: this.weeklyAction({ user, thisWeek, lastWeek, delta, top }),
+    };
   }
 
-  /** `YYYY-MM-DD` for "now" in the given zone. `en-CA` formats as ISO by default. */
-  private localToday(tz: string): string {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
+  /**
+   * Exactly one suggestion, chosen by fixed rules in priority order.
+   *
+   * One action rather than a list: a review ending in five things to consider is a
+   * review nobody acts on.
+   */
+  private weeklyAction(input: {
+    user: User;
+    thisWeek: number;
+    lastWeek: number;
+    delta: number;
+    top: WeeklyReview['topCategory'];
+  }): WeeklyReview['action'] {
+    const { user, thisWeek, lastWeek, delta, top } = input;
+
+    // Nothing worth saying without a week of history to compare against.
+    if (thisWeek === 0 && lastWeek === 0) return { kind: 'need_more_data' };
+
+    const limit = user.monthlySpendingLimit === null ? null : Number(user.monthlySpendingLimit);
+    if (user.trackingMode === 'plan' && (limit === null || limit <= 0)) return { kind: 'set_plan' };
+
+    // Running ahead of the pace the monthly limit allows for a week.
+    if (limit && limit > 0) {
+      const weeklyAllowance = (limit / 30) * 7;
+      if (thisWeek > weeklyAllowance * 1.1) {
+        return { kind: 'over_plan', amount: round2(thisWeek - weeklyAllowance) };
+      }
+    }
+
+    // Spending fell — say so. Progress that goes unremarked stops feeling like progress.
+    if (lastWeek > 0 && delta < 0) return { kind: 'spending_down', amount: round2(Math.abs(delta)) };
+
+    // Otherwise name the single category carrying the week, when one dominates.
+    if (top && top.share >= 35) {
+      return { kind: 'reduce_category', categoryName: top.name, amount: top.total };
+    }
+
+    return null;
   }
 
   // ─── 1. Summary for a given period ────────────────────────────────────────

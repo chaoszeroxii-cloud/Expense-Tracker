@@ -211,7 +211,7 @@ export class NotificationsService {
 
     const res = await this.sendToUser(userId, {
       title: 'MoneyFlow',
-      body: 'การแจ้งเตือนทำงานแล้ว 🎉',
+      body: 'การแจ้งเตือนทำงานแล้ว',
       url: '/',
       tag: 'test',
     })

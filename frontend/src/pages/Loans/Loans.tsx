@@ -2,7 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { loansApi } from '../../api'
 import type { Loan } from '../../types'
 import Icon from '@mdi/react'
-import { mdiPlus, mdiTrashCanOutline, mdiCashMultiple, mdiClose, mdiCheck, mdiArrowTopRight, mdiArrowBottomLeft } from '@mdi/js'
+import {
+  mdiPlus, mdiTrashCanOutline, mdiCashMultiple, mdiClose, mdiCheck,
+  mdiArrowTopRight, mdiArrowBottomLeft, mdiHandshakeOutline, mdiCreditCardOutline,
+} from '@mdi/js'
 import { useT, useI18n } from '../../store/i18n.store'
 import ConfirmModal from '../../components/ui/ConfirmModal'
 
@@ -166,7 +169,12 @@ export default function Loans() {
         </div>
       ) : visible.length === 0 ? (
         <div className="text-center py-12 text-muted-theme">
-          <div className="text-4xl mb-2">{tab === 'lent' ? '🤝' : '💳'}</div>
+          <Icon
+            path={tab === 'lent' ? mdiHandshakeOutline : mdiCreditCardOutline}
+            size={2}
+            aria-hidden="true"
+            className="mx-auto mb-2"
+          />
           <p className="font-semibold">{tab === 'lent' ? t('no_loans_lent') : t('no_loans_borrowed')}</p>
           <p className="text-sm mt-1">{t('tap_plus_record')}</p>
         </div>

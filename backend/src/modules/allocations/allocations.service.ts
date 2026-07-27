@@ -9,6 +9,7 @@ import { User } from '../users/user.entity'
 import { CreateAllocationDto, UpdateAllocationDto } from './allocation.dto'
 import { round2 } from '../../common/money.util'
 import { localToday, safeTimezone } from '../../common/local-date.util'
+import { normalizeMdiIconId } from '../../common/icon.util'
 
 @Injectable()
 export class AllocationsService {
@@ -51,7 +52,7 @@ export class AllocationsService {
     const incomeCategories = await this.resolveCategories(dto.incomeCategoryIds ?? [], userId)
     const allocation = this.repo.create({
       name: dto.name,
-      icon: dto.icon,
+      icon: normalizeMdiIconId(dto.icon, 'wallet'),
       color: dto.color,
       userId,
       categories,
@@ -63,7 +64,7 @@ export class AllocationsService {
   async update(id: string, dto: UpdateAllocationDto, userId: string): Promise<Allocation> {
     const allocation = await this.findOne(id, userId)
     if (dto.name  !== undefined) allocation.name  = dto.name
-    if (dto.icon  !== undefined) allocation.icon  = dto.icon
+    if (dto.icon  !== undefined) allocation.icon  = normalizeMdiIconId(dto.icon, 'wallet')
     if (dto.color !== undefined) allocation.color = dto.color
     if (dto.categoryIds !== undefined) {
       allocation.categories = await this.resolveCategories(dto.categoryIds, userId)

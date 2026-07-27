@@ -1,7 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
-import { mdiChevronLeft, mdiChevronRight, mdiTrendingUp, mdiSwapVertical, mdiTrendingDown } from '@mdi/js'
+import { mdiCheck, mdiChevronLeft, mdiChevronRight, mdiTrendingUp, mdiSwapVertical, mdiTrendingDown } from '@mdi/js'
 import { Card, Skeleton, Amount, ErrorState } from '../../components/ui'
 import SpendingPieChart from '../../components/charts/SpendingPieChart'
 import WeeklyReviewCard from '../../components/charts/WeeklyReviewCard'
@@ -163,9 +163,9 @@ export default function Reports() {
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-muted-theme">฿{fmt(efData.currentAmount)}</span>
-            <span className={`font-semibold ${efData.progress >= 100 ? 'text-emerald-500' : 'text-muted-theme'}`}>
+            <span className={`font-semibold flex items-center gap-1 ${efData.progress >= 100 ? 'text-emerald-500' : 'text-muted-theme'}`}>
               {efData.progress >= 100
-                ? `✓ ${t('dash_ef_complete')}`
+                ? <><Icon path={mdiCheck} size={0.5} aria-hidden="true" />{t('dash_ef_complete')}</>
                 : `${efData.progress.toFixed(0)}% (${t('dash_ef_target')} ฿${fmt(efData.suggestedTarget)})`}
             </span>
           </div>

@@ -90,7 +90,7 @@ export default function AllocationManager() {
   const startAdd = () => { setEditId(null); setForm(EMPTY); setShowAdd(true) }
   const startEdit = (a: Allocation) => {
     setShowAdd(false); setEditId(a.id)
-    setForm({ name: a.name, icon: a.icon??'💼', color: a.color??'#6366f1',
+    setForm({ name: a.name, icon: a.icon??'wallet', color: a.color??'#6366f1',
               categoryIds: a.categories.map(c => c.id),
               incomeCategoryIds: a.incomeCategories.map(c => c.id) })
   }
@@ -325,7 +325,7 @@ export default function AllocationManager() {
                 <div className="flex items-center gap-3 px-5 py-3">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ backgroundColor: (a.color??'#6366f1')+'22' }}>
-                    <IconDisplay icon={a.icon??'💼'} color={a.color} size="md" />
+                    <IconDisplay icon={a.icon??'wallet'} color={a.color} size="md" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-base-theme truncate">{a.name}</p>

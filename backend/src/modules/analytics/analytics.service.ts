@@ -440,7 +440,7 @@ export class AnalyticsService {
     return rows.map((r) => ({
       categoryId: r.categoryId,
       categoryName: r.categoryName || 'Uncategorized',
-      categoryIcon: r.categoryIcon || '📦',
+      categoryIcon: r.categoryIcon || 'other',
       categoryColor: r.categoryColor || '#94a3b8',
       total: parseFloat(r.total),
       count: parseInt(r.count),

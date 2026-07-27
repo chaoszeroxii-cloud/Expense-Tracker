@@ -6,6 +6,7 @@ import Icon from '@mdi/react'
 import {
   mdiClose, mdiSend, mdiImage, mdiTrashCanOutline,
   mdiRobot, mdiAccount, mdiLoading, mdiChevronRight,
+  mdiHandWaveOutline,
 } from '@mdi/js'
 import { chatApi } from '../../api'
 import type { ChatMessage } from '../../types'
@@ -105,7 +106,7 @@ export default function ChatPanel({ onClose }: Props) {
     const userMsg: LocalMessage = {
       localId: crypto.randomUUID(),
       role: 'user',
-      content: text || '📎 แนบรูป',
+      content: text || 'แนบรูป',
       imagePreview: attachedImage?.preview,
     }
     const placeholder: LocalMessage = { localId: streamId, role: 'assistant', content: '', loading: true }
@@ -201,7 +202,7 @@ export default function ChatPanel({ onClose }: Props) {
       }
     } catch {
       setMessages(prev => prev.map(m =>
-        m.localId === streamId ? { ...m, content: '❌ เกิดข้อผิดพลาด ลองใหม่อีกครั้ง', loading: false, streaming: false } : m
+        m.localId === streamId ? { ...m, content: 'เกิดข้อผิดพลาด ลองใหม่อีกครั้ง', loading: false, streaming: false } : m
       ))
     } finally {
       setSending(false)
@@ -301,8 +302,11 @@ export default function ChatPanel({ onClose }: Props) {
                 <img src={attachedImage.preview} alt="attached" className="h-14 w-14 rounded-xl object-cover border border-[var(--border)]" />
                 <button
                   onClick={() => setAttachedImage(null)}
+                  aria-label="ลบรูปที่แนบ"
                   className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center leading-none"
-                >✕</button>
+                >
+                  <Icon path={mdiClose} size={0.45} aria-hidden="true" />
+                </button>
               </div>
               <p className="text-[11px] text-muted-theme">รูปจะถูกส่งพร้อมข้อความ</p>
             </div>
@@ -469,7 +473,10 @@ function WelcomeMessage({ userName, onSuggest }: { userName?: string | null; onS
       <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center mx-auto mb-3">
         <Icon path={mdiRobot} size={1.4} color="#10b981" />
       </div>
-      <p className="font-bold text-base-theme">สวัสดี{userName ? ` ${userName}` : ''}! 👋</p>
+      <p className="font-bold text-base-theme flex items-center justify-center gap-1.5">
+        สวัสดี{userName ? ` ${userName}` : ''}!
+        <Icon path={mdiHandWaveOutline} size={0.7} aria-hidden="true" />
+      </p>
       <p className="text-xs text-muted-theme mt-1 mb-4">ฉันคือ AI ผู้ช่วยการเงินของคุณ<br />ถามได้เลยหรือแชร์รูปบิล</p>
       <div className="space-y-2">
         {suggestions.map(s => (

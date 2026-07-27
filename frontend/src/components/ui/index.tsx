@@ -1,5 +1,7 @@
 import { ReactNode } from 'react'
 import clsx from 'clsx'
+import Icon from '@mdi/react'
+import { mdiAlertCircleOutline } from '@mdi/js'
 
 // ── Card ──────────────────────────────────────────────────────
 export function Card({ children, className, padding = true }:
@@ -41,7 +43,7 @@ export function Amount({ value, currency = '฿', type, size = 'md' }:
 // An empty state is the user's next step, not a dead end: pass an `action` unless
 // there is genuinely nothing for them to do.
 export function Empty({ icon, title, sub, action, compact }: {
-  icon: ReactNode
+  icon: string
   title: string
   sub?: string
   action?: { label: string; onPress: () => void }
@@ -52,7 +54,12 @@ export function Empty({ icon, title, sub, action, compact }: {
       'flex flex-col items-center gap-2 text-muted-theme text-center',
       compact ? 'py-6' : 'py-12',
     )}>
-      <div className={compact ? 'text-2xl' : 'text-4xl'}>{icon}</div>
+      <Icon
+        path={icon}
+        size={compact ? 1.5 : 2}
+        aria-hidden="true"
+        className="text-muted-theme"
+      />
       <p className="font-semibold text-sub">{title}</p>
       {sub && <p className="text-sm max-w-xs">{sub}</p>}
       {action && (
@@ -82,7 +89,12 @@ export function ErrorState({ message, onRetry, retryLabel, compact }: {
       'flex flex-col items-center gap-2 text-center',
       compact ? 'py-6' : 'py-10',
     )}>
-      <div className={compact ? 'text-2xl' : 'text-3xl'}>⚠️</div>
+      <Icon
+        path={mdiAlertCircleOutline}
+        size={compact ? 1.4 : 1.8}
+        color="#f43f5e"
+        aria-hidden="true"
+      />
       <p className="font-semibold text-sm text-base-theme max-w-xs">{message}</p>
       {onRetry && (
         <button

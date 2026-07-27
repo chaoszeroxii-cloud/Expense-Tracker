@@ -5,6 +5,7 @@
     "build": "nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
+    "test:schema-config": "npm run build && node --test test/database-schema-config.test.js",
     "//migrations": "The CLI runs against compiled output, so build first. `start:prod` is the Render start command: it applies pending migrations before booting.",
     "start:prod": "npm run migration:run && node dist/main",
     "migration:run": "typeorm migration:run -d dist/config/data-source.js",

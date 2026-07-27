@@ -7,10 +7,7 @@ import CustomSelect from '../../components/ui/CustomSelect'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
 import ConfirmModal from '../../components/ui/ConfirmModal'
-
-function currentMonth() {
-  return new Date().toISOString().slice(0, 7)
-}
+import { currentMonthLocal as currentMonth } from '../../utils/localDate'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

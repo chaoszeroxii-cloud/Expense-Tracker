@@ -1,36 +1,33 @@
-import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
-  mdiViewDashboard, mdiHistory, mdiWallet,
-  mdiCog, mdiPlus, mdiFinance, mdiRobot, mdiClockMinusOutline, mdiChevronLeft,
+  mdiViewDashboard, mdiHistory, mdiChartBar,
+  mdiDotsHorizontal, mdiPlus, mdiCog,
 } from '@mdi/js'
 import clsx from 'clsx'
-import { useT } from '../../store/i18n.store'
-import { useAuthStore } from '../../store/auth.store'
+import { useT, TKey } from '../../store/i18n.store'
+import { usePanels } from '../../store/panels.store'
 import ChatPanel from '../chat/ChatPanel'
 import WorkTimeCalculator from '../calculator/WorkTimeCalculator'
 
-const NAV = [
-  { to: '/',         icon: mdiViewDashboard, labelKey: 'nav_dashboard' },
-  { to: '/history',  icon: mdiHistory,       labelKey: 'nav_history'   },
-  { to: '/finance',  icon: mdiFinance,       labelKey: 'nav_finance'   },
-  { to: '/wallets',  icon: mdiWallet,        labelKey: 'nav_wallets'   },
-  { to: '/settings', icon: mdiCog,           labelKey: 'nav_settings'  },
+/**
+ * One question per destination: Home = today, History = what happened,
+ * Plan = this month, More = everything else.
+ *
+ * Wallets left the primary bar (it is an advanced, envelope-mode concept and was also
+ * duplicated inside Finance), and Settings is no longer listed twice on desktop.
+ */
+const NAV: { to: string; icon: string; labelKey: TKey }[] = [
+  { to: '/',        icon: mdiViewDashboard,  labelKey: 'nav_home' },
+  { to: '/history', icon: mdiHistory,        labelKey: 'nav_transactions' },
+  { to: '/budget',  icon: mdiChartBar,       labelKey: 'nav_plan' },
+  { to: '/more',    icon: mdiDotsHorizontal, labelKey: 'nav_more' },
 ]
 
 export default function Layout() {
   const navigate = useNavigate()
   const t = useT()
-  const [chatOpen, setChatOpen] = useState(false)
-  const [calcOpen, setCalcOpen] = useState(false)
-  const [fabExpanded, setFabExpanded] = useState(false)
-  const [showPulse, setShowPulse] = useState(true)
-
-  useEffect(() => {
-    const timer = setTimeout(() => setShowPulse(false), 6000)
-    return () => clearTimeout(timer)
-  }, [])
+  const { chatOpen, calcOpen, closeChat, closeCalc } = usePanels()
 
   return (
     <div className="flex h-dvh bg-app">
@@ -54,11 +51,11 @@ export default function Layout() {
         </div>
         <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
           {NAV.map(item => (
-            <SideNavItem key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey as any)} />
+            <SideNavItem key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey)} />
           ))}
         </nav>
         <div className="px-3 py-4 border-t border-[var(--border)]">
-          <SideNavItem to="/settings" icon={mdiCog} label={t('nav_settings' as any)} />
+          <SideNavItem to="/settings" icon={mdiCog} label={t('nav_settings')} />
         </div>
       </aside>
 
@@ -78,12 +75,12 @@ export default function Layout() {
         >
           <div className="flex items-center h-16 px-1 max-w-2xl mx-auto">
             {NAV.slice(0, 2).map(item => (
-              <BottomNavItem key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey as any)} />
+              <BottomNavItem key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey)} />
             ))}
             <div className="flex-1 flex justify-center">
               <button
                 onClick={() => navigate('/add')}
-                aria-label={t('add_transaction' as any)}
+                aria-label={t('add_transaction')}
                 className="w-14 h-14 -mt-5 rounded-full bg-brand-600 shadow-xl shadow-brand-500/40
                            flex items-center justify-center ring-4 ring-[var(--bg-app)]
                            active:scale-95 transition-transform duration-150"
@@ -92,90 +89,15 @@ export default function Layout() {
               </button>
             </div>
             {NAV.slice(2).map(item => (
-              <BottomNavItem key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey as any)} />
+              <BottomNavItem key={item.to} to={item.to} icon={item.icon} label={t(item.labelKey)} />
             ))}
           </div>
         </nav>
 
-        {/* ── Mobile FABs: peek strip + slide-in buttons ── */}
-        <div className="lg:hidden">
-          {/* Strip toggle — always visible at right edge, large tap zone */}
-          <button
-            onClick={() => setFabExpanded(v => !v)}
-            className="fixed right-0 bottom-28 z-40 flex items-center py-6 pl-2 pr-0"
-            aria-label="Toggle quick actions"
-          >
-            <div className={clsx(
-              'w-3 h-14 rounded-l-full shadow-md',
-              'bg-gradient-to-b from-violet-400 to-emerald-400',
-              'flex items-center justify-center',
-              showPulse && 'animate-pulse',
-            )}>
-              <div className={clsx('transition-transform duration-300', fabExpanded && 'rotate-180')}>
-                <Icon path={mdiChevronLeft} size={0.45} color="white" />
-              </div>
-            </div>
-          </button>
-
-          {/* Violet FAB — slides out from right edge when expanded */}
-          <button
-            onClick={() => setCalcOpen(true)}
-            className={clsx(
-              'fixed bottom-40 right-4 z-40',
-              'w-[52px] h-[52px] rounded-full bg-violet-500 text-white',
-              'shadow-lg shadow-violet-500/40 flex items-center justify-center',
-              'active:scale-95 transition-transform duration-300 ease-in-out',
-              !fabExpanded && 'translate-x-[80px]',
-            )}
-            aria-label="Work Time Calculator"
-          >
-            <Icon path={mdiClockMinusOutline} size={1} color="white" />
-          </button>
-
-          {/* Emerald FAB — slides out from right edge when expanded */}
-          <button
-            onClick={() => setChatOpen(true)}
-            className={clsx(
-              'fixed bottom-24 right-4 z-40',
-              'w-[52px] h-[52px] rounded-full bg-emerald-500 text-white',
-              'shadow-lg shadow-emerald-500/40 flex items-center justify-center',
-              'active:scale-95 transition-transform duration-300 ease-in-out',
-              !fabExpanded && 'translate-x-[80px]',
-            )}
-            aria-label="AI Assistant"
-          >
-            <Icon path={mdiRobot} size={1} color="white" />
-          </button>
-        </div>
-
-        {/* ── Desktop FABs (unchanged) ── */}
-        <button
-          onClick={() => setCalcOpen(true)}
-          className="hidden lg:flex fixed bottom-24 right-6 z-40
-                     w-[52px] h-[52px] rounded-full bg-violet-500 text-white
-                     shadow-lg shadow-violet-500/40 items-center justify-center
-                     active:scale-95 transition-transform duration-150"
-          aria-label="Work Time Calculator"
-        >
-          <Icon path={mdiClockMinusOutline} size={1} color="white" />
-        </button>
-
-        <button
-          onClick={() => setChatOpen(true)}
-          className="hidden lg:flex fixed bottom-6 right-6 z-40
-                     w-[52px] h-[52px] rounded-full bg-emerald-500 text-white
-                     shadow-lg shadow-emerald-500/40 items-center justify-center
-                     active:scale-95 transition-transform duration-150"
-          aria-label="AI Assistant"
-        >
-          <Icon path={mdiRobot} size={1} color="white" />
-        </button>
-
-        {/* ── Chat panel ── */}
-        {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
-
-        {/* ── Work time calculator panel ── */}
-        {calcOpen && <WorkTimeCalculator onClose={() => setCalcOpen(false)} />}
+        {/* Overlays are opened from More (and, later, from Home's capture bar) rather than
+            from floating buttons that competed with Add for attention. */}
+        {chatOpen && <ChatPanel onClose={closeChat} />}
+        {calcOpen && <WorkTimeCalculator onClose={closeCalc} />}
       </div>
     </div>
   )

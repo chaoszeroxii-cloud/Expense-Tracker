@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { authApi } from '../../api'
 import { useAuthStore } from '../../store/auth.store'
-import { useI18n } from '../../store/i18n.store'
+import { useI18n, useT } from '../../store/i18n.store'
 
 const WALLETS = [
   { key: 'emergency',  name: 'เงินสำรองฉุกเฉิน', nameEn: 'Emergency Fund',     icon: '🏦', color: '#f59e0b', pct: 10, desc: 'เก็บไว้ 3–6 เดือน',   descEn: 'Save 3–6 months' },
@@ -18,6 +18,7 @@ export default function Onboarding() {
   const navigate = useNavigate()
   const { user, setAuth, token } = useAuthStore()
   const { lang } = useI18n()
+  const t = useT()
   const [selected, setSelected] = useState<Set<string>>(new Set(WALLETS.map(w => w.key)))
   const [loading, setLoading] = useState(false)
 
@@ -48,8 +49,8 @@ export default function Onboarding() {
       <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
           <div className="text-5xl mb-3">👋</div>
-          <h1 className="text-2xl font-extrabold text-base-theme">ยินดีต้อนรับ!</h1>
-          <p className="text-muted-theme mt-2 text-sm">เลือก wallet ที่อยากใช้จัดการเงินของคุณ<br />สามารถเพิ่มหรือลบได้ภายหลัง</p>
+          <h1 className="text-2xl font-extrabold text-base-theme">{t('ob_welcome')}</h1>
+          <p className="text-muted-theme mt-2 text-sm">{t('ob_subtitle')}<br />{t('ob_subtitle2')}</p>
         </div>
 
         <div className="space-y-2 mb-6">
@@ -65,7 +66,11 @@ export default function Onboarding() {
                 <span className="text-2xl">{w.icon}</span>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold text-base-theme text-sm">{lang === 'en' ? w.nameEn : w.name}</div>
-                  <div className="text-xs text-muted-theme">{lang === 'en' ? w.descEn : w.desc} · {lang === 'en' ? 'Recommended' : 'แนะนำ'} {w.pct}%</div>
+                  {/* The "recommended %" that used to sit here was never applied: the
+                      onboarding endpoint only persists name/icon/colour and creates every
+                      wallet at a zero balance. Claiming an allocation the system does not
+                      make is worse than showing nothing. */}
+                  <div className="text-xs text-muted-theme">{lang === 'en' ? w.descEn : w.desc}</div>
                 </div>
                 <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0
                   ${on ? 'border-brand-500 bg-brand-500' : 'border-[var(--border)]'}`}>
@@ -84,7 +89,7 @@ export default function Onboarding() {
           className="w-full py-3.5 rounded-2xl bg-brand-600 text-white font-bold text-sm
                      disabled:opacity-50 active:scale-[0.98] transition-transform"
         >
-          {loading ? 'กำลังตั้งค่า...' : `เริ่มใช้งาน (${selected.size} wallet)`}
+          {loading ? t('ob_setting_up') : `${t('ob_start_with')} ${selected.size} ${t('ob_wallets_unit')}`}
         </button>
 
         <button
@@ -93,7 +98,7 @@ export default function Onboarding() {
           }}
           className="w-full mt-2 py-2 text-sm text-muted-theme hover:text-base-theme transition-colors"
         >
-          เลือกขั้นต่ำ (3 wallet)
+          {t('ob_pick_minimum')}
         </button>
       </div>
     </div>

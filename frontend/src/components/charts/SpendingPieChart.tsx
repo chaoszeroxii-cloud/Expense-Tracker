@@ -1,8 +1,6 @@
-import Icon from '@mdi/react'
-import { mdiPackage, mdiInboxMultiple } from '@mdi/js'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { CategoryBreakdown } from '../../types'
-import { Skeleton } from '../ui'
+import { Skeleton, Empty, ErrorState } from '../ui'
 import IconDisplay from '../ui/IconDisplay'
 import { useT } from '../../store/i18n.store'
 
@@ -21,16 +19,28 @@ const CustomTooltip = ({ active, payload }: any) => {
   )
 }
 
-export default function SpendingPieChart({ data, loading }:
-  { data: CategoryBreakdown[] | null; loading: boolean }) {
+export default function SpendingPieChart({ data, loading, error, onRetry, onAdd }: {
+  data: CategoryBreakdown[] | null
+  loading: boolean
+  error?: string | null
+  onRetry?: () => void
+  onAdd?: () => void
+}) {
   const t = useT()
 
   if (loading) return <Skeleton className="h-52 w-full" />
+
+  // A failed load previously rendered as "no transactions", which reads as a real zero.
+  if (error) return <ErrorState compact message={t('err_load_failed')} onRetry={onRetry} retryLabel={t('action_retry')} />
+
   if (!data?.length) return (
-    <div className="flex flex-col items-center justify-center h-52 text-muted-theme">
-      <Icon path={mdiInboxMultiple} size={2} className="text-muted-theme" />
-      <p className="text-sm mt-2">{t('no_transactions')}</p>
-    </div>
+    <Empty
+      compact
+      icon="📭"
+      title={t('empty_no_tx_title')}
+      sub={t('empty_no_tx_sub')}
+      action={onAdd ? { label: t('action_add_first'), onPress: onAdd } : undefined}
+    />
   )
 
   const top  = data.slice(0, 6)

@@ -13,20 +13,16 @@ import SpendingPieChart from '../../components/charts/SpendingPieChart'
 import AllocationWallets from '../../components/allocations/AllocationWallets'
 import {
   useSummary, useCategoryBreakdown, useMonthlyTrend, currentMonth,
-  useBudgetSummary, useLoanSummary, useEmergencyFund, useRecommendations,
+  useBudgetSummary, useLoanSummary, useEmergencyFund, useRecommendationsOnDemand,
 } from '../../hooks'
 import { useT } from '../../store/i18n.store'
+import { monthOffset } from '../../utils/localDate'
 
 // Lazy-loaded heavy chart sections (pull in recharts)
 const TrendSection      = lazy(() => import('../../components/charts/TrendSection'))
 const MonthlyBarSection = lazy(() => import('../../components/charts/MonthlyBarSection'))
 const AiInsightsSection = lazy(() => import('../../components/charts/AiInsightsSection'))
 
-function monthOffset(base: string, offset: number): string {
-  const [y, m] = base.split('-').map(Number)
-  const d = new Date(y, m - 1 + offset, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-}
 function formatMonthLabel(ym: string, lang = 'th') {
   const [y, m] = ym.split('-').map(Number)
   return new Date(y, m - 1, 1).toLocaleDateString(
@@ -46,13 +42,14 @@ export default function Dashboard() {
   const [month, setMonth] = useState(currentMonth())
   const isCurrentMonth = month === currentMonth()
 
-  const { data: summary,    loading: loadingSum,    refetch: refetchSummary }   = useSummary(month)
-  const { data: categories, loading: loadingCat,    refetch: refetchCat }       = useCategoryBreakdown(month, 'expense')
+  const { data: summary,    loading: loadingSum,  error: errorSum, refetch: refetchSummary } = useSummary(month)
+  const { data: categories, loading: loadingCat,  error: errorCat, refetch: refetchCat }     = useCategoryBreakdown(month, 'expense')
   const { data: trend,      loading: loadingTrend,  refetch: refetchTrend }     = useMonthlyTrend()
   const { data: budgets,    loading: loadingBudget, refetch: refetchBudget }    = useBudgetSummary(month)
   const { data: loanData,   loading: loadingLoans,  refetch: refetchLoans }     = useLoanSummary()
   const { data: efData,     loading: loadingEF,     refetch: refetchEF }        = useEmergencyFund(6)
-  const { data: aiRecs,     loading: loadingAiRecs, refetch: refetchAiRecs }    = useRecommendations()
+  // Not fetched on mount — see useRecommendationsOnDemand.
+  const aiInsights = useRecommendationsOnDemand()
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -111,14 +108,25 @@ export default function Dashboard() {
 
         {/* Total expense */}
         <p className="text-xs font-medium text-white/60 mb-1 relative z-10">{t('total_expenses')}</p>
-        {loadingSum
-          ? <div className="h-10 w-36 rounded-xl bg-white/20 animate-pulse mb-4" />
-          : (
-            <p className="text-4xl font-extrabold tracking-tight mb-4 relative z-10">
-              ฿{(summary?.totalExpense ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-          )
-        }
+        {loadingSum ? (
+          <div className="h-10 w-36 rounded-xl bg-white/20 animate-pulse mb-4" />
+        ) : errorSum ? (
+          /* Showing ฿0.00 here when the request failed is a lie the user cannot detect. */
+          <div className="flex items-center gap-3 mb-4 relative z-10">
+            <p className="text-2xl font-extrabold tracking-tight text-white/70">—</p>
+            <button
+              onClick={refetchSummary}
+              className="px-3 py-1.5 rounded-xl bg-white/20 text-white text-xs font-semibold
+                         active:bg-white/30 transition-colors"
+            >
+              {t('action_retry')}
+            </button>
+          </div>
+        ) : (
+          <p className="text-4xl font-extrabold tracking-tight mb-4 relative z-10">
+            ฿{(summary?.totalExpense ?? 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+        )}
 
         {/* Sub stats */}
         <div className="flex gap-3 relative z-10">
@@ -170,7 +178,13 @@ export default function Dashboard() {
           <h2 className="font-bold text-base-theme text-sm">{t('spending_category')}</h2>
           <span className="text-xs text-muted-theme font-medium">{t('this_month')}</span>
         </div>
-        <SpendingPieChart data={categories} loading={loadingCat} />
+        <SpendingPieChart
+          data={categories}
+          loading={loadingCat}
+          error={errorCat}
+          onRetry={refetchCat}
+          onAdd={() => navigate('/add')}
+        />
       </Card>
 
       {/* ── 12-Month Trend (collapsible + analysis) ── */}
@@ -195,10 +209,11 @@ export default function Dashboard() {
       {/* ── AI Personalized Insights (collapsible) ── */}
       <Suspense fallback={<Skeleton className="h-14 w-full rounded-3xl" />}>
         <AiInsightsSection
-          data={aiRecs}
-          loading={loadingAiRecs}
-          onRefresh={refetchAiRecs}
-          lang={lang}
+          data={aiInsights.data}
+          loading={aiInsights.loading}
+          error={aiInsights.error}
+          onRun={aiInsights.run}
+          hasRun={aiInsights.hasRun}
         />
       </Suspense>
 
@@ -213,7 +228,7 @@ export default function Dashboard() {
               <div className="w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center">
                 <Icon path={mdiChartBar} size={0.7} color="#6366f1" />
               </div>
-              <h2 className="font-bold text-base-theme text-sm">งบประมาณเดือนนี้</h2>
+              <h2 className="font-bold text-base-theme text-sm">{t('dash_budget_month')}</h2>
             </div>
             <Icon path={mdiChevronRightIcon} size={0.7} className="text-muted-theme" />
           </button>
@@ -232,7 +247,7 @@ export default function Dashboard() {
                       {b.categoryName}
                     </span>
                     <span className={over ? 'text-red-500 font-semibold' : 'text-muted-theme'}>
-                      {over ? `เกิน ฿${fmt(b.actual - b.budgeted)}` : `฿${fmt(b.actual)} / ฿${fmt(b.budgeted)}`}
+                      {over ? `${t('dash_over_by')} ฿${fmt(b.actual - b.budgeted)}` : `฿${fmt(b.actual)} / ฿${fmt(b.budgeted)}`}
                     </span>
                   </div>
                   <div className="w-full bg-[var(--input)] rounded-full h-1.5 overflow-hidden">
@@ -245,7 +260,7 @@ export default function Dashboard() {
               )
             })}
             {budgets.length > 4 && (
-              <p className="text-xs text-muted-theme text-center">+{budgets.length - 4} หมวดอื่น</p>
+              <p className="text-xs text-muted-theme text-center">+{budgets.length - 4} {t('dash_more_categories')}</p>
             )}
           </div>
         </Card>
@@ -258,7 +273,7 @@ export default function Dashboard() {
             <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
               <Icon path={mdiShield} size={0.7} color="#f59e0b" />
             </div>
-            <h2 className="font-bold text-base-theme text-sm">เงินสำรองฉุกเฉิน</h2>
+            <h2 className="font-bold text-base-theme text-sm">{t('dash_emergency_fund')}</h2>
           </div>
           <div className="w-full bg-[var(--input)] rounded-full h-3 overflow-hidden mb-2">
             <div
@@ -269,11 +284,15 @@ export default function Dashboard() {
           <div className="flex justify-between text-xs">
             <span className="text-muted-theme">฿{fmt(efData.currentAmount)}</span>
             <span className={`font-semibold ${efData.progress >= 100 ? 'text-emerald-500' : 'text-muted-theme'}`}>
-              {efData.progress >= 100 ? '✓ ครบแล้ว!' : `${efData.progress.toFixed(0)}% (เป้า ฿${fmt(efData.suggestedTarget)})`}
+              {efData.progress >= 100
+                ? `✓ ${t('dash_ef_complete')}`
+                : `${efData.progress.toFixed(0)}% (${t('dash_ef_target')} ฿${fmt(efData.suggestedTarget)})`}
             </span>
           </div>
           {efData.remaining > 0 && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">ต้องออมอีก ฿{fmt(efData.remaining)} เพื่อครบ {efData.targetMonths} เดือน</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+              {t('dash_ef_need_more')} ฿{fmt(efData.remaining)} {t('dash_ef_to_reach')} {efData.targetMonths} {t('dash_ef_months')}
+            </p>
           )}
         </Card>
       )}
@@ -289,15 +308,15 @@ export default function Dashboard() {
                 <div className="w-7 h-7 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center">
                   <Icon path={mdiCashMultiple} size={0.7} color="#f59e0b" />
                 </div>
-                <h2 className="font-bold text-base-theme text-sm">หนี้สิน</h2>
+                <h2 className="font-bold text-base-theme text-sm">{t('dash_debts')}</h2>
               </div>
               <Icon path={mdiChevronRightIcon} size={0.7} className="text-muted-theme" />
             </button>
 
-            {/* ลูกหนี้ (lent) */}
+            {/* Lent out — money owed to the user */}
             {lent.length > 0 && (
               <div className="mb-3">
-                <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mb-1.5 uppercase tracking-wide">ลูกหนี้</p>
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold mb-1.5 uppercase tracking-wide">{t('dash_debtors')}</p>
                 <div className="space-y-1.5">
                   {lent.slice(0, 3).map((loan: any) => (
                     <div key={loan.id} className="flex items-center justify-between py-1 border-b border-[var(--border)] last:border-0">
@@ -305,15 +324,15 @@ export default function Dashboard() {
                       <span className="text-sm font-bold text-amber-600 dark:text-amber-400">฿{fmt(loan.outstanding)}</span>
                     </div>
                   ))}
-                  {lent.length > 3 && <p className="text-xs text-muted-theme text-center">+{lent.length - 3} คนอื่น</p>}
+                  {lent.length > 3 && <p className="text-xs text-muted-theme text-center">+{lent.length - 3} {t('dash_more_people')}</p>}
                 </div>
               </div>
             )}
 
-            {/* เจ้าหนี้ (borrowed) */}
+            {/* Borrowed — money the user owes */}
             {borrowed.length > 0 && (
               <div className="mb-2">
-                <p className="text-[10px] text-rose-500 dark:text-rose-400 font-semibold mb-1.5 uppercase tracking-wide">ต้องคืน</p>
+                <p className="text-[10px] text-rose-500 dark:text-rose-400 font-semibold mb-1.5 uppercase tracking-wide">{t('dash_to_repay')}</p>
                 <div className="space-y-1.5">
                   {borrowed.slice(0, 2).map((loan: any) => (
                     <div key={loan.id} className="flex items-center justify-between py-1 border-b border-[var(--border)] last:border-0">
@@ -321,7 +340,7 @@ export default function Dashboard() {
                       <span className="text-sm font-bold text-rose-500 dark:text-rose-400">฿{fmt(loan.outstanding)}</span>
                     </div>
                   ))}
-                  {borrowed.length > 2 && <p className="text-xs text-muted-theme text-center">+{borrowed.length - 2} รายการ</p>}
+                  {borrowed.length > 2 && <p className="text-xs text-muted-theme text-center">+{borrowed.length - 2} {t('dash_more_items')}</p>}
                 </div>
               </div>
             )}
@@ -330,13 +349,13 @@ export default function Dashboard() {
             <div className="mt-2 pt-2 border-t border-[var(--border)] space-y-1">
               {lent.length > 0 && (
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-theme">ลูกหนี้ค้างทั้งหมด</span>
+                  <span className="text-muted-theme">{t('dash_total_owed_to_you')}</span>
                   <span className="font-bold text-amber-600 dark:text-amber-400">฿{fmt(loanData.totalOutstanding)}</span>
                 </div>
               )}
               {borrowed.length > 0 && (
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-theme">ที่ต้องคืนทั้งหมด</span>
+                  <span className="text-muted-theme">{t('dash_total_you_owe')}</span>
                   <span className="font-bold text-rose-500 dark:text-rose-400">฿{fmt(loanData.totalOwed)}</span>
                 </div>
               )}

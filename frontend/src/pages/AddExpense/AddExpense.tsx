@@ -11,7 +11,10 @@ import { useCategories, useAllocations } from '../../hooks'
 import { IconDisplay } from '../../components/ui'
 import { useT } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
+import { toast } from '../../store/toast.store'
 import { round2 } from '../../utils/money'
+import { todayLocal, dateInputToTimestamp } from '../../utils/localDate'
+import { apiErrorMessage } from '../../utils/apiError'
 import type { EntryType } from '../../types'
 
 const QUICK = [5, 10, 20, 50, 100, 200, 500, 1000]
@@ -27,11 +30,17 @@ export default function AddExpense() {
   const [amount,     setAmount] = useState('')
   const [categoryId, setCatId]  = useState('')
   const [note,       setNote]   = useState('')
-  const [occurredAt, setDate]   = useState(() => new Date().toISOString().slice(0, 10))
+  const [occurredAt, setDate]   = useState(todayLocal)
   const [submitting, setSubmit] = useState(false)
   const [success,    setSuccess]= useState(false)
 
   const filteredCats = categories?.filter(c => c.type === type) ?? []
+
+  // The expenses table enforces `amount > 0`; keep the button in step with it rather
+  // than letting a zero reach the API and fail as an opaque server error.
+  const amountNum   = Number(amount)
+  const amountValid = amount !== '' && Number.isFinite(amountNum) && amountNum >= 0.01
+  const canSubmit   = amountValid && !!categoryId && !submitting
 
   // For expense: find which wallet will be debited
   const linkedAlloc = type === 'expense' && categoryId
@@ -53,20 +62,26 @@ export default function AddExpense() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
-    if (!amount || !categoryId) return
+    if (!amountValid) { toast.error(t('err_amount_positive')); return }
+    if (!categoryId) return
     setSubmit(true)
     try {
       await expensesApi.create({
         categoryId,
-        amount: Number(amount),
+        amount: amountNum,
         type,
         // Income no longer requires allocationId — it parks in total balance
         note: note || undefined,
-        occurredAt: new Date(occurredAt).toISOString(),
+        occurredAt: dateInputToTimestamp(occurredAt),
       })
       setSuccess(true)
       setTimeout(() => navigate('/'), 900)
-    } catch { setSubmit(false) }
+    } catch (err) {
+      // Never swallow this: a silent failure looks identical to a successful save
+      // that simply lost the transaction.
+      setSubmit(false)
+      toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
+    }
   }
 
   if (success) return (
@@ -116,7 +131,7 @@ export default function AddExpense() {
           </label>
           <input
             type="number" inputMode="decimal" step="0.01" placeholder="0" value={amount}
-            onChange={e => setAmount(e.target.value)} required min={0}
+            onChange={e => setAmount(e.target.value)} required min={0.01}
             className="w-full text-4xl font-extrabold text-base-theme bg-transparent
                        outline-none placeholder:text-slate-200 dark:placeholder:text-slate-600 tracking-tight"
           />
@@ -247,7 +262,7 @@ export default function AddExpense() {
           <div className="flex items-center gap-3">
             <Icon path={mdiCalendar} size={0.8} color="#818cf8" />
             <input type="date" value={occurredAt} onChange={e => setDate(e.target.value)}
-              max={new Date().toISOString().slice(0, 10)} required
+              max={todayLocal()} required
               className="flex-1 text-base-theme font-semibold bg-transparent outline-none" />
           </div>
         </div>
@@ -264,11 +279,11 @@ export default function AddExpense() {
 
         {/* Submit — income no longer blocked by wallet selection */}
         <button type="submit"
-          disabled={submitting || !amount || !categoryId}
+          disabled={!canSubmit}
           className={clsx(
             'w-full py-4 rounded-2xl font-bold text-white text-base transition-all',
             'active:scale-[0.98] shadow-lg',
-            submitting || !amount || !categoryId
+            !canSubmit
               ? 'bg-slate-300 dark:bg-slate-700 shadow-none cursor-not-allowed'
               : type === 'expense'
                 ? 'bg-brand-600 shadow-brand-500/30'

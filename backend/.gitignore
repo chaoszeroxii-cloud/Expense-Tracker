@@ -3,6 +3,13 @@
 /node_modules
 /build
 
+# TypeScript incremental build cache.
+# Committing this is actively harmful: a checked-out cache that claims everything is
+# already built makes `nest build` emit nothing, so a deploy can end up with no dist —
+# and therefore no compiled migrations to run.
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
 # Logs
 logs
 *.log

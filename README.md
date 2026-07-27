@@ -85,7 +85,7 @@ expense-tracker/
 ├── docker-compose.yml
 ├── docker-compose.prod.yml       ← production override
 ├── nginx/https.conf              ← HTTPS/TLS config for VPS
-├── database/init/01-schema.sql   ← auto-runs on first start
+├── database/README.md            ← schema lives in backend/src/migrations/
 ├── backend/src/
 │   └── modules/
 │       ├── auth/                 ← JWT, bcrypt, register/login

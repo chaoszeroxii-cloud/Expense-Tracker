@@ -17,7 +17,23 @@ export const databaseConfig = (): TypeOrmModuleOptions => {
   const base: Partial<TypeOrmModuleOptions> = {
     type: 'postgres',
     entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog, ProductEvent],
-    synchronize: process.env.DB_SYNC === 'true' || process.env.NODE_ENV !== 'production',
+
+    // Off everywhere. Migrations own the schema.
+    //
+    // It used to be on for every non-production environment, and it had quietly
+    // destroyed things the entities cannot describe: every CHECK constraint in the
+    // database (including `expenses.amount > 0`), every hand-written index (including
+    // the one the daily-brief query scans on), and it had rewritten two varchar columns
+    // as native enums. The dev schema no longer resembled production, so passing tests
+    // there proved less than they appeared to.
+    //
+    // DB_SYNC=true still forces it on as a deliberate escape hatch — for throwaway
+    // databases only, never one with data worth keeping.
+    synchronize: process.env.DB_SYNC === 'true',
+
+    migrations: [__dirname + '/../migrations/*.{ts,js}'],
+    migrationsTableName: 'migrations',
+
     logging: process.env.NODE_ENV === 'development',
   }
 

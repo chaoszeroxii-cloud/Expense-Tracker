@@ -19,6 +19,6 @@ export class AllocationMovement {
   @Column({ length: 20 })
   type: 'fund' | 'transfer_in' | 'transfer_out' | 'unallocate'
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 }

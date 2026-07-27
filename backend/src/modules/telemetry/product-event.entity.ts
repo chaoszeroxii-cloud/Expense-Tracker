@@ -34,6 +34,6 @@ export class ProductEvent {
   @Column({ name: 'local_date', type: 'date' })
   localDate: string
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 }

@@ -13,7 +13,7 @@ See `README.md` for project overview, quick start, and API reference.
 | Frontend dev | `cd frontend && npm run dev` | Vite, port 5173 → proxied as 3000 in Docker |
 | Frontend build | `cd frontend && npm run build` | → `dist/`, served by nginx in prod |
 | Prod deploy | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build` | |
-| DB migrations | auto-run from `database/init/*.sql` on first container start | Idempotent: use `IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` |
+| DB migrations | `cd backend && npm run build && npm run migration:run` | TypeORM migrations in `backend/src/migrations/`. Applied automatically by `start:prod` and by docker-compose |
 
 > **No test/lint scripts exist in either workspace.** You may add them but they are not expected.
 
@@ -21,7 +21,7 @@ See `README.md` for project overview, quick start, and API reference.
 
 ### Backend (NestJS)
 - **Auth:** Global `JwtAuthGuard` via `APP_GUARD` — every route requires JWT by default. Opt-out with `@Public()` decorator on individual routes.
-- **ORM:** TypeORM 0.3 with `synchronize: true` in dev (tables auto-created from entities). Entities listed in `database.config.ts`.
+- **ORM:** TypeORM 0.3. `synchronize` is **off everywhere** — migrations own the schema. It used to be on outside production and had dropped every CHECK constraint and hand-written index, and rewritten two varchar columns as native enums. Entities are listed in `database.config.ts`.
 - **Validation:** Global `ValidationPipe` (whitelist, forbidNonWhitelisted, transform). DTOs use `class-validator` decorators.
 - **Module pattern:** Each feature gets `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.entity.ts`, `dto/*.dto.ts`.
 - **tsconfig caveat:** `strictNullChecks: false` — no strict null enforcement.
@@ -38,8 +38,12 @@ See `README.md` for project overview, quick start, and API reference.
 - **Data fetching:** `useFetch<T>(fetchFn, deps)` generic hook → `{ data, loading, error, refetch }`.
 
 ### Database
-- PostgreSQL 16 with `pgcrypto` extension for `gen_random_uuid()`.
-- Init scripts in `database/init/` run in numeric order on first container start.
+- PostgreSQL 16 with the `uuid-ossp` and `pgcrypto` extensions.
+- **Schema lives in `backend/src/migrations/`** — see `database/README.md`. Generate with
+  `npm run migration:generate -- src/migrations/Name` (build first; the CLI runs against
+  `dist/`). Generation does not capture CHECK constraints, extra indexes, or data
+  backfills — hand-write those, and remember a new column with a non-obvious default
+  usually needs a backfill beside it.
 - **Allocation system (envelope budgeting):** Two join tables — `allocation_categories` (expense categories drain wallet) and `allocation_income_categories` (income categories credit wallet). Balance mutations happen in `ExpensesService`: income credits linked wallets, expenses debit linked wallets.
 - Both `FrontendAllocation` type and backend entity track `categories[]` and `incomeCategories[]`.
 

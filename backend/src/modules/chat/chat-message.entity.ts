@@ -28,6 +28,6 @@ export class ChatMessage {
   @Column({ name: 'image_analysis', type: 'jsonb', nullable: true })
   imageAnalysis: Record<string, any> | null
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 }

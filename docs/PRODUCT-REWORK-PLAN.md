@@ -13,19 +13,22 @@
 | **P1** — habit | ⬜ ยังไม่เริ่ม | 7-day coverage, budget rollover, weekly review, push, offline queue |
 | **P2** — advanced | ⬜ ยังไม่เริ่ม | envelope mode, accounts/opening balance, ledger linking |
 
-### ⚠️ ต้องทำก่อน deploy P0B ขึ้น production
+### การ deploy — ไม่ต้องรัน migration มืออีกแล้ว
 
-Migration **ไม่ได้รันอัตโนมัติ** บน Render — `synchronize` เปิดเฉพาะ non-production
-ต้องรันสองไฟล์นี้กับฐานข้อมูล production **ก่อน** ปล่อยโค้ดใหม่:
+SQL ใน `database/init/` ถูกย้ายไปเป็น TypeORM migrations ที่ `backend/src/migrations/`
+และ `synchronize` ปิดทุก environment แล้ว
 
-```bash
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/07-spending-plan.sql
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f database/init/08-product-events.sql
+**สิ่งเดียวที่ต้องตั้งบน Render:** เปลี่ยน start command เป็น
+
+```
+npm run start:prod
 ```
 
-ทั้งสองไฟล์ idempotent รันซ้ำได้ `07` จะ backfill `advanced_mode = true`
-ให้ผู้ใช้เดิมที่มี wallet / หนี้สิน / การลงทุน / ภาษี อยู่แล้วโดยอัตโนมัติ
-เพื่อไม่ให้ฟีเจอร์ที่เขาใช้อยู่หายไปเฉยๆ (ทดสอบแล้วบน dev: อัปเดต 7 จาก 10 users)
+(= `npm run migration:run && node dist/main` — apply migration ที่ค้างก่อนบูตทุกครั้ง)
+
+Migration ปรับตัวเองตามสภาพฐานข้อมูล: DB เปล่าจะถูกสร้างครบ, DB เดิมที่มี schema อยู่แล้ว
+จะถูก "รับเข้าระบบ" โดยไม่แตะโครงสร้าง แล้วเติมเฉพาะส่วนที่ขาด — ไม่ต้อง insert แถวลง
+ตาราง `migrations` เอง ดูรายละเอียดที่ `database/README.md`
 
 ---
 

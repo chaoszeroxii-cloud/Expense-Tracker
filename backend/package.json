@@ -7,6 +7,7 @@
     "start:dev": "nest start --watch",
     "test:mdi-icons": "npm run build && node --test test/mdi-icons.test.js",
     "test:schema-config": "npm run build && node --test test/database-schema-config.test.js",
+    "test:cors-config": "npm run build && node --test test/cors-config.test.js",
     "//migrations": "The CLI runs against compiled output, so build first. `start:prod` is the Render start command: it applies pending migrations before booting.",
     "start:prod": "npm run migration:run && node dist/main",
     "migration:run": "typeorm migration:run -d dist/config/data-source.js",

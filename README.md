@@ -70,13 +70,17 @@ All other endpoints require `Authorization: Bearer <token>`.
 2. Chrome: tap ⋮ → "Add to Home screen"
 3. Safari: tap □↑ → "Add to Home Screen"
 
-To generate PNG icons from the SVG master:
+`frontend/public/app_icon.svg` is the single icon master — the favicon and every installed
+icon are rendered from it. To regenerate the PNGs:
 ```bash
-npx sharp-cli --input frontend/public/icons/icon.svg \
+npx sharp-cli --input frontend/public/app_icon.svg \
   --output frontend/public/icons/icon-192.png --resize 192
-npx sharp-cli --input frontend/public/icons/icon.svg \
+npx sharp-cli --input frontend/public/app_icon.svg \
   --output frontend/public/icons/icon-512.png --resize 512
 ```
+The maskable icon is **not** a resize of the same artwork — see
+`frontend/public/icons/README.md` for why, and for the headless-Chrome recipe used to
+produce the committed files.
 
 ## Project Structure
 

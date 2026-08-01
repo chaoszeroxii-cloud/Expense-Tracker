@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { getCorsOptions } from './config/cors.config';
 import * as express from 'express';
 
 async function bootstrap() {
@@ -20,13 +21,7 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
-  const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:3000')
-    .split(',').map(o => o.trim())
-
-  app.enableCors({
-    origin: allowedOrigins.length === 1 ? allowedOrigins[0] : allowedOrigins,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-  });
+  app.enableCors(getCorsOptions());
 
   const port = process.env.PORT ?? 3001;
   await app.listen(port);

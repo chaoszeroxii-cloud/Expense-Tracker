@@ -8,12 +8,14 @@ import WeeklyReviewCard from '../../components/charts/WeeklyReviewCard'
 import {
   useSummary, useCategoryBreakdown, useMonthlyTrend, currentMonth,
   useEmergencyFund, useRecommendationsOnDemand, useWeeklyReview,
+  useDailyBreakdown,
 } from '../../hooks'
 import { useT, useI18n } from '../../store/i18n.store'
 import { monthOffset } from '../../utils/localDate'
 import { fmt } from '../../utils/money'
 
 // Recharts is ~550kB; it only loads once someone actually opens this page.
+const DailyCompareChart = lazy(() => import('../../components/charts/DailyCompareChart'))
 const TrendSection      = lazy(() => import('../../components/charts/TrendSection'))
 const MonthlyBarSection = lazy(() => import('../../components/charts/MonthlyBarSection'))
 const AiInsightsSection = lazy(() => import('../../components/charts/AiInsightsSection'))
@@ -45,16 +47,19 @@ export default function Reports() {
   const { data: trend,      loading: loadingTrend }                                            = useMonthlyTrend()
   const { data: efData,     loading: loadingEF }                                               = useEmergencyFund(6)
   const { data: weekly, loading: loadingWeekly, error: errorWeekly, refetch: refetchWeekly }   = useWeeklyReview()
+  const { data: daily,      loading: loadingDaily, refetch: refetchDaily }                      = useDailyBreakdown(month)
   const aiInsights = useRecommendationsOnDemand()
 
   useEffect(() => {
     const handler = (e: Event) => {
       const types: string[] = (e as CustomEvent).detail?.types ?? []
-      if (types.includes('dashboard') || types.includes('transactions')) { refetchSum(); refetchCat() }
+      if (types.includes('dashboard') || types.includes('transactions')) {
+        refetchSum(); refetchCat(); refetchDaily()
+      }
     }
     window.addEventListener('moneyflow:refresh', handler)
     return () => window.removeEventListener('moneyflow:refresh', handler)
-  }, [refetchSum, refetchCat])
+  }, [refetchSum, refetchCat, refetchDaily])
 
   return (
     <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">
@@ -117,6 +122,19 @@ export default function Reports() {
             <Amount value={summary.net} type="net" size="md" />
           </div>
         )}
+      </Card>
+
+      {/* ── Income vs spending, day by day ──
+          Sits under the month selector because it answers a question about the selected
+          month, unlike the 12-month trend further down. */}
+      <Card>
+        <div className="mb-4">
+          <h2 className="font-bold text-base-theme text-sm">{t('daily_compare_title')}</h2>
+          <p className="text-xs text-muted-theme mt-0.5">{t('daily_compare_sub')}</p>
+        </div>
+        <Suspense fallback={<Skeleton className="h-52 w-full" />}>
+          <DailyCompareChart data={daily} loading={loadingDaily} month={month} />
+        </Suspense>
       </Card>
 
       {/* ── Spending by category ── */}

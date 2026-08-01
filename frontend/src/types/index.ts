@@ -48,6 +48,17 @@ export interface MonthlyTrend {
   net: number
 }
 
+/**
+ * One day inside a month. The API returns only days that actually have transactions,
+ * so a caller plotting a continuous axis has to fill the gaps itself.
+ */
+export interface DailySummary {
+  date: string
+  expense: number
+  income: number
+  net: number
+}
+
 export interface CreateExpensePayload {
   categoryId: string
   amount: number

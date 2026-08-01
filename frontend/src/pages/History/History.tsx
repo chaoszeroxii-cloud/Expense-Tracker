@@ -14,11 +14,50 @@ import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
 import { exportHistory, type ExportFormat } from '../../utils/exportHistory'
 import { monthOffset, timestampToDateInput, dateInputToTimestamp } from '../../utils/localDate'
+import { fmt, round2 } from '../../utils/money'
 import { toast } from '../../store/toast.store'
 import { apiErrorMessage } from '../../utils/apiError'
 import type { Expense } from '../../types'
 
 const QUICK = [5, 10, 20, 50, 100, 200, 500, 1000]
+
+/**
+ * What a single day added up to, shown on the right of its group header.
+ *
+ * Summed from the rows already passed through the type filter, so the figures always
+ * describe what is actually on screen — with Income selected a day reports only its
+ * income, and the spent figure disappears rather than quoting a total for rows the user
+ * cannot see. round2 because repeated float addition drifts (see utils/money).
+ *
+ * Each side is hidden at zero: most days are expense-only, and a permanent `฿0.00`
+ * beside every one of them is noise that makes the real numbers harder to scan.
+ */
+function DayTotals({ items }: { items: Expense[] }) {
+  const t = useT()
+  let spent = 0
+  let earned = 0
+  for (const e of items) {
+    if (e.type === 'expense') spent += e.amount
+    else earned += e.amount
+  }
+  spent = round2(spent)
+  earned = round2(earned)
+
+  return (
+    <div className="flex items-baseline gap-2 shrink-0 tabular-nums">
+      {spent > 0 && (
+        <span className="text-sm font-bold text-rose-500" aria-label={`${t('spent')} ${fmt(spent)}`}>
+          −฿{fmt(spent)}
+        </span>
+      )}
+      {earned > 0 && (
+        <span className="text-sm font-bold text-emerald-500" aria-label={`${t('income')} ${fmt(earned)}`}>
+          ฿{fmt(earned)}
+        </span>
+      )}
+    </div>
+  )
+}
 
 function parseMonth(m: string) {
   const [y, mo] = m.split('-').map(Number)
@@ -259,16 +298,19 @@ export default function History() {
             .sort(([a], [b]) => b.localeCompare(a))
             .map(([date, items]) => (
               <div key={date}>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-muted-theme uppercase tracking-wide">
+                <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <p className="text-xs font-bold text-muted-theme uppercase tracking-wide truncate">
                     {new Date(date + 'T00:00:00').toLocaleDateString(
                       lang === 'th' ? 'th-TH' : 'en-US',
                       { weekday: 'short', day: 'numeric', month: 'short' },
                     )}
+                    {/* The count moves in beside the date so the right edge belongs to the
+                        money, which is what the eye scans a day list for. */}
+                    <span className="ml-1.5 font-semibold normal-case tracking-normal opacity-70">
+                      · {items.length} {items.length > 1 ? t('items') : t('item')}
+                    </span>
                   </p>
-                  <p className="text-xs font-semibold text-muted-theme">
-                    {items.length} {items.length > 1 ? t('items') : t('item')}
-                  </p>
+                  <DayTotals items={items} />
                 </div>
 
                 <div className="bg-card rounded-2xl border border-theme shadow-sm overflow-hidden">

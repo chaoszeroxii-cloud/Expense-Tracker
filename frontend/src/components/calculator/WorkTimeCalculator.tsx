@@ -83,12 +83,14 @@ export default function WorkTimeCalculator({ onClose }: Props) {
     }
   }
 
+  // z-[60] rather than z-50: this only cleared the bottom nav because Layout happens to
+  // render it after the nav in the DOM, which is not something to rely on.
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center lg:items-center" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-end justify-center lg:items-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
 
       <div
-        className="relative w-full max-w-sm bg-card rounded-t-3xl lg:rounded-3xl p-5 shadow-2xl animate-fade-up"
+        className="relative w-full max-w-sm bg-card rounded-t-3xl lg:rounded-3xl px-5 pt-5 pb-sheet lg:pb-5 shadow-2xl animate-fade-up"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

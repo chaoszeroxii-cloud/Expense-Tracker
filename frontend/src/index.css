@@ -49,6 +49,24 @@
   .pb-safe   { padding-bottom: env(safe-area-inset-bottom); }
   .pt-safe   { padding-top: env(safe-area-inset-top); }
 
+  /* ── Bottom-sheet clearance ──────────────────────────────────
+     Two separate hazards sit at the bottom of a phone screen, and a sheet has to clear
+     both or its action row becomes untappable:
+
+     1. The fixed mobile nav (`z-50`, `h-16` + `pb-safe`). A sheet must be **above z-50**
+        to be reachable — at exactly z-50 the winner is decided by DOM order, so a sheet
+        rendered inside page content loses to the nav while one rendered after it in
+        Layout happens to win. Use `z-[60]`, never `z-50`.
+     2. The home-indicator / gesture inset. `env(safe-area-inset-bottom)` is ~34px on
+        iPhones, so plain `p-4` (16px) leaves the buttons inside the system swipe zone.
+
+     `pb-safe` alone only supplies the inset; these add the sheet's own padding on top. */
+  /* Sheets flush to the bottom edge — pad their own action row. */
+  .pb-sheet     { padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
+  .pb-sheet-gap { padding-bottom: calc(1rem    + env(safe-area-inset-bottom)); }
+  /* Sheets that float clear of the nav entirely — 4rem is the nav's h-16. */
+  .pb-nav-sheet { padding-bottom: calc(4rem + env(safe-area-inset-bottom) + 0.75rem); }
+
   /* Hide scrollbar but keep scrolling functionality */
   .scrollbar-hide {
     -ms-overflow-style: none;

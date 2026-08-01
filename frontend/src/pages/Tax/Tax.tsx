@@ -267,7 +267,7 @@ export default function Tax() {
 
       {/* Add deduction modal */}
       {showAdd && (
-        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40">
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center px-4 pt-4 pb-sheet-gap lg:pb-4 bg-black/40">
           <div className="w-full max-w-md bg-card rounded-3xl p-6 space-y-4 animate-fade-up">
             <div className="flex items-center justify-between">
               <h2 className="font-bold text-base-theme">{t('add_deduction')}</h2>

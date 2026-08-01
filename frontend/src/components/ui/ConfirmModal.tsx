@@ -18,8 +18,10 @@ export default function ConfirmModal({
   danger = true, onConfirm, onCancel,
 }: Props) {
   if (!open) return null
+  // pb-24 was a fixed 96px, which is under the nav's real height on any phone with a home
+  // indicator (h-16 + inset). pb-nav-sheet tracks the inset instead.
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center px-4 pb-24 sm:items-center sm:pb-0"
+    <div className="fixed inset-0 z-[60] flex items-end justify-center px-4 pb-nav-sheet sm:items-center sm:pb-0"
          onClick={onCancel}>
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />

@@ -394,7 +394,7 @@ export default function Settings() {
       </button>
       {/* ── Password Modal ── */}
       {pwOpen && (
-        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center p-4 bg-black/40"
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center px-4 pt-4 pb-sheet-gap lg:pb-4 bg-black/40"
              onClick={closePwModal}>
           <div className="w-full max-w-sm bg-card rounded-3xl p-6 space-y-4 animate-fade-up"
                onClick={e => e.stopPropagation()}>

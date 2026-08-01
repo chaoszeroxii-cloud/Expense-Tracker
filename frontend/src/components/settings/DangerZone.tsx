@@ -131,11 +131,14 @@ export default function DangerZone() {
         />
       </div>
 
+      {/* z-[60], not z-50: this sheet renders inside page content, which precedes the
+          bottom nav in the DOM, so an equal z-index let the nav paint over the confirm
+          and cancel buttons. pb-sheet keeps them clear of the home indicator. */}
       {mode && (
-        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center" onClick={close}>
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center" onClick={close}>
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
           <div
-            className="relative w-full max-w-sm bg-card rounded-t-3xl lg:rounded-3xl p-5 shadow-2xl animate-fade-up
+            className="relative w-full max-w-sm bg-card rounded-t-3xl lg:rounded-3xl px-5 pt-5 pb-sheet lg:pb-5 shadow-2xl animate-fade-up
                        max-h-[90dvh] overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >

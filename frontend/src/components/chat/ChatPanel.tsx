@@ -242,7 +242,7 @@ export default function ChatPanel({ onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex lg:justify-end" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex lg:justify-end" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40 lg:hidden" />
       <div
         className="relative w-full h-full lg:w-[420px] bg-card flex flex-col shadow-2xl animate-slide-in-right"
@@ -294,7 +294,9 @@ export default function ChatPanel({ onClose }: Props) {
         </div>
 
         {/* Input area */}
-        <div className="px-3 pb-safe pb-3 pt-2 border-t border-[var(--border)] shrink-0">
+        {/* One padding-bottom, not two: `pb-safe pb-3` were competing utilities, so either
+            the inset or the padding was silently dropped depending on CSS order. */}
+        <div className="px-3 pt-2 pb-sheet-gap border-t border-[var(--border)] shrink-0">
           {/* Attached image preview */}
           {attachedImage && (
             <div className="mb-2 flex items-center gap-2">

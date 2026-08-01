@@ -450,6 +450,10 @@ const dict = {
     // ── Reports ─────────────────────────────────────────────
     reports_title:    'Reports',
     reports_subtitle: 'Charts and longer-term trends',
+    daily_compare_title: 'Daily income vs spending',
+    daily_compare_sub:   'Every day this month',
+    daily_compare_day:   'Day',
+    daily_compare_empty: 'No transactions this month',
 
     // ── Envelope wallets (opt-in) ───────────────────────────
     wallets_starter_cta:  'Create 3 starter wallets',
@@ -1050,6 +1054,10 @@ const dict = {
     // ── Reports ─────────────────────────────────────────────
     reports_title:    'รายงาน',
     reports_subtitle: 'กราฟและแนวโน้มระยะยาว',
+    daily_compare_title: 'รายรับ-รายจ่ายรายวัน',
+    daily_compare_sub:   'ทุกวันในเดือนนี้',
+    daily_compare_day:   'วันที่',
+    daily_compare_empty: 'เดือนนี้ยังไม่มีรายการ',
 
     // ── Envelope wallets (opt-in) ───────────────────────────
     wallets_starter_cta:  'สร้างซองแนะนำ 3 ซอง',

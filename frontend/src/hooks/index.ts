@@ -4,7 +4,7 @@ import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
   BudgetItem, LoanSummary, EmergencyFundSummary, AiRecommendation,
-  AllocationPlanPreview, DailyBrief, WeeklyReview, BudgetSuggestion,
+  AllocationPlanPreview, DailyBrief, DailySummary, WeeklyReview, BudgetSuggestion,
 } from '../types'
 
 // Current month helper — returns "YYYY-MM" from the *local* calendar.
@@ -60,6 +60,11 @@ export function useBudgetSuggestions(month: string) {
 
 export function useSummary(month: string) {
   return useFetch<PeriodSummary>(() => analyticsApi.getSummary(month), [month])
+}
+
+/** Per-day totals inside one month. Sparse — see DailySummary. */
+export function useDailyBreakdown(month: string) {
+  return useFetch<DailySummary[]>(() => analyticsApi.getDaily(month), [month])
 }
 
 export function useCategoryBreakdown(month: string, type: 'expense' | 'income' = 'expense') {

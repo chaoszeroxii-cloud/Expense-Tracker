@@ -6,7 +6,7 @@ import type {
   BudgetItem, Loan, LoanSummary, Investment, InvestmentTransaction,
   TaxDeduction, TaxCalculationResult, TaxDeductionType,
   EmergencyFundSummary, AdminUser, AdminStats, AiRecommendation,
-  AllocationPlanPreview, DailyBrief, UpdatePreferencesPayload,
+  AllocationPlanPreview, DailyBrief, DailySummary, UpdatePreferencesPayload,
   CompleteOnboardingPayload, Coverage, WeeklyReview, BudgetSuggestion,
   SpendingPlanView,
 } from '../types'
@@ -96,7 +96,7 @@ export const analyticsApi = {
     http.get<MonthlyTrend[]>('/analytics/monthly-trend').then(r => r.data),
 
   getDaily: (month: string) =>
-    http.get('/analytics/daily', { params: { month } }).then(r => r.data),
+    http.get<DailySummary[]>('/analytics/daily', { params: { month } }).then(r => r.data),
   // GET /api/analytics/balance — totalBalance, allocatedBalance, unallocatedBalance
   getBalanceSummary: () =>
     http.get<BalanceSummary>('/analytics/balance').then(r => r.data),

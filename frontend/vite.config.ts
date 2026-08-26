@@ -43,22 +43,43 @@ export default defineConfig({
         ],
       },
 
-      // Caching rules now live in src/sw.ts. This only controls what gets precached.
+      // Caching rules live in src/sw.ts. This controls only what is *precached* —
+      // downloaded in full the moment the service worker installs.
+      //
+      // It used to be `**/*.{js,css,...}`, i.e. every chunk: 41 files, 2.18 MB, fetched
+      // on the first visit whether or not the user ever opened the screen that needed
+      // them. That silently cancelled out the route-level code splitting — recharts,
+      // jspdf and html2canvas were all pulled down up front regardless. Precache the
+      // shell; let the lazy routes arrive over the network when they are first opened,
+      // and stay in the runtime cache after that.
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globPatterns: [
+          'index.html',
+          'assets/index-*.js',
+          'assets/index-*.css',
+          'icons/*.png',
+          '*.svg',
+          'manifest.webmanifest',
+        ],
       },
     }),
   ],
 
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          // Split recharts (~1.2MB) into its own chunk — loaded only with charts
-          recharts: ['recharts'],
-        },
-      },
-    },
+    // No `manualChunks` for recharts.
+    //
+    // The old config named it as a manual chunk with the comment "loaded only with
+    // charts". It did the opposite: naming a manual chunk hoists it, and because the
+    // entry is the common parent of every lazy route that needs recharts, Rollup emitted
+    // it as a *static* import of the entry chunk. Verified in the built output —
+    // `dist/assets/index-*.js` contained `from"./recharts-*.js"` — so 564 kB of charting
+    // library was fetched before the login screen could paint.
+    //
+    // Letting Rollup decide puts recharts inside the Reports chunk graph, reachable only
+    // through the lazy `/reports` route. Measured on this codebase:
+    //   before  entry 398 kB + recharts 564 kB = 962 kB (288 kB gzip) on first paint
+    //   after   entry 541 kB                             (175 kB gzip)
+    rollupOptions: {},
   },
 
   server: {
@@ -71,7 +92,10 @@ export default defineConfig({
         },
       },
     watch: {
-      usePolling: true, // เพิ่มตัวนี้เพื่อให้ Docker ตรวจจับการเซฟไฟล์ได้แน่นอนขึ้น
+      // Polling is what makes bind-mounted files visible inside a container, but it costs
+      // a constant CPU spin — pure waste when running `npm run dev` directly on the host.
+      // docker-compose sets VITE_USE_POLLING=true for the containerised path.
+      usePolling: process.env.VITE_USE_POLLING === 'true',
     },
   },
 })

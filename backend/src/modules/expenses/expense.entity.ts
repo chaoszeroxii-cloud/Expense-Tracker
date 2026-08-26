@@ -39,6 +39,16 @@ export class Expense {
   @Column({ name: 'occurred_at', type: 'timestamptz' })
   occurredAt: Date
 
+  /**
+   * Client-generated id for de-duplicating a replayed create.
+   *
+   * The offline queue retries whenever a response goes missing, which includes the case
+   * where the write actually succeeded. Unique per user (partial index), so a replay
+   * returns the original row instead of writing a second one.
+   */
+  @Column({ name: 'client_key', type: 'varchar', length: 64, nullable: true })
+  clientKey: string | null
+
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
   user: User

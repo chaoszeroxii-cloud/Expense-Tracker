@@ -19,5 +19,10 @@
     "skipLibCheck": true,
     "strictNullChecks": false
   },
+  // `api/` used to be excluded, so the Vercel entry point compiled against nothing and
+  // quietly drifted from src/main.ts — it was missing PUT from its CORS allow-list and
+  // capped request bodies at 100 kB while main.ts allowed 20 MB. It is type-checked now.
+  // `rootDir` stays ./src so `nest build` still emits dist/main.js at the same path;
+  // api/ is checked by `npm run typecheck`, which has no rootDir constraint.
   "exclude": ["node_modules", "dist", "api"]
 }

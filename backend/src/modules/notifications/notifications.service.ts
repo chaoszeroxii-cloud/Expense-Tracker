@@ -14,6 +14,16 @@ export interface DispatchResult {
   prunedSubscriptions: number
 }
 
+/**
+ * How late after midnight a *previous* day's missed reminder may still be delivered.
+ *
+ * A fixed literal rather than something configurable: it only has to be long enough to
+ * cover a deploy or a restart, and short enough that nobody is woken at 4am about
+ * yesterday. Interpolated into SQL below, which is safe precisely because it is a
+ * constant here and never reachable from a request.
+ */
+const GRACE_UNTIL = '02:00'
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name)
@@ -110,16 +120,42 @@ export class NotificationsService {
     if (!this.configured) return result
 
     // Postgres resolves each user's local clock, so one query serves every timezone.
-    const due: { id: string; timezone: string; local_date: string }[] = await this.users.query(`
-      SELECT u.id,
-             COALESCE(u.timezone, 'Asia/Bangkok') AS timezone,
-             (now() AT TIME ZONE COALESCE(u.timezone, 'Asia/Bangkok'))::date::text AS local_date
-        FROM users u
-       WHERE u.push_enabled = TRUE
-         AND EXISTS (SELECT 1 FROM push_subscriptions s WHERE s.user_id = u.id)
-         AND TO_CHAR(now() AT TIME ZONE COALESCE(u.timezone, 'Asia/Bangkok'), 'HH24:MI') >= u.remind_at
-         AND (u.last_reminded_date IS DISTINCT FROM
-              (now() AT TIME ZONE COALESCE(u.timezone, 'Asia/Bangkok'))::date)
+    //
+    // The "is it past their time today" test is a same-day comparison, which silently
+    // gave a late reminder time almost no window: someone set to 23:55 could only be
+    // caught by a sweep between 23:55 and midnight, and if the service happened to be
+    // deploying then, the day's reminder was simply lost — the exact failure the
+    // five-minute sweep exists to prevent. Yesterday's reminder is now still delivered
+    // during a grace period after midnight, provided it was never sent, and stamped
+    // against the day it was for.
+    const due: { id: string; timezone: string; local_date: string; for_date: string }[] =
+      await this.users.query(`
+      WITH clock AS (
+        SELECT u.id,
+               COALESCE(u.timezone, 'Asia/Bangkok') AS timezone,
+               u.remind_at,
+               u.last_reminded_date,
+               (now() AT TIME ZONE COALESCE(u.timezone, 'Asia/Bangkok'))                AS local_now,
+               (now() AT TIME ZONE COALESCE(u.timezone, 'Asia/Bangkok'))::date          AS local_date
+          FROM users u
+         WHERE u.push_enabled = TRUE
+           AND EXISTS (SELECT 1 FROM push_subscriptions s WHERE s.user_id = u.id)
+      )
+      SELECT id, timezone, local_date::text AS local_date,
+             CASE
+               WHEN TO_CHAR(local_now, 'HH24:MI') >= remind_at THEN local_date
+               ELSE local_date - 1
+             END::text AS for_date
+        FROM clock
+       WHERE (
+               -- Today's reminder is due.
+               (TO_CHAR(local_now, 'HH24:MI') >= remind_at
+                AND last_reminded_date IS DISTINCT FROM local_date)
+               -- Or yesterday's never went out and we are still inside the grace window.
+               OR (TO_CHAR(local_now, 'HH24:MI') < remind_at
+                   AND local_now::time < TIME '${GRACE_UNTIL}'
+                   AND last_reminded_date IS DISTINCT FROM (local_date - 1))
+             )
     `)
 
     result.considered = due.length
@@ -134,11 +170,11 @@ export class NotificationsService {
                       AND (e.occurred_at AT TIME ZONE $2)::date = $3::date) AS has_tx,
            EXISTS (SELECT 1 FROM daily_checkins c
                     WHERE c.user_id = $1 AND c.local_date = $3::date) AS has_checkin`,
-        [row.id, row.timezone, row.local_date],
+        [row.id, row.timezone, row.for_date],
       )
 
       if (covered?.has_tx || covered?.has_checkin) {
-        await this.users.update(row.id, { lastRemindedDate: row.local_date })
+        await this.users.update(row.id, { lastRemindedDate: row.for_date })
         result.skipped++
         continue
       }
@@ -147,9 +183,11 @@ export class NotificationsService {
         title: 'MoneyFlow',
         // Deliberately a question about today, not a warning about losing something.
         // Loss framing is what makes a reminder feel like nagging.
-        body: 'วันนี้มีรายการที่ยังไม่ได้จดไหม?',
+        body: row.for_date === row.local_date
+          ? 'วันนี้มีรายการที่ยังไม่ได้จดไหม?'
+          : 'เมื่อวานมีรายการที่ยังไม่ได้จดไหม?',
         url: '/add',
-        tag: `daily-${row.local_date}`,
+        tag: `daily-${row.for_date}`,
       })
 
       result.sent += sent.sent
@@ -157,8 +195,10 @@ export class NotificationsService {
       result.prunedSubscriptions += sent.pruned
 
       // Stamped whether or not delivery succeeded: a broken endpoint should not make the
-      // sweep retry the same person every few minutes for the rest of the day.
-      await this.users.update(row.id, { lastRemindedDate: row.local_date })
+      // sweep retry the same person every few minutes for the rest of the day. Stamped
+      // with the day the reminder was *for*, so a late catch-up does not also consume
+      // today's slot.
+      await this.users.update(row.id, { lastRemindedDate: row.for_date })
     }
 
     if (result.considered > 0) {

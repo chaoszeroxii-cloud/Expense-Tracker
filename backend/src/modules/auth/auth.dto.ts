@@ -1,6 +1,7 @@
 import {
   IsEmail, IsString, IsOptional, MinLength, MaxLength,
   IsNumber, Min, Max, IsIn, IsBoolean, IsInt, Matches,
+  IsArray, ArrayMaxSize,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -172,4 +173,23 @@ export class ChangePasswordDto {
   @IsString()
   @MinLength(8, { message: 'Password must be at least 8 characters' })
   newPassword: string
+}
+
+/**
+ * Opting in to the starter envelope wallets.
+ *
+ * This endpoint used to take an inline body type (`@Body() body: { wallets: string[] }`).
+ * Nest's ValidationPipe skips a parameter whose metatype is not a class, so nothing was
+ * validated at all — a non-array `wallets` reached `.includes()` and threw a 500.
+ */
+export class CreateStarterWalletsDto {
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(30, { each: true })
+  wallets: string[]
+
+  @IsOptional()
+  @IsIn(['th', 'en'])
+  lang?: 'th' | 'en'
 }

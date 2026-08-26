@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { useAuthStore } from './store/auth.store'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import Layout from './components/layout/Layout'
 import PrivateRoute, { AdminRoute } from './components/layout/PrivateRoute'
@@ -90,12 +91,10 @@ export default function App() {
   )
 }
 
-// Auth-only route (no onboarding redirect)
+// Auth-only route (no onboarding redirect).
+// A selector, not the whole store — subscribing to everything re-rendered this on any
+// auth change, including the profile refresh PrivateRoute now performs on load.
 function OnboardingRoute() {
-  const { token } = useAuthStoreRaw()
+  const token = useAuthStore(s => s.token)
   return token ? <Outlet /> : <Navigate to="/login" replace />
 }
-
-import { useAuthStore } from './store/auth.store'
-import { Outlet } from 'react-router-dom'
-function useAuthStoreRaw() { return useAuthStore() }

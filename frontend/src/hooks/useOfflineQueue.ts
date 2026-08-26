@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { expensesApi } from '../api'
 import { useAuthStore } from '../store/auth.store'
 import { toast } from '../store/toast.store'
@@ -17,16 +17,27 @@ export function useOfflineQueue() {
   const [pending, setPending] = useState(0)
   const [syncing, setSyncing] = useState(false)
 
+  // The guard has to be a ref, not the state above.
+  //
+  // `drain` read `syncing` from its closure, and the `online` listener below is
+  // registered once with `[userId]` as its deps — so it kept the `drain` from the very
+  // first render forever, in which `syncing` is permanently `false`. Two `online` events
+  // in quick succession therefore both passed the check and flushed the queue twice,
+  // creating every queued transaction a second time. A ref is read at call time, so it
+  // reflects reality no matter which closure is holding it.
+  const syncingRef = useRef(false)
+
   const refresh = useCallback(async () => {
     if (!userId) { setPending(0); return }
     setPending((await listPending(userId)).length)
   }, [userId])
 
   const drain = useCallback(async () => {
-    if (!userId || syncing || !navigator.onLine) return
+    if (!userId || syncingRef.current || !navigator.onLine) return
     const queued = await listPending(userId)
     if (queued.length === 0) return
 
+    syncingRef.current = true
     setSyncing(true)
     try {
       const result = await flush(userId, payload => expensesApi.create(payload))
@@ -40,10 +51,11 @@ export function useOfflineQueue() {
       // disappearing act the queue exists to prevent.
       if (result.dropped > 0) toast.error(`${t('offline_dropped')} ${result.dropped}`)
     } finally {
+      syncingRef.current = false
       setSyncing(false)
       refresh()
     }
-  }, [userId, syncing, refresh, t])
+  }, [userId, refresh, t])
 
   useEffect(() => { refresh() }, [refresh])
 
@@ -61,7 +73,8 @@ export function useOfflineQueue() {
       window.removeEventListener('online', onOnline)
       window.removeEventListener('moneyflow:queued', onQueued)
     }
-    // `drain` changes with `syncing`; re-subscribing on that would be churn for no gain.
+    // `drain` is stable now that it no longer closes over `syncing` — the reentrancy
+    // guard is a ref. Still pinned to `[userId]` so the listeners are registered once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 

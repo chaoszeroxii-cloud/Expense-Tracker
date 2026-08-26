@@ -67,6 +67,11 @@ export interface CreateExpensePayload {
   tags?: string[]
   occurredAt: string
   allocationId?: string
+  /**
+   * Idempotency key for a replayed offline capture. Set by the offline queue only —
+   * an online create omits it.
+   */
+  clientKey?: string
 }
 
 export interface Allocation {

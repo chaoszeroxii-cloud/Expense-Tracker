@@ -6,6 +6,7 @@ import { ChatService } from './chat.service'
 import { TavilyService } from './tavily.service'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { AdminGuard } from '../auth/roles.guard'
+import { ChatMessageDto, ChatStreamDto } from './chat.dto'
 
 @Controller('chat')
 export class ChatController {
@@ -16,10 +17,7 @@ export class ChatController {
 
   // POST /api/chat  — send a text message (non-streaming, kept for fallback)
   @Post()
-  async sendMessage(
-    @CurrentUser() user,
-    @Body() body: { message: string; context?: Record<string, any> },
-  ) {
+  async sendMessage(@CurrentUser() user, @Body() body: ChatMessageDto) {
     await this.svc.assertWithinDailyBudget(user.id)
     return this.svc.chat(user.id, body.message, {
       ...body.context,
@@ -31,7 +29,7 @@ export class ChatController {
   @Post('stream')
   async streamMessage(
     @CurrentUser() user,
-    @Body() body: { message?: string; imageBase64?: string; mimeType?: string; imageThumbnail?: string; context?: Record<string, any> },
+    @Body() body: ChatStreamDto,
     @Res() res: Response,
   ) {
     // Enforce the budget BEFORE flushing SSE headers so an over-quota user gets

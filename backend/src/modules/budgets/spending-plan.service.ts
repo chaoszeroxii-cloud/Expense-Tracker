@@ -100,13 +100,13 @@ export class SpendingPlanService {
       await this.plans.delete({ userId, month })
     } else {
       if (!(totalAmount > 0)) throw new BadRequestException('Monthly total must be greater than 0')
-      const existing = await this.plans.findOne({ where: { userId, month } })
-      if (existing) {
-        existing.totalAmount = totalAmount
-        await this.plans.save(existing)
-      } else {
-        await this.plans.save(this.plans.create({ userId, month, totalAmount }))
-      }
+      // Upsert, not read-then-write. A double-tap on Save had both requests miss the
+      // existing row and both INSERT, so the second one hit the (user_id, month) unique
+      // constraint and surfaced as a 500 on an action that had actually succeeded.
+      await this.plans.upsert(
+        { userId, month, totalAmount },
+        { conflictPaths: ['userId', 'month'], skipUpdateIfNoValuesChanged: false },
+      )
     }
 
     // Keep the legacy column in step while other readers migrate. Only the current month

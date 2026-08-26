@@ -44,32 +44,49 @@ export class LoansService {
     return loans.map((l) => this.enrichLoan(l))
   }
 
+  /**
+   * Record a payment against a loan.
+   *
+   * The whole thing runs in one transaction holding a lock on the loan row. It used to
+   * read the payments, compute what was left, and only then insert — so two payments
+   * submitted at once (a double-tap, or the same request retried after a lost response)
+   * both saw the full remaining balance, both passed the check, and the loan ended up
+   * over-paid with no error anywhere.
+   */
   async addPayment(userId: string, loanId: string, dto: CreateLoanPaymentDto): Promise<Loan> {
-    const loan = await this.loanRepo.findOne({
-      where: { id: loanId, userId },
-      relations: ['payments'],
+    await this.loanRepo.manager.transaction(async (em) => {
+      const loan = await em.getRepository(Loan)
+        .createQueryBuilder('l')
+        .setLock('pessimistic_write')
+        .where('l.id = :loanId AND l.user_id = :userId', { loanId, userId })
+        .getOne()
+      if (!loan) throw new NotFoundException('Loan not found')
+
+      const [row] = await em.query(
+        `SELECT COALESCE(SUM(amount), 0) AS paid FROM loan_payments WHERE loan_id = $1`,
+        [loanId],
+      )
+      const paid = parseFloat(row?.paid ?? '0') || 0
+      const total = parseFloat(loan.amount as any)
+      const remaining = total - paid
+
+      if (dto.amount > remaining + 0.01) {
+        throw new BadRequestException(
+          `Payment exceeds remaining balance. Outstanding: ฿${Math.max(0, remaining).toFixed(2)}`,
+        )
+      }
+
+      await em.query(
+        `INSERT INTO loan_payments (id, loan_id, amount, paid_at, note) VALUES (gen_random_uuid(), $1, $2, $3, $4)`,
+        [loanId, dto.amount, new Date(dto.paidAt), dto.note ?? ''],
+      )
+
+      if (paid + dto.amount >= total - 0.01) {
+        await em.update(Loan, { id: loanId }, { status: 'settled' })
+      }
     })
-    if (!loan) throw new NotFoundException('Loan not found')
 
-    const paid = loan.payments.reduce((s, p) => s + parseFloat(p.amount as any), 0)
-    const remaining = parseFloat(loan.amount as any) - paid
-
-    if (dto.amount > remaining + 0.01) {
-      throw new BadRequestException('Payment exceeds remaining balance')
-    }
-
-    await this.paymentRepo.manager.query(
-      `INSERT INTO loan_payments (id, loan_id, amount, paid_at, note) VALUES (gen_random_uuid(), $1, $2, $3, $4)`,
-      [loanId, dto.amount, new Date(dto.paidAt), dto.note ?? ''],
-    )
-
-    const newPaid = paid + dto.amount
-    if (newPaid >= parseFloat(loan.amount as any) - 0.01) {
-      loan.status = 'settled'
-      await this.loanRepo.save(loan)
-    }
-
-    return this.loanRepo.findOne({ where: { id: loanId }, relations: ['payments'] })
+    return this.loanRepo.findOne({ where: { id: loanId, userId }, relations: ['payments'] })
   }
 
   async remove(userId: string, id: string): Promise<void> {

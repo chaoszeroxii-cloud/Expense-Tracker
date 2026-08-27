@@ -12,5 +12,8 @@ import { AllocationsModule } from '../allocations/allocations.module'
   ],
   providers: [ExpensesService],
   controllers: [ExpensesController],
+  // Exported so the chat tools can create/delete transactions through the same code
+  // path as the REST API instead of hand-writing SQL that drifts away from it.
+  exports: [ExpensesService],
 })
 export class ExpensesModule {}

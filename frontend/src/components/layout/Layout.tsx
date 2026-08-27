@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
@@ -7,8 +8,11 @@ import {
 import clsx from 'clsx'
 import { useT, TKey } from '../../store/i18n.store'
 import { usePanels } from '../../store/panels.store'
-import ChatPanel from '../chat/ChatPanel'
-import WorkTimeCalculator from '../calculator/WorkTimeCalculator'
+// Both are overlays that render only once the user opens them, but importing them
+// statically put them — and react-markdown + remark-gfm with them — in the entry chunk
+// for every visitor, including anyone who never taps the assistant.
+const ChatPanel = lazy(() => import('../chat/ChatPanel'))
+const WorkTimeCalculator = lazy(() => import('../calculator/WorkTimeCalculator'))
 
 /**
  * One question per destination: Home = today, History = what happened,
@@ -96,8 +100,12 @@ export default function Layout() {
 
         {/* Overlays are opened from More (and, later, from Home's capture bar) rather than
             from floating buttons that competed with Add for attention. */}
-        {chatOpen && <ChatPanel onClose={closeChat} />}
-        {calcOpen && <WorkTimeCalculator onClose={closeCalc} />}
+        {/* No fallback: these are overlays, and a spinner flashing over the page is
+            worse than the panel simply appearing a moment later. */}
+        <Suspense fallback={null}>
+          {chatOpen && <ChatPanel onClose={closeChat} />}
+          {calcOpen && <WorkTimeCalculator onClose={closeCalc} />}
+        </Suspense>
       </div>
     </div>
   )

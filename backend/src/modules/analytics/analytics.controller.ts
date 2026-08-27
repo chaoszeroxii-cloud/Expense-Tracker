@@ -1,14 +1,22 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common'
-import { IsOptional, IsString } from 'class-validator'
+import { IsOptional, IsString, IsIn, Matches } from 'class-validator'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { User } from '../users/user.entity'
 import { AnalyticsService, AiRecommendation } from './analytics.service'
+import { localMonth, safeTimezone } from '../../common/local-date.util'
 
 class AnalyticsQueryDto {
-  @IsOptional() @IsString() month?: string
-  @IsOptional() @IsString() year?: string
-  @IsOptional() @IsString() type?: 'expense' | 'income'
+  // Shape-checked here rather than trusted downstream. `month` and `year` reach a date
+  // cast in SQL, and an unparseable value surfaced as an opaque 500 instead of a 400.
+  @IsOptional() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'month must be YYYY-MM' })
+  month?: string
+
+  @IsOptional() @Matches(/^\d{4}$/, { message: 'year must be YYYY' })
+  year?: string
+
+  @IsOptional() @IsIn(['expense', 'income'])
+  type?: 'expense' | 'income'
 }
 
 @Controller('analytics')
@@ -47,16 +55,17 @@ export class AnalyticsController {
     return this.service.getMonthlyTrend(user.id)
   }
 
+  // The default month is resolved from the user's own calendar, not the server's.
+  // `new Date().toISOString()` is UTC, so before 07:00 Bangkok time on the 1st these
+  // endpoints defaulted to the *previous* month while the rest of the app showed this one.
   @Get('daily')
   getDailyBreakdown(@Query() q: AnalyticsQueryDto, @CurrentUser() user: User) {
-    const month = q.month || new Date().toISOString().slice(0, 7)
-    return this.service.getDailyBreakdown(user.id, month)
+    return this.service.getDailyBreakdown(user.id, q.month ?? localMonth(safeTimezone(user.timezone)))
   }
 
   @Get('top-days')
   getTopDays(@Query() q: AnalyticsQueryDto, @CurrentUser() user: User) {
-    const month = q.month || new Date().toISOString().slice(0, 7)
-    return this.service.getTopSpendingDays(user.id, month)
+    return this.service.getTopSpendingDays(user.id, q.month ?? localMonth(safeTimezone(user.timezone)))
   }
 
   // GET /api/analytics/allocations
@@ -76,7 +85,11 @@ export class AnalyticsController {
   // GET /api/analytics/emergency-fund?months=6
   @Get('emergency-fund')
   getEmergencyFund(@CurrentUser() user: User, @Query('months') months?: string) {
-    return this.service.getEmergencyFundSummary(user.id, parseInt(months ?? '6'))
+    // `parseInt('abc')` is NaN, which multiplied the target into NaN and rendered as
+    // "NaN" on the card. Clamp to something a fund target can sensibly be.
+    const parsed = parseInt(months ?? '6', 10)
+    const targetMonths = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 24) : 6
+    return this.service.getEmergencyFundSummary(user.id, targetMonths)
   }
 
   // GET /api/analytics/recommendations

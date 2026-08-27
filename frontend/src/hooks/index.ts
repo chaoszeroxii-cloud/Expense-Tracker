@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { analyticsApi, expensesApi, categoriesApi, allocationsApi, budgetsApi, loansApi } from '../api'
+import { apiErrorMessage } from '../utils/apiError'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
@@ -12,20 +13,45 @@ import type {
 export { currentMonthLocal as currentMonth } from '../utils/localDate'
 
 // ── Generic fetcher hook ───────────────────────────────────────
+/**
+ * Two things this has to get right beyond fetching.
+ *
+ * **Only the newest request may write state.** Flicking through months fires a request
+ * per month, and they do not come back in order — a slow January arriving after a fast
+ * February overwrote February's data with January's, on a screen still labelled February.
+ * Each run takes a sequence number and a later one invalidates every earlier one.
+ *
+ * **The error has to be the server's.** This used to surface `e.message`, which for an
+ * Axios rejection is "Request failed with status code 400" — so a perfectly clear message
+ * from the API ("Category X is an income category…") was replaced with a status code the
+ * user can do nothing with. `apiErrorMessage` already existed for this and was only
+ * being used on the write paths.
+ */
 function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
   const [data, setData]       = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
 
+  const runIdRef = useRef(0)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
   const fetch = useCallback(async () => {
+    const runId = ++runIdRef.current
     setLoading(true)
     setError(null)
     try {
-      setData(await fetchFn())
-    } catch (e: any) {
-      setError(e.message ?? 'Something went wrong')
+      const result = await fetchFn()
+      if (runId !== runIdRef.current || !mountedRef.current) return
+      setData(result)
+    } catch (e: unknown) {
+      if (runId !== runIdRef.current || !mountedRef.current) return
+      setError(apiErrorMessage(e, 'Something went wrong'))
     } finally {
-      setLoading(false)
+      if (runId === runIdRef.current && mountedRef.current) setLoading(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps)
@@ -136,8 +162,8 @@ export function useRecommendationsOnDemand() {
     setError(null)
     try {
       setData(await analyticsApi.getRecommendations())
-    } catch (e: any) {
-      setError(e?.message ?? 'Something went wrong')
+    } catch (e: unknown) {
+      setError(apiErrorMessage(e, 'Something went wrong'))
     } finally {
       setLoading(false)
     }

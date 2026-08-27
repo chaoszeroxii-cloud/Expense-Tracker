@@ -13,10 +13,13 @@ import { BudgetsModule } from '../budgets/budgets.module'
 import { AllocationsModule } from '../allocations/allocations.module'
 import { InvestmentsModule } from '../investments/investments.module'
 import { TaxModule } from '../tax/tax.module'
+import { ExpensesModule } from '../expenses/expenses.module'
+import { User } from '../users/user.entity'
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ChatMessage, AiUsageLog]),
+    // User: the timezone every month/day boundary in the tools is measured in.
+    TypeOrmModule.forFeature([ChatMessage, AiUsageLog, User]),
     MulterModule.register({ storage: memoryStorage() }),
     CategoriesModule,
     LoansModule,
@@ -24,6 +27,7 @@ import { TaxModule } from '../tax/tax.module'
     AllocationsModule,
     InvestmentsModule,
     TaxModule,
+    ExpensesModule,
   ],
   controllers: [ChatController],
   providers: [ChatService, TavilyService],

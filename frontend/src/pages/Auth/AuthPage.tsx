@@ -25,6 +25,15 @@ declare global {
 }
 
 const FB_APP_ID = import.meta.env.VITE_FACEBOOK_APP_ID ?? ''
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
+
+// A provider that was never configured cannot sign anyone in. Rendering the button
+// anyway offered a route that could only ever fail — and for Google it was worse than
+// that: `GoogleOAuthProvider` is skipped entirely without a client id (see main.tsx,
+// where an empty one used to blank the whole app), so `useGoogleLogin` has no context
+// to work with. Show only what is actually wired up.
+const HAS_GOOGLE = Boolean(GOOGLE_CLIENT_ID)
+const HAS_FACEBOOK = Boolean(FB_APP_ID)
 
 function loadFacebookSDK() {
   if (document.getElementById('facebook-jssdk')) return
@@ -84,23 +93,24 @@ export default function AuthPage() {
   }
 
   // ── Google login ─────────────────────────────────────────────
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setSocialLoading('google')
-      try {
-        const data = await authApi.googleVerify(tokenResponse.access_token, undefined, lang)
-        if (data.requiresEmail) {
-          setPendingSocial({ provider: 'google', token: tokenResponse.access_token, name: data.name })
-          setShowEmailModal(true)
-        } else {
-          onAuthSuccess(data)
-        }
-      } catch {
-        setError(t('social_login_failed'))
-      } finally { setSocialLoading(null) }
-    },
-    onError: () => { setError(t('social_login_failed')); setSocialLoading(null) },
-  })
+  // The hook itself lives in <GoogleButton> below. `useGoogleLogin` reads the provider's
+  // context and throws outright when there is none, and a hook cannot be called
+  // conditionally — so the only way to support a build with no Google client id is for
+  // the component that calls it to not be mounted at all.
+  const handleGoogleToken = async (accessToken: string) => {
+    setSocialLoading('google')
+    try {
+      const data = await authApi.googleVerify(accessToken, undefined, lang)
+      if (data.requiresEmail) {
+        setPendingSocial({ provider: 'google', token: accessToken, name: data.name })
+        setShowEmailModal(true)
+      } else {
+        onAuthSuccess(data)
+      }
+    } catch {
+      setError(t('social_login_failed'))
+    } finally { setSocialLoading(null) }
+  }
 
   // ── Facebook login ───────────────────────────────────────────
   const isHttps = window.location.protocol === 'https:'
@@ -184,23 +194,20 @@ export default function AuthPage() {
         </div>
 
         <div className="px-6 py-7 space-y-4">
-          {/* Social buttons */}
-          <div className="space-y-2.5">
-            <button
-              type="button"
-              onClick={() => { setError(null); googleLogin() }}
-              disabled={!!socialLoading}
-              className="w-full flex items-center justify-center gap-3 py-3 rounded-xl border border-slate-200
-                         dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200
-                         text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-600
-                         transition-all disabled:opacity-60 active:scale-[0.98]">
-              {socialLoading === 'google'
-                ? <span className="w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
-                : <GoogleIcon />}
-              {t('continue_google')}
-            </button>
+          {/* Social buttons — only the providers this build is configured for */}
+          <div className={clsx('space-y-2.5', !HAS_GOOGLE && !HAS_FACEBOOK && 'hidden')}>
+            {HAS_GOOGLE && (
+              <GoogleButton
+                loading={socialLoading === 'google'}
+                disabled={!!socialLoading}
+                label={t('continue_google')}
+                onBeforeStart={() => setError(null)}
+                onToken={handleGoogleToken}
+                onFailure={() => { setError(t('social_login_failed')); setSocialLoading(null) }}
+              />
+            )}
 
-            <button
+            {HAS_FACEBOOK && <button
               type="button"
               onClick={() => { setError(null); handleFacebookLogin() }}
               disabled={!!socialLoading}
@@ -211,7 +218,7 @@ export default function AuthPage() {
                 ? <span className="w-5 h-5 border-2 border-blue-300 border-t-white rounded-full animate-spin" />
                 : <FacebookIcon />}
               {t('continue_facebook')}
-            </button>
+            </button>}
           </div>
 
           {/* Divider */}
@@ -351,5 +358,46 @@ function FacebookIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
       <path d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.41c0-3.025 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.97h-1.513c-1.491 0-1.956.93-1.956 1.886v2.268h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/>
     </svg>
+  )
+}
+
+/**
+ * The Google sign-in button, and the only place `useGoogleLogin` is called.
+ *
+ * Kept separate so it is mounted only when `VITE_GOOGLE_CLIENT_ID` is set. The hook
+ * requires `GoogleOAuthProvider` in the tree and throws without it, and main.tsx skips
+ * that provider when there is no client id — because initialising Google's script with
+ * an empty one threw during render and took the entire app down to a blank page.
+ */
+function GoogleButton({
+  loading, disabled, label, onBeforeStart, onToken, onFailure,
+}: {
+  loading: boolean
+  disabled: boolean
+  label: string
+  onBeforeStart: () => void
+  onToken: (accessToken: string) => void
+  onFailure: () => void
+}) {
+  const login = useGoogleLogin({
+    onSuccess: (tokenResponse) => onToken(tokenResponse.access_token),
+    onError: onFailure,
+  })
+
+  return (
+    <button
+      type="button"
+      onClick={() => { onBeforeStart(); login() }}
+      disabled={disabled}
+      className="w-full flex items-center justify-center gap-3 py-3 rounded-xl border border-slate-200
+                 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200
+                 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-600
+                 transition-all disabled:opacity-60 active:scale-[0.98]"
+    >
+      {loading
+        ? <span className="w-5 h-5 border-2 border-slate-300 border-t-slate-600 rounded-full animate-spin" />
+        : <GoogleIcon />}
+      {label}
+    </button>
   )
 }

@@ -4,7 +4,7 @@ import { AuthService, DEFAULT_WALLETS } from './auth.service'
 import {
   RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto,
   ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto,
-  UpdatePreferencesDto, CompleteOnboardingDto,
+  UpdatePreferencesDto, CompleteOnboardingDto, CreateStarterWalletsDto,
 } from './auth.dto'
 import { JwtAuthGuard } from './jwt-auth.guard'
 import { Public } from './jwt-auth.guard'
@@ -75,13 +75,12 @@ export class AuthController {
 
   // POST /api/auth/starter-wallets  (protected)
   // Opting in to envelope budgeting. No longer part of onboarding.
+  // A real DTO class, not an inline body type — ValidationPipe only validates when the
+  // parameter's metatype is a class, so the previous signature was validated by nothing.
   @Post('starter-wallets')
   @HttpCode(HttpStatus.OK)
-  createStarterWallets(
-    @CurrentUser() user: User,
-    @Body() body: { wallets: string[]; lang?: 'th' | 'en' },
-  ) {
-    return this.service.createStarterWallets(user.id, body.wallets ?? [], body.lang ?? 'th')
+  createStarterWallets(@CurrentUser() user: User, @Body() dto: CreateStarterWalletsDto) {
+    return this.service.createStarterWallets(user.id, dto.wallets, dto.lang ?? 'th')
   }
 
   // PATCH /api/auth/change-password  (protected)
@@ -109,7 +108,9 @@ export class AuthController {
     return this.service.resetPassword(dto.token, dto.password)
   }
 
-  // GET /api/auth/onboarding/wallets  (public reference)
+  // GET /api/auth/onboarding/wallets
+  // The class-level JwtAuthGuard applies — the old "(public reference)" comment described
+  // behaviour this route never had. It is only ever called from inside the app.
   @Get('onboarding/wallets')
   getDefaultWallets() {
     return DEFAULT_WALLETS

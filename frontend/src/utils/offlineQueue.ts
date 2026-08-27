@@ -19,7 +19,7 @@ const DB_VERSION = 1
 const STORE = 'pending-expenses'
 
 export interface PendingExpense {
-  /** Local id, also the idempotency marker if the server ever grows one. */
+  /** Local id, sent as `clientKey` so a replayed create collapses onto the same row. */
   id: string
   userId: string
   payload: CreateExpensePayload
@@ -124,7 +124,10 @@ export async function flush(
 
   for (const entry of pending) {
     try {
-      await send(entry.payload)
+      // The key travels with every attempt. A create whose response was lost on the way
+      // back has already been written, and without this the retry wrote it again — the
+      // duplicate-transaction bug this queue was otherwise causing rather than solving.
+      await send({ ...entry.payload, clientKey: entry.id })
       await remove(entry.id)
       result.sent++
     } catch (err) {

@@ -1,7 +1,7 @@
 import {
   Injectable, ConflictException, UnauthorizedException, BadRequestException,
 } from '@nestjs/common'
-import { randomBytes } from 'crypto'
+import { randomBytes, createHash } from 'crypto'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { JwtService } from '@nestjs/jwt'
@@ -384,6 +384,8 @@ export class AuthService {
    * rather than something onboarding does on the user's behalf.
    */
   async createStarterWallets(userId: string, walletKeys: string[], lang: 'th' | 'en' = 'th') {
+    // Defensive even with the DTO in place: this is also reachable from the assistant.
+    if (!Array.isArray(walletKeys)) throw new BadRequestException('wallets must be an array')
     const wallets = DEFAULT_WALLETS.filter((w) => walletKeys.includes(w.key))
     if (wallets.length === 0) throw new BadRequestException('Pick at least one wallet')
 
@@ -403,12 +405,27 @@ export class AuthService {
   }
 
   // ── Forgot Password ─────────────────────────────────────────
+  /**
+   * The reset token is stored hashed, never in the clear.
+   *
+   * It is a bearer credential: for thirty minutes, whoever holds it can take over the
+   * account. Storing the raw value meant any read of the users table — a leaked backup,
+   * an over-broad admin query, a log that captured a row — handed out working takeover
+   * links. Hashing it means the database only ever holds something useless on its own,
+   * exactly like `password_hash`. SHA-256 rather than bcrypt is right here: the token is
+   * 256 bits of CSPRNG output, so there is no guessing attack for a slow hash to defend
+   * against, and the lookup has to stay fast.
+   */
+  private hashResetToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex')
+  }
+
   async forgotPassword(email: string) {
     const user = await this.users.findOne({ where: { email } })
     if (user) {
       const token = randomBytes(32).toString('hex')
       const expiry = new Date(Date.now() + 30 * 60 * 1000)
-      await this.users.update(user.id, { resetToken: token, resetTokenExpiry: expiry })
+      await this.users.update(user.id, { resetToken: this.hashResetToken(token), resetTokenExpiry: expiry })
       const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173'
       const resetUrl = `${frontendUrl}/reset-password?token=${token}`
       this.sendResetEmail(email, resetUrl).catch((err: unknown) => console.error('[mailer] failed to send reset email:', err))
@@ -418,7 +435,11 @@ export class AuthService {
 
   // ── Reset Password ───────────────────────────────────────────
   async resetPassword(token: string, newPassword: string) {
-    const user = await this.users.findOne({ where: { resetToken: token } })
+    // Look the row up by the hash of the presented token — the raw value is never stored.
+    // Accounts issued a token before this change hold a raw value in the column; those
+    // links stop working and the user simply requests a new one, which is the right
+    // trade for not keeping live takeover credentials in the clear.
+    const user = await this.users.findOne({ where: { resetToken: this.hashResetToken(token) } })
     if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
       throw new BadRequestException('ลิงก์หมดอายุหรือไม่ถูกต้อง')
     }

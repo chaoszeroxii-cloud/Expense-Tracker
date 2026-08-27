@@ -74,8 +74,14 @@ services:
     command: npm run dev
     environment:
       VITE_API_URL:            http://localhost:3001
-      VITE_GOOGLE_CLIENT_ID:   ${VITE_GOOGLE_CLIENT_ID}
-      VITE_FACEBOOK_APP_ID:    ${VITE_FACEBOOK_APP_ID}
+      # Optional. Without them the app runs fine and simply hides those sign-in
+      # buttons — it used to white-screen instead, because the Google hook throws
+      # when initialised with an empty client id.
+      VITE_GOOGLE_CLIENT_ID:   ${VITE_GOOGLE_CLIENT_ID-}
+      VITE_FACEBOOK_APP_ID:    ${VITE_FACEBOOK_APP_ID-}
+      # Bind-mounted files are only seen by a polling watcher; on the host it is
+      # a constant CPU spin for nothing.
+      VITE_USE_POLLING:        "true"
     volumes:
       - ./frontend:/app          # hot reload in dev
       - /app/node_modules        # hot reload in dev
@@ -86,8 +92,12 @@ services:
     networks:
       - app-network
 
-  # ── pgAdmin (dev only — remove in production) ─────────────
+  # ── pgAdmin ────────────────────────────────────────────────
+  # Behind a profile: it is a ~500 MB image that used to start with every
+  # `docker compose up` and sit idle. Start it deliberately when needed:
+  #   docker compose --profile debug up
   pgadmin:
+    profiles: ["debug"]
     image: dpage/pgadmin4:latest
     container_name: expense_pgadmin
     environment:

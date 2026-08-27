@@ -11,7 +11,16 @@ import { BudgetsService } from '../budgets/budgets.service'
 import { AllocationsService } from '../allocations/allocations.service'
 import { InvestmentsService } from '../investments/investments.service'
 import { TaxService } from '../tax/tax.service'
+import { ExpensesService } from '../expenses/expenses.service'
+import { User } from '../users/user.entity'
 import { MDI_ICON_IDS } from '../../common/icon.util'
+import {
+  MONTH_PATTERN, monthRangePredicate, yearRangePredicate,
+  localMonth, localToday, safeTimezone, shiftMonth,
+} from '../../common/local-date.util'
+
+/** Guards a model-supplied id before it reaches a uuid column. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ─────────────────────────────────────────────────────────────
 // Tool definitions for DeepSeek
@@ -464,6 +473,8 @@ export class ChatService {
     private readonly msgRepo: Repository<ChatMessage>,
     @InjectRepository(AiUsageLog)
     private readonly usageRepo: Repository<AiUsageLog>,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
     private readonly tavily: TavilyService,
     private readonly categoriesSvc: CategoriesService,
     private readonly loansSvc: LoansService,
@@ -471,7 +482,63 @@ export class ChatService {
     private readonly allocationsSvc: AllocationsService,
     private readonly investmentsSvc: InvestmentsService,
     private readonly taxSvc: TaxService,
+    // Transactions written by a tool go through the same service the REST API uses.
+    // Hand-rolled SQL here had already drifted: it never set `expenses.allocation_id`,
+    // and `delete_transaction` reversed `total_balance` while leaving the envelope
+    // untouched, so asking the assistant to undo its own entry corrupted the wallet.
+    private readonly expensesSvc: ExpensesService,
   ) {}
+
+  /** The zone that decides what "this month" means for this user. */
+  private async tzFor(userId: string): Promise<string> {
+    const user = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'timezone'] })
+    return safeTimezone(user?.timezone)
+  }
+
+  /** A model-supplied month is untrusted input; fall back rather than query on it. */
+  private validMonth(value: unknown, fallback: string): string {
+    return typeof value === 'string' && MONTH_PATTERN.test(value) ? value : fallback
+  }
+
+  /**
+   * A date the model supplied, normalised to an ISO instant.
+   *
+   * Two corrections. Thai users say years in the Buddhist era, and the model echoes them
+   * back ("2569-05-24"); anything past 2500 is BE and gets 543 subtracted. And a bare
+   * `YYYY-MM-DD` has no zone, so parsing it as ISO gives midnight *UTC* — 07:00 the same
+   * morning in Bangkok, which is fine, but midnight local is what the user means, and on
+   * the 1st of a month the difference decides which month the entry lands in.
+   */
+  private normalizeOccurredAt(raw: unknown, tz: string): string {
+    const fallback = localToday(tz)
+    let value = typeof raw === 'string' && raw.trim() ? raw.trim() : fallback
+    value = value.replace(/^(\d{4})/, (y) => (parseInt(y, 10) > 2500 ? String(parseInt(y, 10) - 543) : y))
+
+    // Already a full timestamp — trust it.
+    if (/\d{2}:\d{2}/.test(value)) {
+      const parsed = new Date(value)
+      return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString()
+    }
+
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : fallback
+    // Noon local keeps the calendar day stable under any zone offset, including the
+    // half-hour ones, without needing a tz-aware date library on the server.
+    const noonLocal = new Date(`${day}T12:00:00Z`)
+    const offsetMin = this.zoneOffsetMinutes(tz, noonLocal)
+    return new Date(noonLocal.getTime() - offsetMin * 60_000).toISOString()
+  }
+
+  /** Minutes `tz` is ahead of UTC at `at`. */
+  private zoneOffsetMinutes(tz: string, at: Date): number {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz, hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+    }).formatToParts(at)
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value)
+    const asUtc = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour') % 24, get('minute'), get('second'))
+    return Math.round((asUtc - at.getTime()) / 60_000)
+  }
 
   // ── Send chat message ──────────────────────────────────────
   async chat(userId: string, userMessage: string, context: Record<string, any> = {}) {
@@ -854,74 +921,95 @@ export class ChatService {
   // Tool executor
   // ─────────────────────────────────────────────────────────────
   private async executeTool(userId: string, name: string, args: any): Promise<any> {
-    const now = new Date()
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-    const currentYear = now.getFullYear()
+    // Every date boundary below follows the user's own calendar. Deriving "this month"
+    // from the server clock reported the previous month for the first seven hours of
+    // every 1st in Asia/Bangkok, so the assistant answered about the wrong month.
+    const tz = await this.tzFor(userId)
+    const today = localToday(tz)
+    const currentMonth = localMonth(tz)
+    const currentYear = parseInt(today.slice(0, 4), 10)
     const db = this.msgRepo.manager
 
     switch (name) {
 
       // ── get_financial_summary ──────────────────────────────
       case 'get_financial_summary': {
-        const month = args.month ?? currentMonth
-        const [exp, inc] = await Promise.all([
-          db.query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE user_id=$1 AND type='expense' AND TO_CHAR(occurred_at,'YYYY-MM')=$2`, [userId, month]),
-          db.query(`SELECT COALESCE(SUM(amount),0) as total FROM expenses WHERE user_id=$1 AND type='income' AND TO_CHAR(occurred_at,'YYYY-MM')=$2`, [userId, month]),
-        ])
-        const totalExpense = parseFloat(exp[0]?.total ?? '0')
-        const totalIncome = parseFloat(inc[0]?.total ?? '0')
+        const month = this.validMonth(args.month, currentMonth)
+        const [row] = await db.query(
+          `SELECT COALESCE(SUM(amount) FILTER (WHERE type='expense'),0) AS expense,
+                  COALESCE(SUM(amount) FILTER (WHERE type='income'),0)  AS income
+             FROM expenses
+            WHERE user_id=$1 AND ${monthRangePredicate('occurred_at', '$2', '$3')}`,
+          [userId, month, tz],
+        )
+        const totalExpense = parseFloat(row?.expense ?? '0')
+        const totalIncome = parseFloat(row?.income ?? '0')
         return { month, totalExpense, totalIncome, net: totalIncome - totalExpense }
       }
 
       // ── get_transactions ───────────────────────────────────
       case 'get_transactions': {
-        const month = args.month ?? currentMonth
-        const limit = args.limit ?? 30
-        const typeFilter = args.type === 'all' ? '' : `AND e.type='${args.type ?? 'expense'}'`
+        const month = this.validMonth(args.month, currentMonth)
+        const limit = Math.min(Math.max(parseInt(args.limit, 10) || 30, 1), 200)
+
+        // `args` is JSON the *model* produced, and the model is steered by whatever the
+        // user typed. Interpolating it into SQL turned a prompt injection into a SQL
+        // injection: `type: "x' OR '1'='1"` closed the quote and, because AND binds
+        // tighter than OR, collapsed the whole WHERE clause to TRUE — returning every
+        // row in `expenses`, for every account. Bound parameter, plus a whitelist so an
+        // unknown value degrades to "no filter" rather than reaching the driver.
+        const type = args.type === 'expense' || args.type === 'income' ? args.type : null
+
         const rows = await db.query(
           `SELECT e.id, e.amount, e.type, e.note, e.occurred_at, c.name as category
            FROM expenses e LEFT JOIN categories c ON e.category_id=c.id
-           WHERE e.user_id=$1 AND TO_CHAR(e.occurred_at,'YYYY-MM')=$2 ${typeFilter}
-           ORDER BY e.occurred_at DESC LIMIT $3`,
-          [userId, month, limit],
+           WHERE e.user_id=$1
+             AND ${monthRangePredicate('e.occurred_at', '$2', '$3')}
+             AND ($4::text IS NULL OR e.type = $4)
+           ORDER BY e.occurred_at DESC LIMIT $5`,
+          [userId, month, tz, type, limit],
         )
         return { transactions: rows, count: rows.length, month }
       }
 
       // ── analyze_finances ───────────────────────────────────
       case 'analyze_finances': {
-        const months: string[] = []
-        for (let i = 2; i >= 0; i--) {
-          const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-          months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
-        }
+        // Three whole calendar months ending with the current one, in the user's zone.
+        // `occurred_at >= NOW() - INTERVAL '3 months'` returned four partial buckets and
+        // cut the oldest one mid-month, so the "3-month trend" compared unequal periods.
+        const firstMonth = shiftMonth(currentMonth, -2)
 
         const [trend, catBreakdown, topExpenses, budgets, allocations, loans, portfolio] = await Promise.all([
           // 3-month trend
           db.query(
-            `SELECT TO_CHAR(occurred_at,'YYYY-MM') as month,
+            `SELECT TO_CHAR(occurred_at AT TIME ZONE $2, 'YYYY-MM') as month,
                     SUM(CASE WHEN type='income' THEN amount ELSE 0 END) as income,
                     SUM(CASE WHEN type='expense' THEN amount ELSE 0 END) as expense
-             FROM expenses WHERE user_id=$1 AND occurred_at >= NOW() - INTERVAL '3 months'
+             FROM expenses
+             WHERE user_id=$1
+               AND occurred_at >= ((($3 || '-01')::date)::timestamp AT TIME ZONE $2)
+               AND occurred_at < (((($4 || '-01')::date) + INTERVAL '1 month')::timestamp AT TIME ZONE $2)
              GROUP BY 1 ORDER BY 1`,
-            [userId],
+            [userId, tz, firstMonth, currentMonth],
           ),
           // Category breakdown current month with notes sample
           db.query(
             `SELECT c.name as category, SUM(e.amount) as total, COUNT(*) as count,
                     STRING_AGG(DISTINCT e.note, ' | ') as sample_notes
              FROM expenses e LEFT JOIN categories c ON e.category_id=c.id
-             WHERE e.user_id=$1 AND TO_CHAR(e.occurred_at,'YYYY-MM')=$2 AND e.type='expense'
+             WHERE e.user_id=$1 AND ${monthRangePredicate('e.occurred_at', '$2', '$3')}
+               AND e.type='expense'
              GROUP BY c.name ORDER BY total DESC LIMIT 10`,
-            [userId, currentMonth],
+            [userId, currentMonth, tz],
           ),
           // Top 5 biggest expenses this month with note
           db.query(
             `SELECT e.amount, e.note, e.occurred_at, c.name as category
              FROM expenses e LEFT JOIN categories c ON e.category_id=c.id
-             WHERE e.user_id=$1 AND TO_CHAR(e.occurred_at,'YYYY-MM')=$2 AND e.type='expense'
+             WHERE e.user_id=$1 AND ${monthRangePredicate('e.occurred_at', '$2', '$3')}
+               AND e.type='expense'
              ORDER BY e.amount DESC LIMIT 5`,
-            [userId, currentMonth],
+            [userId, currentMonth, tz],
           ),
           // Budget vs actual
           this.budgetsSvc.getBudgetWithActual(userId, currentMonth),
@@ -944,10 +1032,19 @@ export class ChatService {
             totalOwed: loans.totalOwed,
             active: loans.loans?.slice(0, 5),
           },
+          // `currentValue` and `gain` are not produced anywhere — InvestmentsService
+          // returns cost/sold/netCost/units and no market price is ever fetched. Reading
+          // them yielded `undefined`, which fell back to cost and told the model the
+          // portfolio's gain was exactly zero, every time. Report what is actually known
+          // and say plainly that market value is not tracked, so it stops inventing one.
           portfolio: {
             totalCost: portfolio.reduce((s: number, inv: any) => s + (inv.totalCost ?? 0), 0),
-            totalValue: portfolio.reduce((s: number, inv: any) => s + (inv.currentValue ?? inv.totalCost ?? 0), 0),
-            investments: portfolio.map((inv: any) => ({ name: inv.name, type: inv.type, gain: inv.gain })),
+            totalSold: portfolio.reduce((s: number, inv: any) => s + (inv.totalSold ?? 0), 0),
+            netCost: portfolio.reduce((s: number, inv: any) => s + (inv.netCost ?? 0), 0),
+            marketValueTracked: false,
+            investments: portfolio.map((inv: any) => ({
+              name: inv.name, type: inv.type, netCost: inv.netCost, units: inv.totalUnits,
+            })),
           },
         }
       }
@@ -984,16 +1081,21 @@ export class ChatService {
 
       // ── get_budget_status ──────────────────────────────────
       case 'get_budget_status': {
-        const month = args.month ?? currentMonth
+        const month = this.validMonth(args.month, currentMonth)
         return { month, budgets: await this.budgetsSvc.getBudgetWithActual(userId, month) }
       }
 
       // ── get_portfolio ──────────────────────────────────────
       case 'get_portfolio': {
         const investments = await this.investmentsSvc.findAll(userId)
-        const totalCost = investments.reduce((s: number, inv: any) => s + (inv.totalCost ?? 0), 0)
-        const totalValue = investments.reduce((s: number, inv: any) => s + (inv.currentValue ?? inv.totalCost ?? 0), 0)
-        return { investments, totalCost, totalValue, totalGain: totalValue - totalCost }
+        // No market price is stored, so there is no gain to report — see analyze_finances.
+        return {
+          investments,
+          totalCost: investments.reduce((s: number, inv: any) => s + (inv.totalCost ?? 0), 0),
+          totalSold: investments.reduce((s: number, inv: any) => s + (inv.totalSold ?? 0), 0),
+          netCost: investments.reduce((s: number, inv: any) => s + (inv.netCost ?? 0), 0),
+          marketValueTracked: false,
+        }
       }
 
       // ── get_tax_summary ────────────────────────────────────
@@ -1010,19 +1112,24 @@ export class ChatService {
         const yearStr = String(taxYear)
 
         const [incomeRows, dividendRows, deductions] = await Promise.all([
-          // Annual income from transactions
+          // Annual income from transactions. `EXTRACT(YEAR FROM occurred_at)` reads the
+          // server's zone, which for a UTC container puts income earned on 1 Jan before
+          // 07:00 Bangkok time into the *previous* tax year — the one thing a tax
+          // calculation must not get wrong.
           db.query(
             `SELECT COALESCE(SUM(amount),0) as total FROM expenses
-             WHERE user_id=$1 AND type='income' AND EXTRACT(YEAR FROM occurred_at)=$2`,
-            [userId, yearStr],
+             WHERE user_id=$1 AND type='income'
+               AND ${yearRangePredicate('occurred_at', '$2', '$3')}`,
+            [userId, yearStr, tz],
           ),
           // Dividends from investments
           db.query(
             `SELECT COALESCE(SUM(it.amount),0) as total
              FROM investment_transactions it
              JOIN investments i ON it.investment_id=i.id
-             WHERE i.user_id=$1 AND it.type='dividend' AND EXTRACT(YEAR FROM it.occurred_at)=$2`,
-            [userId, yearStr],
+             WHERE i.user_id=$1 AND it.type='dividend'
+               AND ${yearRangePredicate('it.occurred_at', '$2', '$3')}`,
+            [userId, yearStr, tz],
           ),
           this.taxSvc.findByYear(userId, taxYear),
         ])
@@ -1069,59 +1176,72 @@ export class ChatService {
 
       // ── create_transaction ─────────────────────────────────
       case 'create_transaction': {
-        const cats = await db.query(
-          `SELECT id, name FROM categories WHERE user_id=$1 AND type=$2`,
-          [userId, args.type],
-        )
-        const cat = cats.find((c: any) =>
-          c.name.toLowerCase().includes((args.categoryName ?? '').toLowerCase()),
-        ) ?? cats[0]
-
-        const rawOccurredAt = args.occurredAt ?? now.toISOString()
-        const occurredAt = rawOccurredAt.replace(/^(\d{4})/, (y: string) =>
-          parseInt(y) > 2500 ? String(parseInt(y) - 543) : y
-        )
-        await db.query(
-          `INSERT INTO expenses (id, user_id, category_id, amount, type, note, occurred_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)`,
-          [userId, cat?.id ?? null, args.amount, args.type, args.note ?? null, occurredAt],
-        )
-        const delta = args.type === 'income' ? args.amount : -args.amount
-        await db.query(`UPDATE users SET total_balance=total_balance+$1, updated_at=NOW() WHERE id=$2`, [delta, userId])
-
-        // Debit/credit allocation if category is linked
-        if (cat?.id) {
-          try {
-            if (args.type === 'expense') {
-              await this.allocationsSvc.debitByCategory(cat.id, userId, args.amount)
-            } else {
-              await this.allocationsSvc.creditByIncomeCategory(cat.id, userId, args.amount)
-            }
-          } catch { /* allocation not linked — skip */ }
+        const type = args.type === 'income' ? 'income' : 'expense'
+        const amount = Number(args.amount)
+        if (!Number.isFinite(amount) || amount <= 0) {
+          return { error: 'จำนวนเงินต้องมากกว่า 0' }
         }
+
+        const cats = await db.query(
+          `SELECT id, name FROM categories WHERE user_id=$1 AND type=$2 ORDER BY name`,
+          [userId, type],
+        )
+        // Falling back to `cats[0]` filed the entry under an arbitrary category when the
+        // name did not match — a silent misclassification the user has no way to notice.
+        // Better to hand the model the list and let it ask.
+        const wanted = String(args.categoryName ?? '').trim().toLowerCase()
+        const cat = wanted
+          ? cats.find((c: any) => c.name.toLowerCase() === wanted)
+            ?? cats.find((c: any) => c.name.toLowerCase().includes(wanted))
+          : undefined
+        if (!cat) {
+          return {
+            error: `ไม่พบหมวด "${args.categoryName ?? ''}"`,
+            availableCategories: cats.map((c: any) => c.name),
+          }
+        }
+
+        const occurredAt = this.normalizeOccurredAt(args.occurredAt, tz)
+
+        // Through the service, not raw SQL: it runs in one transaction, resolves and
+        // stores `allocation_id`, and moves the envelope balance the same way the REST
+        // API does. The old hand-written INSERT did none of that.
+        const created = await this.expensesSvc.create(
+          { categoryId: cat.id, amount, type, note: args.note ?? undefined, occurredAt },
+          userId,
+        )
 
         return {
           success: true,
-          message: `บันทึก${args.type === 'income' ? 'รายรับ' : 'รายจ่าย'} ฿${args.amount} หมวด "${cat?.name ?? 'ไม่ระบุ'}" แล้ว`,
+          transactionId: created.id,
+          message: `บันทึก${type === 'income' ? 'รายรับ' : 'รายจ่าย'} ฿${amount} หมวด "${cat.name}" แล้ว`,
           marker: '[REFRESH:transactions,dashboard,wallets]',
         }
       }
 
       // ── delete_transaction ─────────────────────────────────
       case 'delete_transaction': {
-        const [tx] = await db.query(
-          `SELECT e.*, c.name as category_name FROM expenses e LEFT JOIN categories c ON e.category_id=c.id WHERE e.id=$1 AND e.user_id=$2`,
-          [args.transactionId, userId],
-        )
-        if (!tx) return { error: 'ไม่พบรายการนี้' }
+        // A model-supplied id that is not a UUID reached Postgres and came back as
+        // `invalid input syntax for type uuid` — a 500 in the middle of an open stream.
+        if (!UUID_PATTERN.test(String(args.transactionId ?? ''))) {
+          return { error: 'ไม่พบรายการนี้' }
+        }
 
-        await db.query(`DELETE FROM expenses WHERE id=$1`, [args.transactionId])
-        const delta = tx.type === 'income' ? -parseFloat(tx.amount) : parseFloat(tx.amount)
-        await db.query(`UPDATE users SET total_balance=total_balance+$1, updated_at=NOW() WHERE id=$2`, [delta, userId])
+        let tx: any
+        try {
+          tx = await this.expensesSvc.findOne(args.transactionId, userId)
+        } catch {
+          return { error: 'ไม่พบรายการนี้' }
+        }
+
+        // The previous version deleted the row and reversed `total_balance` but never
+        // touched the envelope, so "จดค่ากาแฟ 100" then "ลบรายการนั้น" left the wallet
+        // permanently 100 short. `remove()` reverses both, in one transaction.
+        await this.expensesSvc.remove(args.transactionId, userId)
 
         return {
           success: true,
-          message: `ลบรายการ "${tx.note ?? tx.category_name}" ฿${tx.amount} แล้ว`,
+          message: `ลบรายการ "${tx.note ?? tx.category?.name ?? ''}" ฿${tx.amount} แล้ว`,
           marker: '[REFRESH:transactions,dashboard,wallets]',
         }
       }
@@ -1303,10 +1423,8 @@ export class ChatService {
         )
         if (!inv) return { error: `ไม่พบกองทุน "${args.investmentName}" — available: ${investments.map((i: any) => i.symbol || i.name).join(', ')}` }
 
-        // Normalize BE date to CE (e.g. "2569-05-24" → "2026-05-24")
-        const occurredAt = (args.occurredAt ?? new Date().toISOString().slice(0, 10)).replace(/^(\d{4})/, (y: string) =>
-          parseInt(y) > 2500 ? String(parseInt(y) - 543) : y
-        )
+        // BE→CE and zone handling both live in one place now — see normalizeOccurredAt.
+        const occurredAt = this.normalizeOccurredAt(args.occurredAt, tz)
         this.logger.log(`[inv_tx] found="${inv.name}" id=${inv.id} occurredAt=${occurredAt} args=${JSON.stringify(args)}`)
 
         await this.investmentsSvc.addTransaction(userId, inv.id, {

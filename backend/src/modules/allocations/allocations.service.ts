@@ -48,8 +48,10 @@ export class AllocationsService {
   }
 
   async create(dto: CreateAllocationDto, userId: string): Promise<Allocation> {
-    const categories = await this.resolveCategories(dto.categoryIds ?? [], userId)
-    const incomeCategories = await this.resolveCategories(dto.incomeCategoryIds ?? [], userId)
+    const categories = await this.resolveCategories(dto.categoryIds ?? [], userId, 'expense')
+    const incomeCategories = await this.resolveCategories(dto.incomeCategoryIds ?? [], userId, 'income')
+    await this.assertCategoriesUnlinked(userId, categories, incomeCategories, null)
+
     const allocation = this.repo.create({
       name: dto.name,
       icon: normalizeMdiIconId(dto.icon, 'wallet'),
@@ -66,18 +68,67 @@ export class AllocationsService {
     if (dto.name  !== undefined) allocation.name  = dto.name
     if (dto.icon  !== undefined) allocation.icon  = normalizeMdiIconId(dto.icon, 'wallet')
     if (dto.color !== undefined) allocation.color = dto.color
-    if (dto.categoryIds !== undefined) {
-      allocation.categories = await this.resolveCategories(dto.categoryIds, userId)
-    }
-    if (dto.incomeCategoryIds !== undefined) {
-      allocation.incomeCategories = await this.resolveCategories(dto.incomeCategoryIds, userId)
-    }
+
+    const nextCategories = dto.categoryIds !== undefined
+      ? await this.resolveCategories(dto.categoryIds, userId, 'expense')
+      : null
+    const nextIncomeCategories = dto.incomeCategoryIds !== undefined
+      ? await this.resolveCategories(dto.incomeCategoryIds, userId, 'income')
+      : null
+
+    await this.assertCategoriesUnlinked(userId, nextCategories, nextIncomeCategories, id)
+
+    if (nextCategories) allocation.categories = nextCategories
+    if (nextIncomeCategories) allocation.incomeCategories = nextIncomeCategories
     return this.repo.save(allocation)
   }
 
+  /**
+   * A wallet can only be deleted once it is empty.
+   *
+   * `repo.remove()` used to drop the row whatever it held, and the balance simply
+   * evaporated: `totalBalance` is not touched by a wallet delete, so the unallocated pool
+   * silently grew by exactly the deleted amount — or shrank, for a wallet in deficit —
+   * with nothing anywhere to say why. A number moving on its own is the fastest way to
+   * lose a user's trust in a money app.
+   *
+   * Emptying it first is not busywork: `unallocateFromAllocation` writes a movement row,
+   * so the money has a recorded path from wallet to pool. Doing it here instead would
+   * write that row against a wallet the same transaction then deletes, and the FK
+   * cascades it away — an audit trail that deletes itself is not one.
+   *
+   * A wallet in deficit has to be settled the same way, by transferring in enough to
+   * clear it, because the shortfall is real money the other wallets are covering.
+   */
   async remove(id: string, userId: string): Promise<void> {
-    const allocation = await this.findOne(id, userId)
-    await this.repo.remove(allocation)
+    await this.dataSource.transaction(async (em: EntityManager) => {
+      const allocation = await em.getRepository(Allocation)
+        .createQueryBuilder('a')
+        .setLock('pessimistic_write')
+        .where('a.id = :id AND a.user_id = :userId', { id, userId })
+        .getOne()
+      if (!allocation) throw new NotFoundException(`Allocation ${id} not found`)
+
+      const balance = round2(Number(allocation.balance))
+      if (balance > 0) {
+        throw new BadRequestException(
+          `"${allocation.name}" still holds ฿${balance.toFixed(2)}. ` +
+          `Return it to the unallocated pool before deleting the wallet.`,
+        )
+      }
+      if (balance < 0) {
+        throw new BadRequestException(
+          `"${allocation.name}" is ฿${Math.abs(balance).toFixed(2)} in deficit. ` +
+          `Cover the shortfall before deleting the wallet.`,
+        )
+      }
+
+      // Expenses that pointed here keep their row but lose the link (the FK is
+      // ON DELETE SET NULL). That is why ExpensesService now reads a null
+      // allocation_id as "no envelope was moved" rather than guessing from today's
+      // category links — guessing credited a wallet that had never been debited.
+      await em.delete(Allocation, { id, userId })
+    })
   }
 
   // ── Move unallocated funds into a wallet ──────────────────────
@@ -99,11 +150,10 @@ export class AllocationsService {
         .getOne()
       if (!user) throw new NotFoundException('User not found')
 
-      const target = await allocRepo.findOne({ where: { id: allocationId, userId } })
+      const target = await allocRepo.findOne({ where: { id: allocationId, userId }, loadEagerRelations: false })
       if (!target) throw new NotFoundException(`Allocation ${allocationId} not found`)
 
-      const allAllocations = await allocRepo.find({ where: { userId } })
-      const totalAllocated = allAllocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
+      const totalAllocated = await this.sumAllocated(userId, em)
       const unallocated = round2(Number(user.totalBalance) - totalAllocated)
 
       if (amount > unallocated) {
@@ -197,11 +247,16 @@ export class AllocationsService {
   async debitByCategory(categoryId: string, userId: string, amount: number, em?: EntityManager) {
     const repo = em ? em.getRepository(Allocation) : this.repo
 
-    // Find allocation that has this category linked
+    // `ORDER BY a.id` so the answer is stable. Without it, a category that had somehow
+    // been linked to two wallets resolved to whichever row the plan produced first —
+    // which could differ between the debit and its later reversal, moving money between
+    // two wallets that no user action ever touched. Migration 1785220000000 makes the
+    // duplicate impossible; this ordering keeps the behaviour deterministic regardless.
     const allocation = await repo
       .createQueryBuilder('a')
       .innerJoin('a.categories', 'c', 'c.id = :categoryId', { categoryId })
       .where('a.user_id = :userId', { userId })
+      .orderBy('a.id', 'ASC')
       .getOne()
 
     if (!allocation) return null
@@ -221,11 +276,12 @@ export class AllocationsService {
   async creditByIncomeCategory(categoryId: string, userId: string, amount: number, em?: EntityManager) {
     const repo = em ? em.getRepository(Allocation) : this.repo
 
-    // Find allocation that has this income category linked
+    // Deterministic for the same reason as debitByCategory above.
     const allocation = await repo
       .createQueryBuilder('a')
       .innerJoin('a.incomeCategories', 'c', 'c.id = :categoryId', { categoryId })
       .where('a.user_id = :userId', { userId })
+      .orderBy('a.id', 'ASC')
       .getOne()
 
     if (!allocation) return null
@@ -294,7 +350,7 @@ export class AllocationsService {
     }
 
     const [allocations, fundedMap, unallocatedBalance] = await Promise.all([
-      this.repo.find({ where: { userId }, order: { name: 'ASC' } }),
+      this.repo.find({ where: { userId }, order: { name: 'ASC' }, loadEagerRelations: false }),
       this.getFundedThisMonthMap(userId, currentMonth),
       this.getUnallocated(userId),
     ])
@@ -345,13 +401,22 @@ export class AllocationsService {
         .getOne()
       if (!user) throw new NotFoundException('User not found')
 
-      const allocations = await allocRepo.find({ where: { userId } })
-      const ownedIds = new Set(allocations.map((a) => a.id))
+      // Duplicate ids were accepted and each credited in turn, so the same wallet could be
+      // funded twice from one submission while the capacity check counted it once.
+      if (new Set(amounts.map((a) => a.allocationId)).size !== amounts.length) {
+        throw new BadRequestException('Duplicate allocation in request')
+      }
+
+      const ownedRows = await allocRepo.createQueryBuilder('a')
+        .select('a.id', 'id')
+        .where('a.user_id = :userId', { userId })
+        .getRawMany<{ id: string }>()
+      const ownedIds = new Set(ownedRows.map((a) => a.id))
       for (const { allocationId } of amounts) {
         if (!ownedIds.has(allocationId)) throw new NotFoundException(`Allocation ${allocationId} not found`)
       }
 
-      const totalAllocated = allocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
+      const totalAllocated = await this.sumAllocated(userId, em)
       const unallocated   = round2(Number(user.totalBalance) - totalAllocated)
       const sumRequested  = round2(amounts.reduce((s, a) => s + a.amount, 0))
 
@@ -397,7 +462,7 @@ export class AllocationsService {
     month: string,
     items: { allocationId: string; targetAmount: number }[],
   ) {
-    const owned = await this.repo.find({ where: { userId } })
+    const owned = await this.repo.find({ where: { userId }, select: ['id'], loadEagerRelations: false })
     const ownedIds = new Set(owned.map((a) => a.id))
     for (const { allocationId } of items) {
       if (!ownedIds.has(allocationId)) throw new NotFoundException(`Allocation ${allocationId} not found`)
@@ -426,22 +491,103 @@ export class AllocationsService {
   }
 
   // ── Helper ────────────────────────────────────────────────────
-  private async resolveCategories(ids: string[], userId: string): Promise<Category[]> {
+  /**
+   * Resolve category ids to the caller's own categories, of the expected kind.
+   *
+   * Unknown ids used to be dropped in silence — a typo, or a category deleted on another
+   * device, produced a wallet that looked linked in the request and was not. Linking an
+   * income category into the expense list was accepted too, and simply never matched
+   * anything, so the wallet quietly never moved.
+   */
+  private async resolveCategories(
+    ids: string[], userId: string, expectedType: 'expense' | 'income',
+  ): Promise<Category[]> {
     if (!ids.length) return []
-    return this.categoryRepo.find({ where: { id: In(ids), userId } })
+    const unique = [...new Set(ids)]
+    const found = await this.categoryRepo.find({ where: { id: In(unique), userId } })
+
+    if (found.length !== unique.length) {
+      const missing = unique.filter((id) => !found.some((c) => c.id === id))
+      throw new NotFoundException(`Category ${missing[0]} not found`)
+    }
+    const wrongKind = found.find((c) => c.type !== expectedType)
+    if (wrongKind) {
+      throw new BadRequestException(
+        `"${wrongKind.name}" is an ${wrongKind.type} category and cannot be linked as ${expectedType}`,
+      )
+    }
+    return found
+  }
+
+  /**
+   * Refuse a category that already funds another wallet.
+   *
+   * `debitByCategory` resolves the envelope with `.getOne()` and no ORDER BY, so with two
+   * links it picks one arbitrarily — and a later reversal can pick the other, moving money
+   * between wallets no user ever asked to move. The wallet editor already greys these out,
+   * but that guard lives entirely in the browser: the REST API accepted a duplicate, and so
+   * did the assistant's `create_allocation` / `update_allocation` tools, which never render
+   * that UI. Migration 1785220000000 adds the matching unique index; this check exists to
+   * turn the resulting constraint violation into a message that names the other wallet.
+   */
+  private async assertCategoriesUnlinked(
+    userId: string,
+    expenseCategories: Category[] | null,
+    incomeCategories: Category[] | null,
+    excludeAllocationId: string | null,
+  ): Promise<void> {
+    const checks: [string, Category[]][] = []
+    if (expenseCategories?.length) checks.push(['allocation_categories', expenseCategories])
+    if (incomeCategories?.length) checks.push(['allocation_income_categories', incomeCategories])
+
+    for (const [table, categories] of checks) {
+      const clash = await this.dataSource.query(
+        `SELECT a.name AS wallet, c.name AS category
+           FROM ${table} link
+           JOIN allocations a ON a.id = link.allocation_id
+           JOIN categories  c ON c.id = link.category_id
+          WHERE link.category_id = ANY($1::uuid[])
+            AND a.user_id = $2
+            AND ($3::uuid IS NULL OR link.allocation_id <> $3::uuid)
+          LIMIT 1`,
+        [categories.map((c) => c.id), userId, excludeAllocationId],
+      )
+      if (clash.length > 0) {
+        throw new BadRequestException(
+          `Category "${clash[0].category}" is already linked to wallet "${clash[0].wallet}". ` +
+          `A category can fund only one wallet.`,
+        )
+      }
+    }
+  }
+
+  /**
+   * Sum wallet balances in Postgres.
+   *
+   * `Allocation` marks both `categories` and `incomeCategories` as `eager: true`, so
+   * `find({ where: { userId } })` joined two tables and built a Category object for every
+   * link on every wallet — all discarded to add up one numeric column. Four call sites did
+   * this, including two inside a transaction holding a row lock.
+   */
+  private async sumAllocated(userId: string, em?: EntityManager): Promise<number> {
+    const allocRepo = em ? em.getRepository(Allocation) : this.repo
+    const row = await allocRepo
+      .createQueryBuilder('a')
+      .select('COALESCE(SUM(a.balance), 0)', 'total')
+      .where('a.user_id = :userId', { userId })
+      .getRawOne<{ total: string }>()
+    return Number(row?.total ?? 0)
   }
 
   private async getUnallocated(userId: string, em?: EntityManager): Promise<number> {
-    const userRepo  = em ? em.getRepository(User) : this.dataSource.getRepository(User)
-    const allocRepo = em ? em.getRepository(Allocation) : this.repo
+    const userRepo = em ? em.getRepository(User) : this.dataSource.getRepository(User)
 
-    const [user, allocations] = await Promise.all([
-      userRepo.findOne({ where: { id: userId } }),
-      allocRepo.find({ where: { userId } }),
+    const [user, totalAllocated] = await Promise.all([
+      userRepo.findOne({ where: { id: userId }, select: ['id', 'totalBalance'] }),
+      this.sumAllocated(userId, em),
     ])
     if (!user) throw new NotFoundException('User not found')
 
-    const totalAllocated = allocations.reduce((s: number, a: Allocation) => s + Number(a.balance), 0)
     return round2(Number(user.totalBalance) - totalAllocated)
   }
 

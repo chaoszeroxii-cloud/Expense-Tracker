@@ -4,8 +4,9 @@ version: '3.9'
 #
 # Before running:
 #   1. Create .env from .env.example and fill in real secrets
-#   2. Build frontend with VITE_API_URL pointing to your domain:
-#      VITE_API_URL=https://api.yourdomain.com
+#   2. Set API_PUBLIC_URL to where the browser reaches the API. Leave it empty when
+#      nginx proxies /api on the same origin (the default topology below) — the client
+#      then uses a relative /api path and no CORS is involved at all.
 
 services:
   db:
@@ -14,16 +15,26 @@ services:
   backend:
     build:
       target: production
-    command: node dist/main
+    # No `command:` override. The image's CMD is `npm run start:prod`, which applies
+    # pending migrations before booting. Overriding it with `node dist/main` — as this
+    # file used to — meant a production deploy silently never ran a migration, while
+    # dev did, so the two schemas drifted apart with nothing to signal it.
     volumes: []                        # no src mount in production
     environment:
       NODE_ENV: production
+      # Number of proxy hops in front of the app. nginx is one; add one per extra
+      # layer (a CDN, a cloud load balancer). This is what lets the rate limiter see
+      # the real client instead of bucketing everyone under the proxy's address.
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
 
   frontend:
     build:
       target: production
       args:
-        VITE_API_URL:           ${FRONTEND_URL:-https://yourdomain.com}
+        # The API's *public* origin, not the site's. These were the same variable
+        # (`FRONTEND_URL`) before, which built a client that called itself. Empty is
+        # the right default here: nginx proxies /api on this origin.
+        VITE_API_URL:           ${API_PUBLIC_URL-}
         VITE_GOOGLE_CLIENT_ID:  ${VITE_GOOGLE_CLIENT_ID}
         VITE_FACEBOOK_APP_ID:   ${VITE_FACEBOOK_APP_ID}
     command: ""                        # nginx handles serving

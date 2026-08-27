@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Icon from '@mdi/react'
 import { mdiChartTimelineVariant, mdiChevronRight, mdiInboxOutline, mdiWallet } from '@mdi/js'
@@ -7,7 +7,10 @@ import SafeToSpendCard from '../../components/home/SafeToSpendCard'
 import QuickCaptureBar from '../../components/home/QuickCaptureBar'
 import CoverageStrip from '../../components/home/CoverageStrip'
 import PendingSyncBanner from '../../components/home/PendingSyncBanner'
-import AllocationWallets from '../../components/allocations/AllocationWallets'
+// Only rendered in advanced mode, which is off by default — but a static import put all
+// 958 lines of it (plus MonthlyFundingTemplate) in the entry chunk for everyone, because
+// Dashboard is the one route App.tsx loads eagerly.
+const AllocationWallets = lazy(() => import('../../components/allocations/AllocationWallets'))
 import { useDailyBrief } from '../../hooks'
 import { useT, useI18n } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
@@ -133,7 +136,9 @@ export default function Dashboard() {
               {t('nav_wallets')}
             </span>
           </div>
-          <AllocationWallets />
+          <Suspense fallback={<Skeleton className="h-40 w-full rounded-2xl" />}>
+            <AllocationWallets />
+          </Suspense>
         </div>
       )}
     </div>

@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Category } from './category.entity';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
 import { normalizeMdiIconId } from '../../common/icon.util';
+import { lockLedger } from '../../common/ledger-lock.util';
 
 @Injectable()
 export class CategoriesService {
@@ -107,12 +108,15 @@ export class CategoriesService {
     }
 
     await this.repo.manager.transaction(async (em) => {
+      await lockLedger(em, userId);
       if (reassignTo) {
         await em.query(
           `UPDATE expenses SET category_id = $1, updated_at = NOW()
             WHERE user_id = $2 AND category_id = $3`,
           [reassignTo, userId, id],
         );
+        await em.query(`UPDATE recurring_bills SET category_id = $1 WHERE user_id = $2 AND category_id = $3`, [reassignTo, userId, id]);
+        await em.query(`UPDATE bill_occurrences SET category_id = $1 WHERE user_id = $2 AND category_id = $3`, [reassignTo, userId, id]);
       }
       await em.delete(Category, { id, userId });
     });

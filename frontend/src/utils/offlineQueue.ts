@@ -25,6 +25,8 @@ export interface PendingExpense {
   payload: CreateExpensePayload
   queuedAt: number
   attempts: number
+  needsReview?: boolean
+  nextAttemptAt?: number
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null
@@ -50,7 +52,8 @@ function tx<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequ
   return openDb().then(db => new Promise<T>((resolve, reject) => {
     const transaction = db.transaction(STORE, mode)
     const request = run(transaction.objectStore(STORE))
-    request.onsuccess = () => resolve(request.result)
+    transaction.oncomplete = () => resolve(request.result)
+    transaction.onabort = () => reject(transaction.error)
     request.onerror = () => reject(request.error)
   }))
 }
@@ -63,7 +66,7 @@ export function isSupported(): boolean {
 export async function enqueue(userId: string, payload: CreateExpensePayload): Promise<PendingExpense | null> {
   if (!isSupported()) return null
   const entry: PendingExpense = {
-    id: crypto.randomUUID(),
+    id: payload.clientKey ?? crypto.randomUUID(),
     userId,
     payload,
     queuedAt: Date.now(),
@@ -92,9 +95,11 @@ export async function remove(id: string): Promise<void> {
   try { await tx('readwrite', store => store.delete(id) as unknown as IDBRequest<undefined>) } catch { /* ignore */ }
 }
 
-async function bumpAttempts(entry: PendingExpense): Promise<void> {
+async function bumpAttempts(entry: PendingExpense, needsReview: boolean): Promise<void> {
   try {
-    await tx('readwrite', store => store.put({ ...entry, attempts: entry.attempts + 1 }) as IDBRequest<IDBValidKey>)
+    await tx('readwrite', store => store.put({ ...entry, attempts: entry.attempts + 1, needsReview,
+      nextAttemptAt: Date.now() + Math.min(300000, 1000 * 2 ** Math.min(entry.attempts, 9)),
+    }) as IDBRequest<IDBValidKey>)
   } catch { /* ignore */ }
 }
 
@@ -102,27 +107,36 @@ export interface FlushResult {
   sent: number
   failed: number
   dropped: number
+  needsReview: number
 }
 
-/** Entries that keep failing are abandoned rather than retried forever. */
-const MAX_ATTEMPTS = 5
+/** Only explicitly rejected records may be edited; an uncertain result keeps its payload/key. */
+export async function revise(userId: string, id: string, payload: CreateExpensePayload): Promise<void> {
+  const entry = (await listPending(userId)).find(e => e.id === id)
+  if (!entry?.needsReview) throw new Error('Record is not awaiting correction')
+  await tx('readwrite', store => store.put({ ...entry, payload: { ...payload, clientKey: id },
+    attempts: 0, needsReview: false, nextAttemptAt: 0,
+  }))
+}
 
 /**
  * Sends everything queued for this user.
  *
- * A rejection with a *response* means the server refused the transaction (a deleted
- * category, a validation error). Retrying that forever would never succeed, so it
- * counts as an attempt and is dropped once it has clearly failed. A rejection with no
- * response is a network problem and is left alone for the next attempt.
+ * A validation rejection (for example, a deleted category) pauses automatic retries
+ * so the user can correct it. An HTTP response alone is not a permanent rejection.
+ * Network, authentication and server failures retain the entry and retry with backoff.
  */
 export async function flush(
   userId: string,
   send: (payload: CreateExpensePayload) => Promise<unknown>,
+  force = false,
 ): Promise<FlushResult> {
   const pending = await listPending(userId)
-  const result: FlushResult = { sent: 0, failed: 0, dropped: 0 }
+  const result: FlushResult = { sent: 0, failed: 0, dropped: 0, needsReview: 0 }
 
   for (const entry of pending) {
+    if (entry.needsReview) { result.needsReview++; continue }
+    if (!force && (entry.nextAttemptAt ?? 0) > Date.now()) continue
     try {
       // The key travels with every attempt. A create whose response was lost on the way
       // back has already been written, and without this the retry wrote it again — the
@@ -131,17 +145,12 @@ export async function flush(
       await remove(entry.id)
       result.sent++
     } catch (err) {
-      const rejectedByServer = !!(err as { response?: unknown })?.response
-      if (rejectedByServer && entry.attempts + 1 >= MAX_ATTEMPTS) {
-        await remove(entry.id)
-        result.dropped++
-      } else {
-        await bumpAttempts(entry)
-        result.failed++
-        // Stop on the first network failure: the rest will fail the same way and
-        // hammering a dead connection wastes battery.
-        if (!rejectedByServer) break
-      }
+      const status = (err as { response?: { status?: number } })?.response?.status
+      const needsReview = !!status && [400, 404, 409, 422].includes(status)
+      await bumpAttempts(entry, needsReview)
+      result.failed++
+      if (needsReview) result.needsReview++
+      else break // Network, authentication, throttling and 5xx never delete a record.
     }
   }
 

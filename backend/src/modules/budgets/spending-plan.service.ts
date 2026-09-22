@@ -1,9 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { LessThan, Repository } from 'typeorm'
+import { EntityManager, LessThanOrEqual, Repository } from 'typeorm'
 import { MonthlySpendingPlan } from './monthly-spending-plan.entity'
 import { User } from '../users/user.entity'
 import { localToday, safeTimezone } from '../../common/local-date.util'
+import { lockLedger } from '../../common/ledger-lock.util'
 
 export type PlanState = 'explicit' | 'inherited' | 'empty'
 
@@ -54,28 +55,23 @@ export class SpendingPlanService {
   async resolve(userId: string, month: string): Promise<EffectivePlan> {
     this.assertMonth(month)
 
-    const explicit = await this.plans.findOne({ where: { userId, month } })
-    if (explicit) {
-      return { month, state: 'explicit', sourceMonth: null, totalAmount: Number(explicit.totalAmount) }
-    }
-
     const previous = await this.plans.findOne({
-      where: { userId, month: LessThan(month) },
+      where: { userId, month: LessThanOrEqual(month) },
       order: { month: 'DESC' },
     })
     if (previous) {
       return {
         month,
-        state: 'inherited',
-        sourceMonth: previous.month,
-        totalAmount: Number(previous.totalAmount),
+        state: previous.totalAmount === null ? 'empty' : previous.month === month ? 'explicit' : 'inherited',
+        sourceMonth: previous.month === month ? null : previous.month,
+        totalAmount: previous.totalAmount === null ? null : Number(previous.totalAmount),
       }
     }
 
     // Dual-read window: accounts whose plan still lives on the legacy user column, and
     // only for the month they are actually in — the column carries no month of its own,
     // so projecting it backwards would invent history.
-    const user = await this.users.findOne({ where: { id: userId } })
+    const user = await this.users.findOne({ where: { id: userId }, select: ['id', 'timezone', 'monthlySpendingLimit'] })
     const legacy = user?.monthlySpendingLimit == null ? null : Number(user.monthlySpendingLimit)
     if (legacy && legacy > 0) {
       const current = localToday(safeTimezone(user?.timezone)).slice(0, 7)
@@ -93,29 +89,25 @@ export class SpendingPlanService {
    * `null` clears the plan for that month — which is not the same as setting 0, and the
    * table forbids 0 for exactly that reason.
    */
-  async setTotal(userId: string, month: string, totalAmount: number | null): Promise<EffectivePlan> {
+  async setTotal(userId: string, month: string, totalAmount: number | null, manager?: EntityManager): Promise<EffectivePlan> {
     this.assertMonth(month)
 
-    if (totalAmount === null) {
-      await this.plans.delete({ userId, month })
-    } else {
-      if (!(totalAmount > 0)) throw new BadRequestException('Monthly total must be greater than 0')
-      // Upsert, not read-then-write. A double-tap on Save had both requests miss the
-      // existing row and both INSERT, so the second one hit the (user_id, month) unique
-      // constraint and surfaced as a 500 on an action that had actually succeeded.
-      await this.plans.upsert(
+    if (totalAmount !== null && (!Number.isFinite(totalAmount) || !(totalAmount > 0))) {
+      throw new BadRequestException('Monthly total must be greater than 0')
+    }
+    const write = async (em: EntityManager) => {
+      const user = await lockLedger(em, userId)
+      // A null row is an explicit stop: deleting it would resurrect a previous plan.
+      await em.getRepository(MonthlySpendingPlan).upsert(
         { userId, month, totalAmount },
         { conflictPaths: ['userId', 'month'], skipUpdateIfNoValuesChanged: false },
       )
+      if (month === localToday(safeTimezone(user.timezone)).slice(0, 7)) {
+        await em.update(User, userId, { monthlySpendingLimit: totalAmount })
+      }
     }
-
-    // Keep the legacy column in step while other readers migrate. Only the current month
-    // may write it, since the column cannot represent any other.
-    const current = await this.currentMonth(userId)
-    if (month === current) {
-      await this.users.update(userId, { monthlySpendingLimit: totalAmount })
-    }
-
-    return this.resolve(userId, month)
+    if (manager) await write(manager)
+    else await this.plans.manager.transaction(write)
+    return { month, state: totalAmount === null ? 'empty' : 'explicit', sourceMonth: null, totalAmount }
   }
 }

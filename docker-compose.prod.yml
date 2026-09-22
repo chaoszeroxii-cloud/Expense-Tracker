@@ -10,21 +10,18 @@ version: '3.9'
 
 services:
   db:
-    ports: []                          # don't expose DB port publicly
+    ports: !reset []
 
   backend:
     build:
       target: production
-    # No `command:` override. The image's CMD is `npm run start:prod`, which applies
-    # pending migrations before booting. Overriding it with `node dist/main` — as this
-    # file used to — meant a production deploy silently never ran a migration, while
-    # dev did, so the two schemas drifted apart with nothing to signal it.
-    volumes: []                        # no src mount in production
+    command: ["npm", "run", "start:prod"]
+    volumes: !reset []
+    ports: !reset []
     environment:
       NODE_ENV: production
-      # Number of proxy hops in front of the app. nginx is one; add one per extra
-      # layer (a CDN, a cloud load balancer). This is what lets the rate limiter see
-      # the real client instead of bucketing everyone under the proxy's address.
+      # nginx is one trusted hop. Increase only if all API routes have the same
+      # trusted proxy chain and shorter direct routes are blocked.
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-1}
 
   frontend:
@@ -37,9 +34,9 @@ services:
         VITE_API_URL:           ${API_PUBLIC_URL-}
         VITE_GOOGLE_CLIENT_ID:  ${VITE_GOOGLE_CLIENT_ID}
         VITE_FACEBOOK_APP_ID:   ${VITE_FACEBOOK_APP_ID}
-    command: ""                        # nginx handles serving
-    volumes: []
-    ports:
+    command: ["nginx", "-g", "daemon off;"]
+    volumes: !reset []
+    ports: !override
       - "3000:80"
 
   pgadmin:

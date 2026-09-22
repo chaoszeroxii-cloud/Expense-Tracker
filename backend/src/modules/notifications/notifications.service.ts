@@ -1,10 +1,13 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import * as webpush from 'web-push'
 import { PushSubscription } from './push-subscription.entity'
 import { User } from '../users/user.entity'
 import { localToday, safeTimezone } from '../../common/local-date.util'
+import { pushAgent, pushUrl } from './push-endpoint'
+import { lockLedger } from '../../common/ledger-lock.util'
+import { ECDH } from 'node:crypto'
 
 export interface DispatchResult {
   considered: number
@@ -73,25 +76,39 @@ export class NotificationsService {
     sub: { endpoint: string; keys: { p256dh: string; auth: string } },
     userAgent?: string,
   ) {
-    const existing = await this.subs.findOne({ where: { endpoint: sub.endpoint } })
-    if (existing) {
-      existing.userId = userId
-      existing.p256dh = sub.keys.p256dh
-      existing.auth = sub.keys.auth
-      existing.userAgent = userAgent?.slice(0, 200) ?? null
-      await this.subs.save(existing)
-    } else {
-      await this.subs.save(this.subs.create({
-        userId,
-        endpoint: sub.endpoint,
-        p256dh: sub.keys.p256dh,
-        auth: sub.keys.auth,
-        userAgent: userAgent?.slice(0, 200) ?? null,
-      }))
-    }
+    pushUrl(sub.endpoint)
+    try {
+      if (Buffer.from(sub.keys.auth, 'base64url').length !== 16) throw new Error('auth')
+      const key = Buffer.from(sub.keys.p256dh, 'base64url')
+      if (key.length !== 65) throw new Error('key')
+      ECDH.convertKey(key, 'prime256v1')
+    } catch { throw new BadRequestException('Invalid push encryption keys') }
+    return this.subs.manager.transaction(async em => {
+      await lockLedger(em, userId)
+      const subs = em.getRepository(PushSubscription)
+      const existing = await subs.findOne({ where: { endpoint: sub.endpoint } })
+      if ((!existing || existing.userId !== userId) && await subs.count({ where: { userId } }) >= 10) {
+        throw new BadRequestException('At most 10 notification devices')
+      }
+      if (existing) {
+        existing.userId = userId
+        existing.p256dh = sub.keys.p256dh
+        existing.auth = sub.keys.auth
+        existing.userAgent = userAgent?.slice(0, 200) ?? null
+        await subs.save(existing)
+      } else {
+        await subs.save(subs.create({
+          userId,
+          endpoint: sub.endpoint,
+          p256dh: sub.keys.p256dh,
+          auth: sub.keys.auth,
+          userAgent: userAgent?.slice(0, 200) ?? null,
+        }))
+      }
 
-    await this.users.update(userId, { pushEnabled: true })
-    return { ok: true }
+      await em.update(User, userId, { pushEnabled: true })
+      return { ok: true }
+    })
   }
 
   async unsubscribe(userId: string, endpoint?: string) {
@@ -219,10 +236,13 @@ export class NotificationsService {
     const body = JSON.stringify(payload)
 
     for (const device of devices) {
+      let agent: Awaited<ReturnType<typeof pushAgent>> | undefined
       try {
+        agent = await pushAgent(device.endpoint)
         await webpush.sendNotification(
           { endpoint: device.endpoint, keys: { p256dh: device.p256dh, auth: device.auth } },
           body,
+          { agent, timeout: 10000 },
         )
         await this.subs.update(device.id, { lastUsedAt: new Date() })
         out.sent++
@@ -238,7 +258,7 @@ export class NotificationsService {
           this.logger.warn(`push failed (${status ?? 'unknown'}) for user ${userId}`)
           out.failed++
         }
-      }
+      } finally { agent?.destroy() }
     }
 
     return out

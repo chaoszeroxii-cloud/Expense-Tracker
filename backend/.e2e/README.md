@@ -32,6 +32,42 @@ docker rm -f mf_e2e_db
 
 ## Adding a check
 
+Audit regressions (disposable database only): start Postgres on loopback port 15434,
+database `moneyflow_fix_test`, user `expense_user`, password `fix-local-only`.
+Start Vite on 5174 with `VITE_API_URL=http://127.0.0.1:3098`, build the backend,
+then run `node .e2e/audit-regression.cjs` from backend. It starts its own server,
+ignores project `.env`, mocks external OAuth, and verifies security, late bills,
+queue recovery and a complete CSV download. It never uses the main database.
+
+`node .e2e/bill-migration.cjs` verifies the occurrence backfill against legacy rows in
+that same disposable database. It runs its schema/data changes in a transaction and
+rolls everything back. Run it sequentially after the audit suite.
+
+The browser suite mocks only external OAuth and selected failures/AI stream responses;
+expense writes, authentication, planning and downloaded exports use the real API/DB.
+Evidence is recorded in `docs/audits/2026-09-22-regression.json`.
+
+Daily planning verification (same disposable server):
+
+```bash
+npm run test:planning
+node --test test/daily-allowance.test.js
+```
+
+The planning suite covers clear/inherit semantics, preferences consistency, recurring
+bill reservations, concurrent payment retries, linking/deleting actual expenses, savings
+progress, historical wallet routing, ownership and account reset. Frontend integration
+is `npm run test:planning --workspace frontend` with Vite on 5173 and
+`VITE_API_URL=http://localhost:3099`. Both browser suites use project-local artifacts.
+
+For the synthetic index experiment, explicitly set `PERF_TEST_DATABASE` to a disposable
+database name containing `test` or `e2e`, plus `DB_PASSWORD`, `DB_USER` and `DB_PORT`.
+Run `node .e2e/planning-performance.cjs`. Generated rows are rolled back.
+
+When a local `.env` contains `DATABASE_URL`, explicitly override it to an empty string
+for the disposable server. Otherwise it takes precedence over the `DB_*` variables.
+Disable outbound service credentials in the test environment as needed.
+
 Re-inject the defect it exists to catch and watch it go red before keeping it. An
 assertion that has never failed is decoration — the timezone checks here were confirmed
 by restoring `TO_CHAR(occurred_at, 'YYYY-MM')` and seeing the 1 February entry reappear

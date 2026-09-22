@@ -1,6 +1,6 @@
 import {
   IsUUID, IsNumber, IsPositive, IsString, Matches, IsOptional,
-  IsArray, ValidateNested, ArrayMaxSize, Min,
+  IsArray, ValidateNested, ArrayMaxSize, Min, Max, ValidateIf,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -13,6 +13,7 @@ export class BatchBudgetItemDto {
   /** 0 removes the budget for this category; the table forbids storing a zero. */
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
+  @Max(9_999_999_999.99)
   @Type(() => Number)
   amount: number
 }
@@ -40,11 +41,12 @@ export class SetPlanTotalDto {
    * "no plan" and "spend nothing this month" are different statements and the UI has to
    * be able to tell them apart.
    */
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01, { message: 'Monthly total must be greater than 0' })
+  @Max(9_999_999_999.99)
   @Type(() => Number)
-  totalAmount?: number | null
+  totalAmount: number | null
 }
 
 export class CopyPreviousDto {
@@ -57,8 +59,9 @@ export class UpsertBudgetDto {
   @IsUUID()
   categoryId: string
 
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
+  @Max(9_999_999_999.99)
   amount: number
 
   @IsString()

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import Icon from '@mdi/react'
 import { mdiPencilOutline, mdiTargetVariant, mdiNotebookOutline, mdiCheck, mdiClose, mdiCalendarArrowRight } from '@mdi/js'
 import clsx from 'clsx'
-import { budgetsApi } from '../../api'
+import { authApi, budgetsApi } from '../../api'
 import { useAuthStore } from '../../store/auth.store'
 import { useT, useI18n } from '../../store/i18n.store'
 import { toast } from '../../store/toast.store'
@@ -32,6 +32,18 @@ export default function SpendingPlanCard({ plan, month, onChanged }: {
   const [editing, setEditing] = useState(false)
   const [amount, setAmount] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const enablePlan = async () => {
+    setSaving(true)
+    try {
+      const updated = await authApi.updatePreferences({ trackingMode: 'plan' })
+      const { token, setAuth } = useAuthStore.getState()
+      if (token) setAuth(token, updated)
+      setEditing(true)
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
+    } finally { setSaving(false) }
+  }
 
   useEffect(() => {
     setAmount(plan.totalAmount != null ? String(plan.totalAmount) : '')
@@ -71,6 +83,7 @@ export default function SpendingPlanCard({ plan, month, onChanged }: {
           <h2 className="font-bold text-base-theme text-sm">{t('home_track_only')}</h2>
         </div>
         <p className="text-xs text-muted-theme leading-relaxed">{t('home_track_only_body')}</p>
+        <button onClick={enablePlan} disabled={saving} className="primary-action mt-4 w-full">{saving ? t('saving') : t('home_set_plan')}</button>
       </div>
     )
   }
@@ -81,21 +94,24 @@ export default function SpendingPlanCard({ plan, month, onChanged }: {
   const over = plan.totalAmount !== null && plan.totalActual > plan.totalAmount
 
   return (
-    <div className="rounded-2xl bg-card border border-theme shadow-sm p-5">
+    <div className="surface p-6 sm:p-7">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
-            <Icon path={mdiTargetVariant} size={0.7} color="#4f46e5" />
+            <Icon path={mdiTargetVariant} size={0.7} className="text-brand-600" />
           </div>
           <h2 className="font-bold text-base-theme text-sm">{t('plan_total_title')}</h2>
         </div>
         {!editing && plan.totalAmount !== null && (
           <button onClick={() => setEditing(true)} aria-label={t('action_edit')}
-            className="p-1.5 rounded-lg text-muted-theme active:bg-[var(--input)] transition-colors">
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-brand-600 bg-[var(--accent-soft)] text-xs font-bold transition-colors">
             <Icon path={mdiPencilOutline} size={0.7} />
+            {t('action_edit')}
           </button>
         )}
       </div>
+
+      <p className="text-xs text-muted-theme leading-relaxed mb-4">{t('life_plan_explain')}</p>
 
       {/* Where the number came from, whenever it is not this month's own. */}
       {!editing && plan.state === 'inherited' && plan.sourceMonth && (

@@ -368,6 +368,9 @@ export interface DailyBrief {
   /** A *planned* allowance, never a real cash balance. Label it as such in the UI. */
   safeToday: number | null
   daysRemaining: number
+  unpaidBills: number
+  unpaidBillCount: number
+  nextBill: { name: string; amount: number; dueDate: string } | null
   planStatus: PlanStatus
   transactionsToday: number
   recentCategoryIds: string[]

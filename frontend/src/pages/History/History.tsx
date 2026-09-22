@@ -7,7 +7,7 @@ import {
   mdiCalendar, mdiMagnify, mdiInboxOutline,
 } from '@mdi/js'
 import clsx from 'clsx'
-import { useExpenses, useCategories, currentMonth } from '../../hooks'
+import { useExpenses, useCategories, useSummary, currentMonth } from '../../hooks'
 import { expensesApi } from '../../api'
 import { Amount, Empty, ErrorState, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
@@ -69,10 +69,12 @@ export default function History() {
   const { lang }   = useI18n()
   const [month, setMonth]   = useState(currentMonth())
   const [filter, setFilter] = useState<'all' | 'expense' | 'income'>('all')
+  const [search, setSearch] = useState('')
   const [showPicker, setShowPicker] = useState(false)
   const [pickerYear, setPickerYear] = useState(() => parseMonth(currentMonth()).year)
   const navigate   = useNavigate()
   const { data, loading, error, refetch } = useExpenses(month)
+  const { data: summary, loading: loadingSummary, error: summaryError, refetch: refetchSummary } = useSummary(month)
   const { data: categories } = useCategories()
   const [confirmState, setConfirmState] = useState<{
     open: boolean; message: string; onConfirm: () => void
@@ -112,6 +114,7 @@ export default function History() {
       })
       closeEdit()
       refetch()
+      refetchSummary()
     } catch (err) {
       setEditSubmitting(false)
       toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
@@ -137,12 +140,12 @@ export default function History() {
     setExportError(null)
     try {
       const [from, to] = exportFrom <= exportTo ? [exportFrom, exportTo] : [exportTo, exportFrom]
-      const rows = await expensesApi.list({ from, to })
+      const rows = await expensesApi.exportAll({ from, to })
       if (!rows.length) { setExportError(t('export_empty')); return }
       await exportHistory(exportFmt, rows, { from, to, lang })
       setShowExport(false)
-    } catch {
-      setExportError(t('export_empty'))
+    } catch (err) {
+      setExportError(apiErrorMessage(err, t('err_load_failed'), t('err_offline')))
     } finally {
       setExporting(false)
     }
@@ -151,13 +154,16 @@ export default function History() {
   useEffect(() => {
     const handler = (e: Event) => {
       const types: string[] = (e as CustomEvent).detail?.types ?? []
-      if (types.includes('transactions') || types.includes('dashboard')) refetch()
+      if (types.includes('transactions') || types.includes('dashboard')) { refetch(); refetchSummary() }
     }
     window.addEventListener('moneyflow:refresh', handler)
     return () => window.removeEventListener('moneyflow:refresh', handler)
-  }, [refetch])
+  }, [refetch, refetchSummary])
 
-  const filtered = data?.filter(e => filter === 'all' || e.type === filter) ?? []
+  const query = search.trim().toLocaleLowerCase()
+  const filtered = data?.filter(e => (filter === 'all' || e.type === filter)
+    && (!query || [e.note ?? '', e.category?.name ?? '', String(e.amount), fmt(e.amount)]
+      .some(value => value.toLocaleLowerCase().includes(query)))) ?? []
 
   const grouped = filtered.reduce<Record<string, typeof filtered>>((acc, e) => {
     const day = timestampToDateInput(e.occurredAt)
@@ -171,6 +177,7 @@ export default function History() {
       try {
         await expensesApi.remove(id)
         refetch()
+        refetchSummary()
       } catch (err) {
         toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline')))
       }
@@ -199,10 +206,10 @@ export default function History() {
     y > nowYear || (y === nowYear && mo > nowMo)
 
   return (
-    <div className="px-4 pt-6 pb-4">
+    <div className="px-4 pt-6 pb-4 sm:px-6 lg:px-2">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-extrabold text-base-theme tracking-tight">{t('history')}</h1>
+        <div><h1 className="page-heading">{t('nav_transactions')}</h1><p className="page-description">{t('ux_history_sub')}</p></div>
         <button
           onClick={() => { setExportError(null); setShowExport(true) }}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-900/20
@@ -214,9 +221,10 @@ export default function History() {
       </div>
 
       {/* Month navigator */}
-      <div className="flex items-center justify-between bg-card border border-theme rounded-2xl px-3 py-2 mb-4">
+      <div className="flex items-center justify-between bg-card border border-theme rounded-2xl px-3 py-2 mb-4 mt-6">
         <button
           onClick={() => setMonth(m => monthOffset(m, -1))}
+          aria-label={t('ux_previous_month')}
           className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-[var(--input)] text-muted-theme transition-colors"
         >
           <Icon path={mdiChevronLeft} size={1} />
@@ -234,6 +242,7 @@ export default function History() {
 
         <button
           onClick={() => setMonth(m => monthOffset(m, 1))}
+          aria-label={t('ux_next_month')}
           disabled={curYear === nowYear && curMo >= nowMo}
           className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-[var(--input)] text-muted-theme disabled:opacity-30 transition-colors"
         >
@@ -241,12 +250,22 @@ export default function History() {
         </button>
       </div>
 
+      {loadingSummary ? <Skeleton className="h-24 mb-5" /> : summaryError ? <ErrorState compact message={t('err_load_failed')} onRetry={refetchSummary} retryLabel={t('action_retry')} /> : summary && <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="surface px-4 py-4"><p className="text-xs text-muted-theme mb-2">{t('expense')}</p><Amount value={summary.totalExpense} type="expense" size="lg" /></div>
+        <div className="surface px-4 py-4"><p className="text-xs text-muted-theme mb-2">{t('income')}</p><Amount value={summary.totalIncome} type="income" size="lg" /></div>
+      </div>}
+      <div className="flex items-center gap-2 bg-card border border-theme rounded-2xl px-4 mb-4">
+        <Icon path={mdiMagnify} size={0.85} className="text-muted-theme shrink-0" />
+        <input type="search" aria-label={t('ux_search')} placeholder={t('ux_search')} value={search} onChange={e => setSearch(e.target.value)} className="min-w-0 w-full py-3.5 bg-transparent text-sm text-base-theme rounded-lg" />
+        {search && <button onClick={() => setSearch('')} aria-label={t('ux_search_clear')} className="text-action shrink-0 !text-xs">{t('ux_clear')}</button>}
+      </div>
       {/* Type filter */}
-      <div className="flex bg-slate-100 dark:bg-slate-800 rounded-2xl p-1 gap-1 mb-4">
+      <div className="flex bg-[var(--input)] rounded-2xl p-1 gap-1 mb-5">
         {(['all', 'expense', 'income'] as const).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
+            aria-pressed={filter === f}
             className={clsx(
               'flex-1 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5',
               filter === f
@@ -282,7 +301,7 @@ export default function History() {
             icon={mdiMagnify}
             title={t('empty_filtered_title')}
             sub={t('empty_filtered_sub')}
-            action={{ label: t('action_clear_filter'), onPress: () => setFilter('all') }}
+            action={{ label: t('action_clear_filter'), onPress: () => { setFilter('all'); setSearch('') } }}
           />
         ) : (
           <Empty

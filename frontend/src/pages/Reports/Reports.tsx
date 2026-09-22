@@ -62,10 +62,10 @@ export default function Reports() {
   }, [refetchSum, refetchCat, refetchDaily])
 
   return (
-    <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">
+    <div className="px-4 pt-6 pb-4 sm:px-6 lg:px-2 space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-extrabold text-base-theme">{t('reports_title')}</h1>
-        <p className="text-sm text-muted-theme mt-0.5">{t('reports_subtitle')}</p>
+        <h1 className="page-heading">{t('reports_title')}</h1>
+        <p className="page-description">{t('ux_report_hint')}</p>
       </div>
 
       {/* ── This week, from SQL rather than a model ── */}
@@ -81,7 +81,7 @@ export default function Reports() {
         <div className="flex items-center justify-between mb-4">
           <button
             onClick={() => setMonth(m => monthOffset(m, -1))}
-            aria-label="Previous month"
+            aria-label={t('ux_previous_month')}
             className="p-1.5 rounded-full bg-[var(--input)] active:opacity-70 transition-opacity"
           >
             <Icon path={mdiChevronLeft} size={0.7} className="text-base-theme" />
@@ -90,7 +90,7 @@ export default function Reports() {
           <button
             onClick={() => setMonth(m => monthOffset(m, 1))}
             disabled={isCurrentMonth}
-            aria-label="Next month"
+            aria-label={t('ux_next_month')}
             className="p-1.5 rounded-full bg-[var(--input)] active:opacity-70 transition-opacity
                        disabled:opacity-30 disabled:cursor-not-allowed"
           >

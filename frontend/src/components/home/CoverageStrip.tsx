@@ -48,26 +48,28 @@ export default function CoverageStrip({ coverage, onChange }: {
 
   const weekday = (date: string) =>
     new Date(`${date}T12:00:00`).toLocaleDateString(
-      lang === 'th' ? 'th-TH' : 'en-US', { weekday: 'narrow' },
+      lang === 'th' ? 'th-TH' : 'en-US', { weekday: 'short' },
     )
 
   const complete = coverage.covered === coverage.total
 
   return (
-    <div className="rounded-2xl bg-card border border-theme shadow-sm px-4 py-3 animate-fade-up">
-      <div className="flex items-center justify-between mb-2.5">
-        <span className="text-xs font-bold text-muted-theme">{t('cov_title')}</span>
+    <section className="surface p-5 sm:p-6" aria-label={t('ux_habit_title')}>
+      <h2 className="section-title">{t('ux_habit_title')}</h2>
+      <p className="text-xs text-muted-theme mt-1.5 mb-5 leading-relaxed">{t('ux_habit_sub')}</p>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs text-muted-theme">{t('cov_title')}</span>
         <span className={clsx('text-xs font-bold tabular-nums',
           complete ? 'text-emerald-500' : 'text-base-theme')}>
           {coverage.covered}/{coverage.total} {t('cov_counted')}
         </span>
       </div>
 
-      <div className="flex items-center justify-between gap-1">
+      <div className="grid grid-cols-7 gap-1.5">
         {coverage.days.map(day => (
-          <div key={day.date} className="flex flex-col items-center gap-1 flex-1">
+          <div key={day.date} className="habit-day" data-covered={day.covered} aria-current={day.isToday ? 'date' : undefined} aria-label={`${day.date}: ${day.covered ? t(day.source === 'no_spend' ? 'ux_habit_no_spend' : 'ux_habit_recorded') : t('ux_habit_missing')}`}>
             <div className={clsx(
-              'w-full aspect-square max-w-9 rounded-xl flex items-center justify-center transition-colors',
+              'w-6 h-6 rounded-full flex items-center justify-center transition-colors',
               day.covered
                 ? day.source === 'no_spend'
                   ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'
@@ -80,7 +82,7 @@ export default function CoverageStrip({ coverage, onChange }: {
                 size={0.6}
               />
             </div>
-            <span className="text-[9px] text-muted-theme font-medium">{weekday(day.date)}</span>
+            <span className="text-[10px] font-medium">{weekday(day.date).replace(/\./g, '')}</span>
           </div>
         ))}
       </div>
@@ -89,8 +91,7 @@ export default function CoverageStrip({ coverage, onChange }: {
         <button
           onClick={() => mark(coverage.days[coverage.days.length - 1].date)}
           disabled={busy}
-          className="w-full mt-3 py-2 rounded-xl bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300
-                     text-xs font-bold active:scale-[0.98] transition-transform disabled:opacity-50"
+          className="secondary-action w-full mt-4 !text-xs"
         >
           {t('cov_no_spend_cta')}
         </button>
@@ -101,8 +102,7 @@ export default function CoverageStrip({ coverage, onChange }: {
         <button
           onClick={() => mark(shiftDateLocal(coverage.days[coverage.days.length - 1].date, -1))}
           disabled={busy}
-          className="w-full mt-3 py-2 rounded-xl bg-[var(--input)] text-muted-theme
-                     text-xs font-semibold active:scale-[0.98] transition-transform disabled:opacity-50"
+          className="secondary-action w-full mt-4 !text-xs"
         >
           {t('cov_no_spend_yesterday')}
         </button>
@@ -113,6 +113,6 @@ export default function CoverageStrip({ coverage, onChange }: {
           {t('cov_all_done')}
         </p>
       )}
-    </div>
+    </section>
   )
 }

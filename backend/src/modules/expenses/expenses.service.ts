@@ -5,9 +5,11 @@ import { Expense } from './expense.entity'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { AllocationsService } from '../allocations/allocations.service'
+import { BillPayment } from '../planning/planning.entity'
+import { lockLedger } from '../../common/ledger-lock.util'
 import { CreateExpenseDto, UpdateExpenseDto, QueryExpenseDto } from './dto/expense.dto'
 import {
-  safeTimezone, monthRangePredicate, yearRangePredicate, monthSpanPredicate,
+  safeTimezone, localToday, monthRangePredicate, yearRangePredicate, monthSpanPredicate,
 } from '../../common/local-date.util'
 
 @Injectable()
@@ -29,12 +31,12 @@ export class ExpensesService {
    * today. Same data, two answers, depending on the screen. Wrapping the column also
    * stopped `idx_expenses_user_occurred` from being usable for the range.
    */
-  async findAll(userId: string, query: QueryExpenseDto): Promise<Expense[]> {
-    const user = await this.dataSource.getRepository(User)
+  async findAll(userId: string, query: QueryExpenseDto, em = this.dataSource.manager): Promise<Expense[]> {
+    const user = await em.getRepository(User)
       .findOne({ where: { id: userId }, select: ['id', 'timezone'] })
     const tz = safeTimezone(user?.timezone)
 
-    const qb = this.repo
+    const qb = em.getRepository(Expense)
       .createQueryBuilder('e')
       .leftJoinAndSelect('e.category', 'category')
       .leftJoinAndSelect('e.allocation', 'allocation')
@@ -51,6 +53,7 @@ export class ExpensesService {
       // A stable tiebreaker. Two entries stamped the same second came back in whatever
       // order the plan happened to produce, so the list reshuffled between refreshes.
       .addOrderBy('e.createdAt', 'DESC')
+      .addOrderBy('e.id', 'DESC')
       // Unbounded before this. A long-running account made History fetch and serialise
       // every row it had ever written, in one response.
       .take(query.limit ?? 500)
@@ -71,6 +74,15 @@ export class ExpensesService {
       qb.andWhere(yearRangePredicate('e.occurred_at', ':year', ':tz')).setParameters({ year: query.year, tz })
     }
     return qb.getMany()
+  }
+
+  /** One database snapshot, complete or explicitly rejected; never a partial backup. */
+  async exportAll(userId: string, query: QueryExpenseDto): Promise<Expense[]> {
+    return this.dataSource.transaction('REPEATABLE READ', async em => {
+      const rows = await this.findAll(userId, { ...query, limit: 50001, offset: 0 }, em)
+      if (rows.length > 50000) throw new BadRequestException('Export exceeds 50,000 entries. Choose a shorter date range.')
+      return rows
+    })
   }
 
   async findOne(id: string, userId: string): Promise<Expense> {
@@ -130,33 +142,41 @@ export class ExpensesService {
       if (existing) return existing
     }
 
-    return this.dataSource.transaction(async (em: EntityManager) => {
-      const category = await this.assertCategoryOwned(em, dto.categoryId, userId)
+    return this.dataSource.transaction(em => this.createInTransaction(dto, userId, em))
+  }
 
-      // An income recorded against an expense category (or the reverse) still moved
-      // `totalBalance`, but no envelope could match it and every chart filed it under a
-      // category of the opposite kind. Nothing rejected it, so the only symptom was
-      // numbers that did not add up.
-      if (category.type !== dto.type) {
-        throw new BadRequestException(
-          `Category "${category.name}" is an ${category.type} category — it cannot be used for an ${dto.type}`,
-        )
-      }
+  /** Shared ledger writer for bill payments and REST captures. Caller owns the transaction. */
+  async createInTransaction(dto: CreateExpenseDto, userId: string, em: EntityManager): Promise<Expense> {
+    await lockLedger(em, userId)
+    if (dto.clientKey) {
+      const existing = await em.findOne(Expense, { where: { userId, clientKey: dto.clientKey }, loadEagerRelations: false })
+      if (existing) return existing
+    }
+    const category = await this.assertCategoryOwned(em, dto.categoryId, userId)
 
-      // `allocationId` is never taken from the DTO. The envelope is resolved from the
-      // category link, and accepting a client-supplied one would let a request move a
-      // wallet that the category is not linked to — silently, since the two would then
-      // disagree on every later edit. The DTO field is kept only so old clients that
-      // still send it do not trip `forbidNonWhitelisted`.
-      const { allocationId: _ignoredAllocationId, ...rest } = dto
-
-      const allocationId = await this.applyEffect(
-        em, userId, dto.type, dto.amount, dto.categoryId,
+    // An income recorded against an expense category (or the reverse) still moved
+    // `totalBalance`, but no envelope could match it and every chart filed it under a
+    // category of the opposite kind. Nothing rejected it, so the only symptom was
+    // numbers that did not add up.
+    if (category.type !== dto.type) {
+      throw new BadRequestException(
+        `Category "${category.name}" is an ${category.type} category — it cannot be used for an ${dto.type}`,
       )
+    }
 
-      const expense = em.create(Expense, { ...rest, userId, allocationId })
-      return em.save(Expense, expense)
-    })
+    // `allocationId` is never taken from the DTO. The envelope is resolved from the
+    // category link, and accepting a client-supplied one would let a request move a
+    // wallet that the category is not linked to — silently, since the two would then
+    // disagree on every later edit. The DTO field is kept only so old clients that
+    // still send it do not trip `forbidNonWhitelisted`.
+    const { allocationId: _ignoredAllocationId, ...rest } = dto
+
+    const allocationId = await this.applyEffect(
+      em, userId, dto.type, dto.amount, dto.categoryId,
+    )
+
+    const expense = em.create(Expense, { ...rest, userId, allocationId })
+    return em.save(Expense, expense)
   }
 
   /**
@@ -191,6 +211,7 @@ export class ExpensesService {
   // ── Update ────────────────────────────────────────────────────
   async update(id: string, dto: UpdateExpenseDto, userId: string): Promise<Expense> {
     return this.dataSource.transaction(async (em: EntityManager) => {
+      const user = await lockLedger(em, userId)
       const expense = await this.findOneForUpdate(em, id, userId)
 
       // Validate the pair the row will *end up* with, not just what the patch mentions.
@@ -208,24 +229,33 @@ export class ExpensesService {
         }
       }
 
-      const oldAmount       = Number(expense.amount)
-      const oldType         = expense.type
-      const oldAllocationId = expense.allocationId
+      if (dto.type !== undefined || dto.occurredAt !== undefined) {
+        const payment = await em.findOne(BillPayment, { where: { expenseId: id, userId } })
+        if (payment && (finalType !== 'expense' || localToday(safeTimezone(user.timezone),
+          new Date(dto.occurredAt ?? expense.occurredAt)).slice(0, 7) !==
+          localToday(safeTimezone(user.timezone), new Date(expense.occurredAt)).slice(0, 7))) {
+          throw new BadRequestException('A bill payment must remain an expense in its payment month')
+        }
+      }
 
-      // ── Reverse old effect ──────────────────────────────────
-      await this.reverseEffect(em, userId, oldType, oldAmount, oldAllocationId)
+      const oldAmount = Number(expense.amount)
+      const newAmount = dto.amount ?? oldAmount
+      const routingChanged = finalType !== expense.type || finalCategoryId !== expense.categoryId
+      if (routingChanged) {
+        await this.reverseEffect(em, userId, expense.type, oldAmount, expense.allocationId)
+        expense.allocationId = await this.applyEffect(em, userId, finalType, newAmount, finalCategoryId)
+      } else if (newAmount !== oldAmount) {
+        // Amount edits keep the original wallet, even after a category is relinked.
+        // Applying only the delta also avoids transient overdrafts during a reversal.
+        const delta = Math.round((newAmount - oldAmount) * 100) / 100
+        const balanceDelta = expense.type === 'income' ? delta : -delta
+        await em.increment(User, { id: userId }, 'totalBalance', balanceDelta)
+        if (expense.allocationId) await this.allocations.credit(expense.allocationId, userId, balanceDelta, em)
+      }
 
-      // Mutate expense with new values. `allocationId` is deliberately not taken from
-      // the DTO — see the note in `create`.
+      // Metadata-only edits never touch balances or resolve today's wallet links.
       const { allocationId: _ignoredAllocationId, ...patch } = dto
       Object.assign(expense, patch)
-
-      const newAmount     = Number(expense.amount)
-      const newType       = expense.type
-      const newCategoryId = expense.categoryId
-
-      // ── Apply new effect ────────────────────────────────────
-      expense.allocationId = await this.applyEffect(em, userId, newType, newAmount, newCategoryId)
       return em.save(Expense, expense)
     })
   }
@@ -233,6 +263,7 @@ export class ExpensesService {
   // ── Delete ────────────────────────────────────────────────────
   async remove(id: string, userId: string): Promise<void> {
     await this.dataSource.transaction(async (em: EntityManager) => {
+      await lockLedger(em, userId)
       const expense = await this.findOneForUpdate(em, id, userId)
       await this.reverseEffect(
         em, userId, expense.type, Number(expense.amount), expense.allocationId,

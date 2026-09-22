@@ -21,7 +21,7 @@ export default function ToastHost() {
 
   return (
     <div
-      className="fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-24 lg:pb-6 pointer-events-none"
+      className="fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-nav-sheet lg:pb-6 pointer-events-none"
       role="status"
       aria-live="polite"
     >

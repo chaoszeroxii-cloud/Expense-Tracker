@@ -47,7 +47,8 @@ export class CheckinsService {
         `SELECT DISTINCT (occurred_at AT TIME ZONE $2)::date::text AS d
            FROM expenses
           WHERE user_id = $1
-            AND (occurred_at AT TIME ZONE $2)::date BETWEEN $3::date AND $4::date`,
+            AND occurred_at >= ($3::date::timestamp AT TIME ZONE $2)
+            AND occurred_at < (($4::date + 1)::timestamp AT TIME ZONE $2)`,
         [userId, tz, start, today],
       ),
       this.checkins.manager.query(
@@ -99,7 +100,9 @@ export class CheckinsService {
 
     const hasTx = await this.checkins.manager.query(
       `SELECT 1 FROM expenses
-        WHERE user_id = $1 AND (occurred_at AT TIME ZONE $2)::date = $3::date LIMIT 1`,
+        WHERE user_id = $1
+          AND occurred_at >= ($3::date::timestamp AT TIME ZONE $2)
+          AND occurred_at < (($3::date + 1)::timestamp AT TIME ZONE $2) LIMIT 1`,
       [userId, tz, date],
     )
     if (hasTx.length > 0) {

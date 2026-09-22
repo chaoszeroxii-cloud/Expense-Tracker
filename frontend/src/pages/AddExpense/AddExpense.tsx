@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
   mdiChevronLeft, mdiCalendar, mdiCheckCircle, mdiChevronDown,
@@ -8,7 +8,7 @@ import {
 import clsx from 'clsx'
 import { expensesApi } from '../../api'
 import { useCategories, useAllocations, useDailyBrief } from '../../hooks'
-import { IconDisplay, WorkTimeBadge } from '../../components/ui'
+import { IconDisplay, WorkTimeBadge, ErrorState } from '../../components/ui'
 import { useT } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
 import { toast, UNDO_WINDOW_MS } from '../../store/toast.store'
@@ -17,6 +17,7 @@ import { todayLocal, dateInputToTimestamp } from '../../utils/localDate'
 import { apiErrorMessage } from '../../utils/apiError'
 import { enqueue } from '../../utils/offlineQueue'
 import { track, startTimer } from '../../utils/telemetry'
+import { readCaptureDraft } from '../../utils/captureDraft'
 import type { EntryType, Category } from '../../types'
 
 const QUICK = [20, 50, 100, 500]
@@ -24,24 +25,30 @@ const QUICK = [20, 50, 100, 500]
 export default function AddExpense() {
   const navigate = useNavigate()
   const t = useT()
-  const { data: categories, loading: loadingCats } = useCategories()
+  const location = useLocation()
+  const [draft] = useState(() => readCaptureDraft(location.state))
+  const [showPrefill, setShowPrefill] = useState(!!draft?.amount)
+  const { data: categories, loading: loadingCats, error: catsError, refetch: reloadCats } = useCategories()
   const { data: allocations }                      = useAllocations()
   const { data: brief }                            = useDailyBrief()
   const user = useAuthStore(s => s.user)
   const advancedMode = user?.advancedMode ?? false
   const expectedMonthlyIncome = user?.expectedMonthlyIncome
 
-  const [type,       setType]   = useState<EntryType>('expense')
-  const [amount,     setAmount] = useState('')
-  const [categoryId, setCatId]  = useState('')
-  const [note,       setNote]   = useState('')
+  const [type,       setType]   = useState<EntryType>(draft?.type ?? 'expense')
+  const [amount,     setAmount] = useState(draft?.amount?.toFixed(2) ?? '')
+  const [categoryId, setCatId]  = useState(draft?.categoryId ?? '')
+  const [note,       setNote]   = useState(draft?.note ?? '')
   const [occurredAt, setDate]   = useState(todayLocal)
-  const [showDetails, setShowDetails] = useState(false)
-  const [showAllCats, setShowAllCats] = useState(false)
+  const [showDetails, setShowDetails] = useState(!!draft?.note)
+  const [showAllCats, setShowAllCats] = useState(!!draft?.categoryId)
   const [submitting, setSubmit] = useState(false)
   const [success,    setSuccess]= useState(false)
 
   const amountRef = useRef<HTMLInputElement>(null)
+  const submittingRef = useRef(false)
+  const captureKey = useRef(crypto.randomUUID())
+  const navigationTimer = useRef<ReturnType<typeof setTimeout>>()
   // Measures add_opened → expense_created; the sub-10-second target lives on this.
   const timerRef = useRef<ReturnType<typeof startTimer> | null>(null)
 
@@ -50,6 +57,7 @@ export default function AddExpense() {
     timerRef.current = startTimer('expense_created')
     // Focusing immediately removes one tap and raises the keyboard on mobile.
     amountRef.current?.focus()
+    return () => clearTimeout(navigationTimer.current)
   }, [])
 
   const filteredCats = useMemo(
@@ -61,8 +69,7 @@ export default function AddExpense() {
    * The four categories this user actually reaches for, from the daily brief's
    * recency-weighted frequency list. Everything else stays one tap away.
    *
-   * Falls back to the head of the category list for a brand-new account, which is
-   * ordered with the everyday categories first when seeded.
+   * For a new account, bring everyday categories forward; the API list is alphabetical.
    */
   const frequentCats = useMemo<Category[]>(() => {
     if (type !== 'expense') return []
@@ -70,7 +77,11 @@ export default function AddExpense() {
     const byId = new Map(filteredCats.map(c => [c.id, c]))
     const picked = ids.map(id => byId.get(id)).filter((c): c is Category => !!c)
     if (picked.length >= 4) return picked.slice(0, 4)
-    const rest = filteredCats.filter(c => !picked.some(p => p.id === c.id))
+    const everyday = ['food', 'transport', 'coffee', 'shopping', 'utilities', 'other']
+    const rest = filteredCats.filter(c => !picked.some(p => p.id === c.id)).sort((a, b) => {
+      const rank = (icon: string) => everyday.includes(icon) ? everyday.indexOf(icon) : everyday.length
+      return rank(a.icon) - rank(b.icon)
+    })
     return [...picked, ...rest].slice(0, 4)
   }, [brief, filteredCats, type])
 
@@ -79,7 +90,9 @@ export default function AddExpense() {
 
   const amountNum   = Number(amount)
   const amountValid = amount !== '' && Number.isFinite(amountNum) && amountNum >= 0.01
-  const canSubmit   = amountValid && !!categoryId && !submitting
+  const categoryValid = filteredCats.some(c => c.id === categoryId)
+  const dateValid = /^\d{4}-\d{2}-\d{2}$/.test(occurredAt) && occurredAt <= todayLocal()
+  const canSubmit   = amountValid && categoryValid && dateValid && !catsError && !loadingCats && !submitting
 
   // Wallet previews only mean something to users who opted into envelopes.
   const linkedAlloc = advancedMode && type === 'expense' && categoryId
@@ -99,12 +112,16 @@ export default function AddExpense() {
   }
 
   const resetForNext = () => {
+    captureKey.current = crypto.randomUUID()
     setAmount('')
+    setShowPrefill(false)
     setCatId('')
     setNote('')
+    setDate(todayLocal())
     setShowDetails(false)
     setSuccess(false)
     setSubmit(false)
+    submittingRef.current = false
     timerRef.current = startTimer('expense_created')
     amountRef.current?.focus()
   }
@@ -118,6 +135,7 @@ export default function AddExpense() {
    */
   const save = async (): Promise<{ id: string | null; queued: boolean }> => {
     const payload = {
+      clientKey: captureKey.current,
       categoryId,
       amount: amountNum,
       type,
@@ -135,8 +153,8 @@ export default function AddExpense() {
     } catch (err) {
       // Only a transport failure is queued. A rejection carrying a response means the
       // server understood and refused it, and replaying that would never succeed.
-      const reachedServer = !!(err as { response?: unknown })?.response
-      if (reachedServer || !user?.id) throw err
+      const status = (err as { response?: { status?: number } })?.response?.status
+      if ((status && status < 500 && status !== 408 && status !== 429) || !user?.id) throw err
 
       const entry = await enqueue(user.id, payload)
       if (!entry) throw err          // IndexedDB unavailable — surface the real error
@@ -163,8 +181,10 @@ export default function AddExpense() {
 
   const handleSubmit = async (e: FormEvent, andAnother = false) => {
     e.preventDefault()
+    if (submittingRef.current) return
     if (!amountValid) { toast.error(t('err_amount_positive')); return }
-    if (!categoryId) return
+    if (!canSubmit) return
+    submittingRef.current = true
     setSubmit(true)
     try {
       const { id, queued } = await save()
@@ -183,11 +203,12 @@ export default function AddExpense() {
       // the user has registered that they picked the wrong category.
       if (queued) toast.info(message, undefined, UNDO_WINDOW_MS)
       else toast.success(message, undoAction, UNDO_WINDOW_MS)
-      setTimeout(() => navigate('/'), 700)
+      navigationTimer.current = setTimeout(() => navigate('/', { replace: true }), 700)
     } catch (err) {
       // Never swallow this: a silent failure is indistinguishable from a save that
       // quietly lost the transaction.
       setSubmit(false)
+      submittingRef.current = false
       track('add_failed')
       toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
     }
@@ -199,30 +220,28 @@ export default function AddExpense() {
         <Icon path={mdiCheckCircle} size={2.2} color="#10b981" />
       </div>
       <p className="text-lg font-bold text-base-theme">{t('saved')}</p>
-      {brief?.safeToday !== null && brief?.safeToday !== undefined && (
-        <p className="text-sm text-muted-theme">
-          {t('home_safe_today')} ฿{fmt(Math.max(0, brief.safeToday - amountNum))}
-        </p>
-      )}
+      <p className="text-sm text-muted-theme">{t('ux_today_sub')}</p>
     </div>
   )
 
   return (
     <div className="flex flex-col h-full bg-app">
-      <div className="flex items-center gap-3 px-4 pt-6 pb-3">
-        <button onClick={() => navigate(-1)} aria-label={t('ob_back')}
-          className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 active:bg-slate-200 transition-colors">
+      <div className="flex items-center gap-3 px-5 pt-6 pb-5">
+        <button onClick={() => navigate('/')} aria-label={t('ux_back_home')}
+          className="p-3 rounded-2xl bg-card border border-theme transition-colors">
           <Icon path={mdiChevronLeft} size={0.9} className="text-base-theme" />
         </button>
-        <h1 className="text-lg font-bold text-base-theme">{t('add_transaction')}</h1>
+        <div><h1 className="text-xl font-bold text-base-theme">{t('add_transaction')}</h1><p className="text-xs text-muted-theme mt-1">{t('ux_record_hint')}</p></div>
       </div>
 
-      <form onSubmit={e => handleSubmit(e)} className="flex-1 overflow-y-auto px-4 pb-6 space-y-4">
+      <form onSubmit={e => handleSubmit(e)} className="flex-1 overflow-y-auto px-5 pb-sheet space-y-5">
+        {showPrefill && <p className="text-xs text-brand-600 bg-[var(--accent-soft)] rounded-2xl p-3 leading-relaxed">{t('ux_prefilled')}</p>}
 
         {/* Type toggle */}
-        <div className="flex bg-slate-100 dark:bg-slate-800 rounded-2xl p-1 gap-1">
+        <div className="flex bg-[var(--input)] rounded-2xl p-1 gap-1">
           {(['expense', 'income'] as EntryType[]).map(tp => (
             <button key={tp} type="button" onClick={() => handleTypeChange(tp)}
+              aria-pressed={type === tp}
               className={clsx(
                 'flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-1.5',
                 type === tp
@@ -238,16 +257,15 @@ export default function AddExpense() {
         </div>
 
         {/* Amount — focused on mount, with the work-time lens right beneath it */}
-        <div className="bg-card rounded-2xl border border-theme shadow-sm px-5 py-4">
+        <div className="surface px-5 py-5">
           <label htmlFor="amount" className="text-xs font-semibold text-muted-theme block mb-1 uppercase tracking-wide">
-            {t('amount')}
+            <span className="text-brand-600 mr-2">01</span>{t('ux_step_amount')} <span className="font-normal">(฿)</span>
           </label>
           <input
             id="amount" ref={amountRef}
             type="number" inputMode="decimal" step="0.01" placeholder="0" value={amount}
             onChange={e => setAmount(e.target.value)} required min={0.01}
-            className="w-full text-4xl font-extrabold text-base-theme bg-transparent
-                       outline-none placeholder:text-slate-200 dark:placeholder:text-slate-600 tracking-tight"
+            className="w-full capture-amount text-base-theme bg-transparent placeholder:text-muted-theme/40 rounded-lg"
           />
           {type === 'expense' && <WorkTimeBadge amount={amountNum} size="md" className="mt-1" />}
 
@@ -255,7 +273,7 @@ export default function AddExpense() {
             {QUICK.map(v => (
               <button key={v} type="button"
                 onClick={() => setAmount(p => round2((p ? Number(p) : 0) + v).toFixed(2))}
-                className="px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-900/30 text-brand-600
+                className="px-4 py-2.5 rounded-xl bg-brand-50 dark:bg-brand-900/30 text-brand-600
                            text-xs font-semibold active:bg-brand-100 transition-colors">
                 +{v}
               </button>
@@ -264,7 +282,7 @@ export default function AddExpense() {
               <button type="button" onClick={() => setAmount('')}
                 className="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-700 text-muted-theme
                            text-xs font-semibold transition-colors">
-                Clear
+                {t('ux_clear')}
               </button>
             )}
           </div>
@@ -274,7 +292,7 @@ export default function AddExpense() {
         <div>
           <div className="flex items-center justify-between mb-2 px-1">
             <label className="text-xs font-semibold text-muted-theme uppercase tracking-wide">
-              {showShortlist ? t('add_frequent') : t('category')}
+              <span className="text-brand-600 mr-2">02</span>{type === 'expense' ? t('ux_step_category') : t('category')}
             </label>
             {showShortlist && filteredCats.length > frequentCats.length && (
               <button type="button" onClick={() => setShowAllCats(true)}
@@ -283,13 +301,14 @@ export default function AddExpense() {
               </button>
             )}
           </div>
-          <div className="grid grid-cols-4 gap-2">
+          {catsError ? <ErrorState compact message={t('err_load_failed')} onRetry={reloadCats} retryLabel={t('action_retry')} /> : !loadingCats && filteredCats.length === 0 ? <div className="surface p-5 text-sm text-muted-theme"><p>{t('ux_categories_empty')}</p><button type="button" className="text-action mt-2" onClick={() => navigate('/settings')}>{t('nav_settings')}</button></div> : <div className="grid grid-cols-4 gap-2">
             {loadingCats
               ? Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-16 rounded-2xl bg-slate-200 dark:bg-slate-700 animate-pulse" />
                 ))
               : visibleCats.map(cat => (
                   <button key={cat.id} type="button" onClick={() => setCatId(cat.id)}
+                    aria-pressed={categoryId === cat.id}
                     className={clsx(
                       'flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border-2 transition-all bg-card',
                       categoryId === cat.id
@@ -299,13 +318,13 @@ export default function AddExpense() {
                     <div className="w-8 h-8 flex items-center justify-center rounded-xl">
                       <IconDisplay icon={cat.icon} color={cat.color} size="lg" />
                     </div>
-                    <span className="text-[10px] font-semibold text-muted-theme leading-tight text-center px-1 truncate w-full">
+                    <span className="text-xs font-semibold text-base-theme leading-relaxed text-center px-1 break-words w-full">
                       {cat.name}
                     </span>
                   </button>
                 ))
             }
-          </div>
+          </div>}
         </div>
 
         {/* Wallet effect — advanced mode only */}
@@ -367,22 +386,22 @@ export default function AddExpense() {
           <button
             type="button"
             onClick={() => setShowDetails(v => !v)}
+            aria-expanded={showDetails}
+            aria-controls="capture-details"
             className="w-full flex items-center justify-between px-5 py-3"
           >
             <span className="text-xs font-semibold text-muted-theme uppercase tracking-wide">
               {t('add_more_details')}
             </span>
             <div className="flex items-center gap-2">
-              {occurredAt !== todayLocal() && (
-                <span className="text-[10px] font-semibold text-brand-600">{occurredAt}</span>
-              )}
+              <span className="text-xs text-brand-600">{occurredAt === todayLocal() ? t('ux_habit_today') : occurredAt}</span>
               <Icon path={mdiChevronDown} size={0.7}
                 className={clsx('text-muted-theme transition-transform', showDetails && 'rotate-180')} />
             </div>
           </button>
 
           {showDetails && (
-            <div className="px-5 pb-4 space-y-3 animate-fade-up">
+            <div id="capture-details" className="px-5 pb-4 space-y-3 animate-fade-up">
               <div>
                 <label htmlFor="date" className="text-[10px] font-semibold text-muted-theme block mb-1 uppercase">
                   {t('date')}
@@ -407,7 +426,9 @@ export default function AddExpense() {
         </div>
 
         {/* Save, plus a path that keeps you here for the next one */}
-        <div className="flex gap-2">
+        <div className="sticky bottom-0 bg-app pt-3 pb-1 border-t border-theme">
+          <p className="text-xs text-muted-theme mb-3 text-center" aria-live="polite">{!amountValid ? t('ux_enter_amount') : !categoryValid ? t('ux_choose_category') : t('ux_ready')}</p>
+        <div className="flex gap-2 flex-wrap">
           <button type="submit"
             disabled={!canSubmit}
             className={clsx(
@@ -426,15 +447,16 @@ export default function AddExpense() {
             type="button"
             onClick={e => handleSubmit(e, true)}
             disabled={!canSubmit}
-            aria-label={t('add_another')}
+            aria-label={t('ux_save_another')}
             className={clsx(
-              'px-4 rounded-2xl font-bold text-sm transition-all active:scale-[0.98]',
+              'px-3 py-3 rounded-2xl font-bold text-xs transition-all active:scale-[0.98] flex items-center justify-center gap-1',
               canSubmit
                 ? 'bg-card border-2 border-brand-500 text-brand-600'
                 : 'bg-slate-100 dark:bg-slate-800 text-muted-theme cursor-not-allowed',
             )}>
-            <Icon path={mdiPlus} size={0.9} />
+            <Icon path={mdiPlus} size={0.7} />{t('ux_save_another')}
           </button>
+        </div>
         </div>
       </form>
     </div>

@@ -1,3 +1,4 @@
+import { lockLedger } from '../../common/ledger-lock.util'
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, EntityManager, Repository } from 'typeorm'
@@ -91,6 +92,7 @@ export class AccountService {
     const tz = safeTimezone(user.timezone)
 
     return this.dataSource.transaction(async (em) => {
+      await lockLedger(em, userId)
       // The timezone parameter is only added when a range actually references it —
       // Postgres rejects a statement that is handed more parameters than it uses.
       const params: unknown[] = [userId]
@@ -138,6 +140,7 @@ export class AccountService {
     if (!user) throw new NotFoundException('User not found')
 
     await this.dataSource.transaction(async (em) => {
+      await lockLedger(em, userId)
       // Order matters only where a table lacks ON DELETE CASCADE; the rest is explicit
       // so the set of things being destroyed is readable rather than implied.
       await em.query(`DELETE FROM allocation_movements WHERE user_id = $1`, [userId])
@@ -154,6 +157,8 @@ export class AccountService {
         `DELETE FROM loan_payments WHERE loan_id IN (SELECT id FROM loans WHERE user_id = $1)`,
         [userId],
       )
+      await em.query(`DELETE FROM recurring_bills WHERE user_id = $1`, [userId])
+      await em.query(`DELETE FROM savings_goals WHERE user_id = $1`, [userId])
       await em.query(`DELETE FROM loans      WHERE user_id = $1`, [userId])
       await em.query(`DELETE FROM expenses   WHERE user_id = $1`, [userId])
       await em.query(`DELETE FROM allocations WHERE user_id = $1`, [userId])

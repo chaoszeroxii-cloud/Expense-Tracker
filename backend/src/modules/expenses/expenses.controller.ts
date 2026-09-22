@@ -18,6 +18,11 @@ export class ExpensesController {
     return this.service.findAll(user.id, query)
   }
 
+  @Get('export')
+  exportAll(@Query() query: QueryExpenseDto, @CurrentUser() user: User) {
+    return this.service.exportAll(user.id, query)
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     return this.service.findOne(id, user.id)

@@ -1,0 +1,15 @@
+{
+  "health": "healthy",
+  "apiHealth": 200,
+  "spaHistory": 200,
+  "forwardedIpStatuses": [
+    201,
+    201,
+    201,
+    429
+  ],
+  "backendApiChecks": 24,
+  "planningApiChecks": 29,
+  "planningBrowserChecks": 10,
+  "dailyBrowserChecks": 19
+}

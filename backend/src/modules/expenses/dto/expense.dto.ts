@@ -1,7 +1,7 @@
 import {
   IsString, IsNumber, IsIn, IsOptional,
   IsDateString, IsArray, Min, Max, MaxLength, IsUUID,
-  Matches, ArrayMaxSize, IsInt,
+  Matches, ArrayMaxSize, IsInt, ValidateIf,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 
@@ -55,18 +55,18 @@ export class CreateExpenseDto {
 }
 
 export class UpdateExpenseDto {
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsUUID()
   categoryId?: string
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01, { message: 'Amount must be greater than 0' })
   @Max(9_999_999_999.99, { message: 'Amount is too large' })
   @Type(() => Number)
   amount?: number
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsIn(['expense', 'income'])
   type?: 'expense' | 'income'
 
@@ -86,7 +86,7 @@ export class UpdateExpenseDto {
   @MaxLength(50, { each: true })
   tags?: string[]
 
-  @IsOptional()
+  @ValidateIf((_object, value) => value !== undefined)
   @IsDateString()
   occurredAt?: string
 }

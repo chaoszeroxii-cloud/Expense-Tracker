@@ -5,7 +5,8 @@ import { Budget } from './budget.entity'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { UpsertBudgetDto, BatchBudgetDto } from './dto/budget.dto'
-import { safeTimezone } from '../../common/local-date.util'
+import { safeTimezone, monthRangePredicate, monthSpanPredicate, shiftMonth } from '../../common/local-date.util'
+import { lockLedger } from '../../common/ledger-lock.util'
 import { round2 } from '../../common/money.util'
 import { SpendingPlanService } from './spending-plan.service'
 
@@ -87,14 +88,14 @@ export class BudgetsService {
     const tz = await this.timezoneFor(userId)
 
     const [withActual, totalRow] = await Promise.all([
-      this.getBudgetWithActual(userId, month),
+      this.getBudgetWithActual(userId, month, tz),
       // Counts every expense in the month, matching what Home reports.
       this.repo.manager.query(
         `SELECT COALESCE(SUM(e.amount), 0) AS total
            FROM expenses e
           WHERE e.user_id = $1
             AND e.type = 'expense'
-            AND TO_CHAR(e.occurred_at AT TIME ZONE $3, 'YYYY-MM') = $2`,
+            AND ${monthRangePredicate('e.occurred_at', '$2', '$3')}`,
         [userId, month, tz],
       ),
     ])
@@ -121,14 +122,8 @@ export class BudgetsService {
   }
 
   async upsert(userId: string, dto: UpsertBudgetDto): Promise<Budget> {
-    const existing = await this.repo.findOne({
-      where: { userId, categoryId: dto.categoryId, month: dto.month },
-    })
-    if (existing) {
-      existing.amount = dto.amount
-      return this.repo.save(existing)
-    }
-    return this.repo.save(this.repo.create({ userId, ...dto }))
+    await this.saveBatch(userId, { month: dto.month, items: [{ categoryId: dto.categoryId, amount: dto.amount }] })
+    return this.repo.findOneByOrFail({ userId, categoryId: dto.categoryId, month: dto.month })
   }
 
   async findByMonth(userId: string, month: string): Promise<Budget[]> {
@@ -141,8 +136,9 @@ export class BudgetsService {
     await this.repo.remove(budget)
   }
 
-  async getBudgetWithActual(userId: string, month: string) {
-    const tz = await this.timezoneFor(userId)
+  async getBudgetWithActual(userId: string, month: string, timezone?: string) {
+    this.spendingPlan.assertMonth(month)
+    const tz = timezone ?? await this.timezoneFor(userId)
     const budgets = await this.repo.find({ where: { userId, month }, relations: ['category'] })
 
     // Month boundaries follow the user's calendar. This was pinned to UTC, which files a
@@ -153,7 +149,7 @@ export class BudgetsService {
          FROM expenses e
         WHERE e.user_id = $1
           AND e.type = 'expense'
-          AND TO_CHAR(e.occurred_at AT TIME ZONE $3, 'YYYY-MM') = $2
+          AND ${monthRangePredicate('e.occurred_at', '$2', '$3')}
         GROUP BY e.category_id`,
       [userId, month, tz],
     )
@@ -183,6 +179,7 @@ export class BudgetsService {
    * user actually spends.
    */
   async getSuggestions(userId: string, month: string): Promise<BudgetSuggestion[]> {
+    this.spendingPlan.assertMonth(month)
     const tz = await this.timezoneFor(userId)
     const prev = previousMonth(month)
 
@@ -191,14 +188,14 @@ export class BudgetsService {
       this.repo.find({ where: { userId, month: prev } }),
       this.repo.manager.query(
         `SELECT e.category_id,
-                SUM(e.amount) / GREATEST(COUNT(DISTINCT TO_CHAR(e.occurred_at AT TIME ZONE $2, 'YYYY-MM')), 1) AS avg_month
+                SUM(e.amount) / 3 AS avg_month
            FROM expenses e
           WHERE e.user_id = $1
             AND e.type = 'expense'
             AND e.category_id IS NOT NULL
-            AND e.occurred_at >= NOW() - INTERVAL '3 months'
+            AND ${monthSpanPredicate('e.occurred_at', '$3', '$4', '$2')}
           GROUP BY e.category_id`,
-        [userId, tz],
+        [userId, tz, shiftMonth(month, -3), prev],
       ),
     ])
 
@@ -234,66 +231,56 @@ export class BudgetsService {
    * twice, or after setting one category by hand, must not overwrite deliberate edits.
    */
   async copyPrevious(userId: string, month: string): Promise<{ copied: number; skipped: number }> {
-    const prev = previousMonth(month)
-    const source = await this.repo.find({ where: { userId, month: prev } })
-    if (source.length === 0) {
-      throw new BadRequestException(`No budgets found for ${prev}`)
-    }
+    this.spendingPlan.assertMonth(month)
+    return this.repo.manager.transaction(async em => {
+      await lockLedger(em, userId)
+      const repo = em.getRepository(Budget)
+      const prev = previousMonth(month)
+      const source = await repo.find({ where: { userId, month: prev } })
+      if (source.length === 0) {
+        throw new BadRequestException(`No budgets found for ${prev}`)
+      }
 
-    const existing = await this.repo.find({ where: { userId, month } })
-    const taken = new Set(existing.map((b) => b.categoryId))
+      const existing = await repo.find({ where: { userId, month } })
+      const taken = new Set(existing.map((b) => b.categoryId))
 
-    const toCreate = source
-      .filter((b) => !taken.has(b.categoryId))
-      .map((b) => this.repo.create({
-        userId,
-        categoryId: b.categoryId,
-        amount: b.amount,
-        month,
-      }))
+      const toCreate = source
+        .filter((b) => !taken.has(b.categoryId))
+        .map((b) => repo.create({
+          userId,
+          categoryId: b.categoryId,
+          amount: b.amount,
+          month,
+        }))
 
-    if (toCreate.length > 0) await this.repo.save(toCreate)
-    return { copied: toCreate.length, skipped: source.length - toCreate.length }
+      if (toCreate.length > 0) await repo.save(toCreate)
+      return { copied: toCreate.length, skipped: source.length - toCreate.length }
+    })
   }
 
   /** Saves a whole month in one request, so the UI is not N round trips of one field. */
   async saveBatch(userId: string, dto: BatchBudgetDto): Promise<{ saved: number; removed: number }> {
+    this.spendingPlan.assertMonth(dto.month)
     const categoryIds = dto.items.map((i) => i.categoryId)
-
-    // Every category must belong to the caller, or a crafted request could attach a
-    // budget to someone else's category.
-    if (categoryIds.length > 0) {
-      const owned = await this.categories.count({ where: { id: In(categoryIds), userId } })
-      if (owned !== new Set(categoryIds).size) {
-        throw new NotFoundException('One or more categories were not found')
+    if (new Set(categoryIds).size !== categoryIds.length) throw new BadRequestException('Duplicate categories')
+    return this.repo.manager.transaction(async em => {
+      await lockLedger(em, userId)
+      const repo = em.getRepository(Budget)
+      if (categoryIds.length > 0) {
+        const owned = await em.count(Category, { where: { id: In(categoryIds), userId, type: 'expense' } })
+        if (owned !== categoryIds.length) {
+          throw new BadRequestException('Choose only your own expense categories')
+        }
       }
-    }
-
-    const existing = await this.repo.find({ where: { userId, month: dto.month } })
-    const byCategory = new Map(existing.map((b) => [b.categoryId, b]))
-
-    // An amount of 0 means "no budget for this category" rather than "budget of zero",
-    // which the CHECK constraint would reject anyway.
-    const keep = dto.items.filter((i) => i.amount > 0)
-    const drop = dto.items.filter((i) => i.amount <= 0).map((i) => i.categoryId)
-
-    const rows = keep.map((item) => {
-      const found = byCategory.get(item.categoryId)
-      if (found) {
-        found.amount = item.amount
-        return found
+      const keep = dto.items.filter((i) => i.amount > 0)
+      const drop = dto.items.filter((i) => i.amount <= 0).map((i) => i.categoryId)
+      if (keep.length > 0) await repo.upsert(keep.map(item => ({ ...item, userId, month: dto.month })), ['userId', 'categoryId', 'month'])
+      let removed = 0
+      if (drop.length > 0) {
+        const result = await repo.delete({ userId, month: dto.month, categoryId: In(drop) })
+        removed = result.affected ?? 0
       }
-      return this.repo.create({ userId, categoryId: item.categoryId, amount: item.amount, month: dto.month })
+      return { saved: keep.length, removed }
     })
-
-    if (rows.length > 0) await this.repo.save(rows)
-
-    let removed = 0
-    if (drop.length > 0) {
-      const result = await this.repo.delete({ userId, month: dto.month, categoryId: In(drop) })
-      removed = result.affected ?? 0
-    }
-
-    return { saved: rows.length, removed }
   }
 }

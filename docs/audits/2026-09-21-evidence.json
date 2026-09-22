@@ -1,0 +1,118 @@
+[
+  {
+    "name": "social account pre-hijacking",
+    "evidence": {
+      "sameAccount": true,
+      "oldJwtAfterReset": 401,
+      "attackerCanLoginAgain": true,
+      "providerResponses": "synthetic, no external OAuth calls"
+    }
+  },
+  {
+    "name": "unverified local registration also survives automatic Google account merge",
+    "evidence": {
+      "sameAccount": true,
+      "originalPasswordStillWorks": true
+    }
+  },
+  {
+    "name": "OAuth audience check fails open without backend configuration",
+    "evidence": {
+      "googleTokeninfoCalls": 0,
+      "facebookDebugCalls": 0,
+      "loginStatus": 200
+    }
+  },
+  {
+    "name": "single-use reset token accepted twice concurrently",
+    "evidence": {
+      "statuses": [
+        201,
+        201
+      ]
+    }
+  },
+  {
+    "name": "direct backend rate limit bypass by spoofing forwarded IP",
+    "evidence": {
+      "sameHeader": [
+        201,
+        201,
+        201,
+        429
+      ],
+      "changedHeader": 201
+    }
+  },
+  {
+    "name": "push endpoint can reach loopback",
+    "evidence": {
+      "socketConnections": 1,
+      "testResult": {
+        "sent": 0,
+        "failed": 1,
+        "pruned": 0,
+        "configured": true
+      },
+      "boundary": "raw TLS connection to audit-owned listener only; no internal data read"
+    }
+  },
+  {
+    "name": "unpaid prior month bill disappears from current obligations",
+    "evidence": {
+      "prior": {
+        "status": "overdue",
+        "unpaid": 6000
+      },
+      "current": {
+        "status": "upcoming",
+        "unpaid": 6000,
+        "count": 1
+      },
+      "expectedUnpaidForTwoUnpaidCycles": 12000
+    }
+  },
+  {
+    "name": "null expense amount validation",
+    "evidence": {
+      "status": 500,
+      "amountAfter": "25.00"
+    }
+  },
+  {
+    "name": "authorization controls passed",
+    "evidence": {
+      "anonymousExpenseRead": 401,
+      "otherUserExpenseRead": 404,
+      "otherUserBillPay": 404,
+      "nonAdminRead": 403
+    }
+  },
+  {
+    "name": "lost first online response duplicates ledger through offline queue",
+    "evidence": {
+      "firstRequestHasClientKey": false,
+      "queuedSent": 1,
+      "duplicateRows": 2,
+      "totalDebited": 246.9
+    }
+  },
+  {
+    "name": "offline queue deletes pending record after five temporary server failures",
+    "evidence": {
+      "sent": 0,
+      "failed": 0,
+      "dropped": 1,
+      "remaining": 0
+    }
+  },
+  {
+    "name": "history CSV silently truncates export after 500 rows",
+    "evidence": {
+      "rowsInDatabase": 600,
+      "rowsInDownloadedCsv": 500,
+      "omitted": 100,
+      "path": "actual History export dialog and download"
+    }
+  }
+]

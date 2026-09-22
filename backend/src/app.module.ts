@@ -22,6 +22,7 @@ import { AccountModule } from './modules/account/account.module'
 import { NotificationsModule } from './modules/notifications/notifications.module'
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard'
 import { HealthController } from './health.controller'
+import { PlanningModule } from './modules/planning/planning.module'
 
 @Module({
   controllers: [HealthController],
@@ -36,6 +37,7 @@ import { HealthController } from './health.controller'
     CategoriesModule,
     AnalyticsModule,
     BudgetsModule,
+    PlanningModule,
     LoansModule,
     InvestmentsModule,
     TaxModule,

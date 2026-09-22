@@ -4,10 +4,10 @@ import Icon from '@mdi/react'
 import { mdiAlertCircleOutline } from '@mdi/js'
 
 // ── Card ──────────────────────────────────────────────────────
-export function Card({ children, className, padding = true }:
-  { children: ReactNode; className?: string; padding?: boolean }) {
+export function Card({ children, className, padding = true, id }:
+  { children: ReactNode; className?: string; padding?: boolean; id?: string }) {
   return (
-    <div className={clsx(
+    <div id={id} className={clsx(
       'bg-card rounded-2xl shadow-sm border border-theme',
       padding && 'p-5', className,
     )}>

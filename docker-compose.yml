@@ -43,6 +43,10 @@ services:
       DB_USER:      ${DB_USER:-expense_user}
       DB_PASSWORD:  ${DB_PASSWORD:?DB_PASSWORD is required}
       JWT_SECRET:             ${JWT_SECRET:?JWT_SECRET is required}
+      GOOGLE_CLIENT_ID:       ${VITE_GOOGLE_CLIENT_ID-}
+      FACEBOOK_APP_ID:        ${VITE_FACEBOOK_APP_ID-}
+      FACEBOOK_APP_SECRET:    ${FACEBOOK_APP_SECRET-}
+      TRUST_PROXY_HOPS:       "0"
       CORS_ORIGIN:            ${CORS_ORIGIN:-http://localhost:3000}
       OPENROUTER_API_KEY:     ${OPENROUTER_API_KEY}
       TAVILY_KEY_1:           ${TAVILY_KEY_1}
@@ -56,7 +60,7 @@ services:
       - ./backend:/app            # hot reload in dev
       - /app/node_modules         # hot reload in dev
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     depends_on:
       db:
         condition: service_healthy

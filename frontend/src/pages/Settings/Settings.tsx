@@ -163,11 +163,16 @@ export default function Settings() {
   const iconPresets = catType === 'expense' ? PRESET_ICONS_EXPENSE : PRESET_ICONS_INCOME
 
   return (
-    <div className="px-4 pt-6 pb-6 space-y-5 animate-fade-in">
-      <h1 className="text-2xl font-extrabold text-base-theme tracking-tight">{t('settings')}</h1>
+    <div className="px-4 pt-6 pb-6 sm:px-6 lg:px-2 space-y-6 animate-fade-in">
+      <h1 className="page-heading">{t('settings')}</h1>
+      <nav aria-label={t('settings')} className="flex gap-2 flex-wrap">
+        {([['settings-profile', 'ux_profile'], ['settings-appearance', 'appearance'], ['settings-categories', 'categories']] as const).map(([id, key]) => (
+          <button key={id} className="secondary-action !text-xs !py-2" onClick={() => document.getElementById(id)?.scrollIntoView({ block: 'start' })}>{t(key)}</button>
+        ))}
+      </nav>
 
       {/* ── Profile ── */}
-      <Card>
+      <Card id="settings-profile" className="scroll-mt-5">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-11 h-11 rounded-2xl bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center">
             <Icon path={mdiAccount} size={0.9} color="#4f46e5" />
@@ -231,7 +236,7 @@ export default function Settings() {
       </Card>
 
       {/* ── Appearance ── */}
-      <Card>
+      <Card id="settings-appearance" className="scroll-mt-5">
         <p className="text-sm font-bold text-base-theme mb-4">{t('appearance')}</p>
 
         {/* Dark mode toggle */}
@@ -243,6 +248,9 @@ export default function Settings() {
           </div>
           <button
             onClick={toggleTheme}
+            role="switch"
+            aria-checked={theme === 'dark'}
+            aria-label={t('dark_mode')}
             className={clsx(
               'relative w-12 h-6 rounded-full transition-colors duration-200',
               theme === 'dark' ? 'bg-brand-600' : 'bg-slate-300 dark:bg-slate-600',
@@ -264,6 +272,7 @@ export default function Settings() {
           <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1 gap-1">
             {(['th', 'en'] as const).map(l => (
               <button key={l} onClick={() => setLang(l)}
+                aria-pressed={lang === l}
                 className={clsx('px-3 py-1 rounded-lg text-xs font-bold transition-all uppercase',
                   lang === l ? 'bg-white dark:bg-slate-600 text-brand-600 shadow-sm' : 'text-muted-theme')}>
                 {l}
@@ -274,7 +283,7 @@ export default function Settings() {
       </Card>
 
       {/* ── Categories ── */}
-      <Card padding={false}>
+      <Card id="settings-categories" className="scroll-mt-5" padding={false}>
         <div ref={formRef} className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-theme">
           <h2 className="font-bold text-base-theme text-sm">{t('categories')}</h2>
           <button onClick={startAdd}

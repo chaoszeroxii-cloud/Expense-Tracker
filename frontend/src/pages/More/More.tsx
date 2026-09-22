@@ -79,13 +79,14 @@ export default function More() {
   }
 
   return (
-    <div className="px-4 pt-6 pb-4 space-y-6 animate-fade-in">
+    <div className="px-4 pt-6 pb-4 sm:px-6 lg:px-2 space-y-7 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-extrabold text-base-theme">{t('more_title')}</h1>
-        <p className="text-sm text-muted-theme mt-0.5">{t('more_subtitle')}</p>
+        <h1 className="page-heading">{t('more_title')}</h1>
+        <p className="page-description">{t('ux_tools_intro')}</p>
       </div>
 
       <Group title={t('more_group_tools')} items={TOOLS} onPick={run} t={t} />
+      <Group title={t('more_group_account')} items={ACCOUNT} onPick={run} t={t} />
 
       {/* ── Advanced ── */}
       <section>
@@ -95,6 +96,9 @@ export default function More() {
 
         <button
           onClick={toggleAdvanced}
+          role="switch"
+          aria-checked={advancedMode}
+          aria-label={t('advanced_title')}
           disabled={toggling}
           className="w-full flex items-center gap-4 p-4 rounded-2xl bg-card border border-[var(--border)]
                      active:scale-[0.98] transition-all text-left mb-3 disabled:opacity-60"
@@ -104,7 +108,7 @@ export default function More() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="font-bold text-base-theme text-sm">{t('advanced_title')}</div>
-            <div className="text-xs text-muted-theme mt-0.5 leading-relaxed">{t('advanced_desc')}</div>
+            <div className="text-xs text-muted-theme mt-1 leading-relaxed">{t('ux_advanced_note')}</div>
           </div>
           <span className={clsx(
             'shrink-0 w-10 h-6 rounded-full transition-colors relative',
@@ -118,13 +122,12 @@ export default function More() {
         </button>
 
         {advancedMode && (
-          <div className="space-y-3 animate-fade-up">
+          <div className="surface overflow-hidden divide-y divide-[var(--border)] animate-fade-up">
             {ADVANCED.map(item => <Row key={item.titleKey} item={item} onPick={run} t={t} />)}
           </div>
         )}
       </section>
 
-      <Group title={t('more_group_account')} items={ACCOUNT} onPick={run} t={t} />
     </div>
   )
 }
@@ -138,7 +141,7 @@ function Group({ title, items, onPick, t }: {
   return (
     <section>
       <h2 className="text-xs font-bold text-muted-theme uppercase tracking-wide mb-2 px-1">{title}</h2>
-      <div className="space-y-3">
+      <div className="surface overflow-hidden divide-y divide-[var(--border)]">
         {items.map(item => <Row key={item.titleKey} item={item} onPick={onPick} t={t} />)}
       </div>
     </section>
@@ -149,8 +152,8 @@ function Row({ item, onPick, t }: { item: Item; onPick: (i: Item) => void; t: (k
   return (
     <button
       onClick={() => onPick(item)}
-      className="w-full flex items-center gap-4 p-4 rounded-2xl bg-card border border-[var(--border)]
-                 active:scale-[0.98] transition-all text-left hover:border-[var(--text-muted)]"
+      className="w-full flex items-center gap-4 p-5 bg-card
+                 transition-colors text-left hover:bg-[var(--input)]"
     >
       <div className={`w-12 h-12 rounded-2xl ${item.bg} flex items-center justify-center shrink-0`}>
         <Icon path={item.icon} size={1.1} color={item.color} />

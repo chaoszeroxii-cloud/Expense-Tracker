@@ -13,6 +13,8 @@ import {
 } from '../../common/local-date.util';
 import { CheckinsService, Coverage } from '../checkins/checkins.service';
 import { SpendingPlanService } from '../budgets/spending-plan.service';
+import { PlanningService } from '../planning/planning.service';
+import { dailyAllowance } from '../planning/daily-allowance';
 
 export interface AiRecommendation {
   type: 'warning' | 'tip' | 'good';
@@ -111,6 +113,9 @@ export interface DailyBrief {
   /** `null` when no plan is set. Always a *planned* allowance, never real cash. */
   safeToday: number | null;
   daysRemaining: number;
+  unpaidBills: number;
+  unpaidBillCount: number;
+  nextBill: { name: string; amount: number; dueDate: string } | null;
   planStatus: 'no_plan' | 'on_track' | 'close' | 'over';
   transactionsToday: number;
   recentCategoryIds: string[];
@@ -133,6 +138,7 @@ export class AnalyticsService {
     private readonly users: Repository<User>,
     private readonly checkins: CheckinsService,
     private readonly spendingPlan: SpendingPlanService,
+    private readonly planning: PlanningService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -158,22 +164,25 @@ export class AnalyticsService {
 
     // `occurred_at AT TIME ZONE $tz` turns the stored timestamptz into the
     // user's wall clock, so day and month boundaries land where they expect.
-    const totals = await this.repo
+    const totalsPromise = this.repo
       .createQueryBuilder('e')
       .select([
         `COALESCE(SUM(CASE WHEN e.type = 'expense' AND (e.occurred_at AT TIME ZONE :tz)::date = :today::date THEN e.amount ELSE 0 END), 0) AS "spentToday"`,
         `COALESCE(SUM(CASE WHEN e.type = 'expense' THEN e.amount ELSE 0 END), 0) AS "monthSpent"`,
-        `COALESCE(SUM(CASE WHEN e.type = 'expense' AND (e.occurred_at AT TIME ZONE :tz)::date < :today::date THEN e.amount ELSE 0 END), 0) AS "spentBeforeToday"`,
         `COUNT(*) FILTER (WHERE (e.occurred_at AT TIME ZONE :tz)::date = :today::date) AS "transactionsToday"`,
       ])
       .where('e.user_id = :userId', { userId })
-      .andWhere(`TO_CHAR(e.occurred_at AT TIME ZONE :tz, 'YYYY-MM') = :month`)
+      .andWhere(monthRangePredicate('e.occurred_at', ':month', ':tz'))
       .setParameters({ userId, tz, today, month })
       .getRawOne();
 
-    const spentToday       = round2(parseFloat(totals.spentToday) || 0);
-    const monthSpent       = round2(parseFloat(totals.monthSpent) || 0);
-    const spentBeforeToday = round2(parseFloat(totals.spentBeforeToday) || 0);
+    const [totals, effectivePlan, billState] = await Promise.all([
+      totalsPromise,
+      this.spendingPlan.resolve(userId, month),
+      this.planning.billsForMonth(userId, month, today, tz),
+    ]);
+    const spentToday = round2(parseFloat(totals.spentToday) || 0);
+    const monthSpent = round2(parseFloat(totals.monthSpent) || 0);
     const transactionsToday = parseInt(totals.transactionsToday) || 0;
 
     // ── Safe to spend, strictly from the user's own plan ────────────────────
@@ -184,7 +193,6 @@ export class AnalyticsService {
     //
     // Resolved per month, and inherited from the last month the user set one, so the
     // daily figure keeps working on the 1st instead of vanishing until they re-enter it.
-    const effectivePlan = await this.spendingPlan.resolve(userId, month);
     const limitRaw = effectivePlan.totalAmount;
     const hasPlan  = user.trackingMode === 'plan' && limitRaw !== null && limitRaw > 0;
 
@@ -192,9 +200,7 @@ export class AnalyticsService {
     let planStatus: DailyBrief['planStatus'] = 'no_plan';
 
     if (hasPlan) {
-      const remainingBeforeToday = limitRaw! - spentBeforeToday;
-      const baseToday = Math.max(0, remainingBeforeToday / daysRemaining);
-      safeToday = round2(Math.max(0, baseToday - spentToday));
+      safeToday = dailyAllowance(limitRaw!, monthSpent, spentToday, billState.unpaidBills, billState.billsPaidToday, daysRemaining);
 
       if (monthSpent > limitRaw!)      planStatus = 'over';
       else if (safeToday === 0)        planStatus = 'close';
@@ -205,7 +211,7 @@ export class AnalyticsService {
     // ── Categories to offer first in Quick Add ──────────────────────────────
     // Weighted by how often they were used recently rather than pure recency, so
     // a one-off purchase does not displace a daily habit.
-    const recentCats = await this.repo
+    const recentCatsPromise = this.repo
       .createQueryBuilder('e')
       .select(['e.category_id AS "categoryId"'])
       .where('e.user_id = :userId', { userId })
@@ -219,14 +225,16 @@ export class AnalyticsService {
       .setParameters({ userId })
       .getRawMany();
 
-    const [recent, coverage] = await Promise.all([
+    const [recent, coverage, recentCats] = await Promise.all([
       this.repo.find({
         where: { userId },
         relations: ['category'],
+        loadEagerRelations: false,
         order: { occurredAt: 'DESC', createdAt: 'DESC' },
         take: 3,
       }),
       this.checkins.getCoverage(userId, tz),
+      recentCatsPromise,
     ]);
 
     // ── Work-time lens ──────────────────────────────────────────────────────
@@ -234,6 +242,7 @@ export class AnalyticsService {
     const workHours = Number(user.workHoursPerDay) * Number(user.workDaysPerMonth);
     const hourlyRate = income && income > 0 && workHours > 0 ? round2(income / workHours) : null;
 
+    const nextBill = billState.bills.find(b => !b.expenseId);
     return {
       date: today,
       timezone: tz,
@@ -243,6 +252,9 @@ export class AnalyticsService {
       monthlyLimit: hasPlan ? round2(limitRaw!) : null,
       safeToday,
       daysRemaining,
+      unpaidBills: billState.unpaidBills,
+      unpaidBillCount: billState.bills.filter(b => !b.expenseId).length,
+      nextBill: nextBill ? { name: nextBill.name, amount: nextBill.amount, dueDate: nextBill.dueDate } : null,
       planStatus,
       transactionsToday,
       recentCategoryIds: recentCats.map((r) => r.categoryId),

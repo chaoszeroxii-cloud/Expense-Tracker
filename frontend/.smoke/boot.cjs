@@ -21,12 +21,18 @@ const path = require('path')
   page.on('requestfailed', r => failedRequests.push(r.url() + ' :: ' + r.failure()?.errorText))
 
   // The API is not running; stub it so failures are auth-shaped, not network-shaped.
-  await page.route('**/api/**', route => route.fulfill({
+  // Match actual API paths only. The glob **/api/** also intercepted Vite's
+  // /src/api/index.ts module, creating a false blank-page failure in development.
+  await page.route(url => url.pathname.startsWith('/api/'), route => route.fulfill({
     status: 401, contentType: 'application/json', body: '{"message":"Unauthorized"}',
   }))
 
   const base = process.env.SMOKE_URL
   await page.goto(base + '/login', { waitUntil: 'networkidle' })
+
+  // Vite can finish its first network burst before React commits the lazy route.
+  // Wait for the user-facing action, rather than interpreting an empty intermediate root as a crash.
+  await page.locator('form').getByRole('button', { name: /^(เข้าสู่ระบบ|Sign in|Log in|Login)$/i }).waitFor({ state: 'visible', timeout: 15000 })
 
   const rootHtml = await page.locator('#root').innerHTML()
   const bodyText = await page.locator('body').innerText()

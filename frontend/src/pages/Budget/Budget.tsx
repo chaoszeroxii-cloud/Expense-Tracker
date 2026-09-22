@@ -1,7 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Icon from '@mdi/react'
-import { mdiChevronDown, mdiChevronRight, mdiWallet, mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
+import { mdiChevronDown, mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
 import clsx from 'clsx'
 import { budgetsApi, categoriesApi } from '../../api'
 import type { SpendingPlanView, Category } from '../../types'
@@ -11,28 +10,21 @@ import ConfirmModal from '../../components/ui/ConfirmModal'
 import { Skeleton, ErrorState } from '../../components/ui'
 import SpendingPlanCard from '../../components/plan/SpendingPlanCard'
 import BudgetRollover from '../../components/plan/BudgetRollover'
+import LifePlanning from '../../components/plan/LifePlanning'
 import { useT, useI18n } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
 import { toast } from '../../store/toast.store'
 import { apiErrorMessage } from '../../utils/apiError'
-import { currentMonthLocal as currentMonth, monthOffset } from '../../utils/localDate'
+import { monthOffset } from '../../utils/localDate'
 import { fmt } from '../../utils/money'
 
-/**
- * One question per section, in the order they matter.
- *
- * The page used to lead with two things called "แผน" and "งบ" without saying how they
- * differed, and the headline figure was not even scoped to the month selector beneath it.
- * Now: the monthly limit (which drives the daily number on Home), then envelopes — the
- * split most people here actually maintain — and per-category limits collapsed away as
- * the optional alternative they are.
- */
+/** Monthly spending first; bills and savings next; category detail is optional. */
 export default function Budget() {
   const t = useT()
   const { lang } = useI18n()
-  const navigate = useNavigate()
   const dateLocale = lang === 'en' ? 'en-US' : 'th-TH'
-  const advancedMode = useAuthStore(s => s.user?.advancedMode ?? false)
+  const timezone = useAuthStore(s => s.user?.timezone ?? 'Asia/Bangkok')
+  const currentMonth = () => new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).slice(0, 7)
 
   const [month, setMonth] = useState(currentMonth())
   const [plan, setPlan] = useState<SpendingPlanView | null>(null)
@@ -44,30 +36,33 @@ export default function Budget() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ categoryId: '', amount: '' })
   const [saving, setSaving] = useState(false)
+  const requestId = useRef(0)
   const [confirmState, setConfirmState] = useState<{ open: boolean; onConfirm: () => void }>({ open: false, onConfirm: () => {} })
 
   const load = useCallback(async () => {
+    const request = ++requestId.current
     setLoading(true)
     setError(null)
     try {
       const [p, c] = await Promise.all([budgetsApi.getPlan(month), categoriesApi.list()])
+      if (request !== requestId.current) return
       setPlan(p)
       setCategories(c.filter((x: Category) => x.type === 'expense'))
       // Keep the section open once it is in use, so it does not hide the user's own data.
       if (p.categoryTargets.length > 0) setShowCategories(true)
     } catch (err) {
-      setError(apiErrorMessage(err, t('err_load_failed'), t('err_offline')))
+      if (request === requestId.current) setError(apiErrorMessage(err, t('err_load_failed'), t('err_offline')))
     } finally {
-      setLoading(false)
+      if (request === requestId.current) setLoading(false)
     }
   }, [month, t])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); return () => { requestId.current++ } }, [load])
 
   useEffect(() => {
     const handler = (e: Event) => {
       const types: string[] = (e as CustomEvent).detail?.types ?? []
-      if (types.includes('budget') || types.includes('dashboard')) load()
+      if (types.includes('budget') || types.includes('transactions')) load()
     }
     window.addEventListener('moneyflow:refresh', handler)
     return () => window.removeEventListener('moneyflow:refresh', handler)
@@ -112,21 +107,21 @@ export default function Budget() {
   const availableCategories = categories.filter(c => !used.has(c.id))
 
   return (
-    <div className="px-4 pt-6 pb-4 space-y-4 animate-fade-in">
+    <div className="px-4 pt-6 pb-4 sm:px-6 lg:px-2 space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-extrabold text-base-theme">{t('nav_plan')}</h1>
-        <p className="text-xs text-muted-theme mt-0.5">{t('budget_subtitle')}</p>
+        <h1 className="page-heading">{t('nav_plan')}</h1>
+        <p className="page-description">{t('ux_plan_intro')}</p>
       </div>
 
       {/* One month selector for the whole page — the headline used to ignore it. */}
-      <div className="flex items-center justify-center gap-4">
-        <button onClick={() => changeMonth(-1)} aria-label="Previous month"
-          className="p-2 rounded-full hover:bg-[var(--input)] text-muted-theme">‹</button>
+      <div className="flex items-center justify-between gap-4 surface px-4 py-2">
+        <button onClick={() => changeMonth(-1)} aria-label={t('ux_previous_month')}
+          className="p-3 rounded-full hover:bg-[var(--input)] text-muted-theme">‹</button>
         <span className="font-bold text-base-theme text-sm min-w-[120px] text-center">
           {new Date(month + '-01').toLocaleDateString(dateLocale, { year: 'numeric', month: 'long' })}
         </span>
-        <button onClick={() => changeMonth(1)} disabled={month >= currentMonth()}
-          className="p-2 rounded-full hover:bg-[var(--input)] text-muted-theme disabled:opacity-30">›</button>
+        <button onClick={() => changeMonth(1)} disabled={month >= currentMonth()} aria-label={t('ux_next_month')}
+          className="p-3 rounded-full hover:bg-[var(--input)] text-muted-theme disabled:opacity-30">›</button>
       </div>
 
       {loading ? (
@@ -137,28 +132,13 @@ export default function Budget() {
         <>
           <SpendingPlanCard plan={plan} month={month} onChanged={load} />
 
-          {/* Envelopes: the split this app's users actually maintain. */}
-          {advancedMode && (
-            <button
-              onClick={() => navigate('/wallets')}
-              className="w-full flex items-center gap-4 p-4 rounded-2xl bg-card border border-[var(--border)]
-                         active:scale-[0.98] transition-all text-left"
-            >
-              <div className="w-11 h-11 rounded-2xl bg-violet-50 dark:bg-violet-900/20 flex items-center justify-center shrink-0">
-                <Icon path={mdiWallet} size={1} color="#8b5cf6" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-base-theme text-sm">{t('plan_wallets_title')}</div>
-                <div className="text-xs text-muted-theme mt-0.5">{t('plan_wallets_desc')}</div>
-              </div>
-              <Icon path={mdiChevronRight} size={0.8} className="text-muted-theme shrink-0" />
-            </button>
-          )}
+          <LifePlanning categories={categories} month={month} />
 
           {/* Per-category limits — the optional alternative, folded away by default. */}
           <div className="rounded-2xl bg-card border border-theme overflow-hidden">
             <button
               onClick={() => setShowCategories(v => !v)}
+              aria-expanded={showCategories}
               className="w-full flex items-center justify-between px-5 py-4 text-left"
             >
               <div className="min-w-0">

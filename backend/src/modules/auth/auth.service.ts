@@ -11,6 +11,8 @@ import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { Allocation } from '../allocations/allocation.entity'
 import { SpendingPlanService } from '../budgets/spending-plan.service'
+import { localToday, safeTimezone } from '../../common/local-date.util'
+import { lockLedger } from '../../common/ledger-lock.util'
 import {
   RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto,
   ChangePasswordDto, UpdatePreferencesDto, CompleteOnboardingDto,
@@ -113,6 +115,7 @@ export class AuthService {
 
   // ── Google verify ────────────────────────────────────────────
   async googleVerify(dto: GoogleVerifyDto) {
+    await this.assertGoogleAudience(dto.token)
     let googleProfile: { sub: string; email?: string; email_verified?: boolean; name: string }
     try {
       const { data } = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -123,13 +126,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid Google token')
     }
 
-    // Ensure the access token was actually issued for *our* app, otherwise a
-    // token minted by any other Google app could be replayed here.
-    await this.assertGoogleAudience(dto.token)
 
     // Only a Google-verified email may be used to link/create an account.
     const providerEmail =
-      googleProfile.email && googleProfile.email_verified ? googleProfile.email : undefined
+      googleProfile.email && googleProfile.email_verified === true ? googleProfile.email : undefined
 
     return this.resolveSocialLogin({
       providerKey: 'googleId',
@@ -171,10 +171,7 @@ export class AuthService {
   }
 
   // ── Social login shared logic ────────────────────────────────
-  // Auto-linking to an existing account only ever happens on a *provider
-  // verified* email. A client-supplied email (typed into the modal) is never
-  // trusted for linking — it can only seed a brand-new account — which closes
-  // the account-takeover vector.
+  // Public login never merges credentials based only on matching email addresses.
   private async resolveSocialLogin(params: {
     providerKey: 'googleId' | 'facebookId'
     providerId: string
@@ -184,34 +181,27 @@ export class AuthService {
     authProvider: 'google' | 'facebook'
     lang?: 'th' | 'en'
   }) {
-    const { providerKey, providerId, providerEmail, clientEmail, name, authProvider } = params
-    const lang = params.lang ?? 'th'
-
-    // 1. Returning social user — matched by provider id, always safe.
-    const existingByProvider = await this.users.findOne({ where: { [providerKey]: providerId } as any })
-    if (existingByProvider) return this.signToken(existingByProvider)
-
-    // 2. Provider gave us a verified email → safe to link or create.
-    if (providerEmail) {
-      const existingByEmail = await this.users.findOne({ where: { email: providerEmail } })
-      if (existingByEmail) {
-        await this.users.update(existingByEmail.id, { [providerKey]: providerId } as any)
-        existingByEmail[providerKey] = providerId
-        return this.signToken(existingByEmail)
+    const { providerKey, providerId, providerEmail, name, authProvider } = params
+    if (typeof providerId !== 'string' || !providerId.trim()) {
+      throw new UnauthorizedException('Invalid provider identity')
+    }
+    if (typeof providerEmail !== 'string' || !providerEmail.includes('@')) {
+      throw new BadRequestException('The provider must supply a verified email. Use email and password sign-in instead.')
+    }
+    const existing = await this.users.findOne({ where: { [providerKey]: providerId } as any })
+    if (existing) {
+      // Legacy client-supplied email is not proof of ownership either.
+      if (existing.email.toLowerCase() !== providerEmail.toLowerCase()) {
+        throw new UnauthorizedException('Email ownership could not be verified. Recover this account by email.')
       }
-      return this.createSocialUser(providerEmail, name, authProvider, providerKey, providerId, lang)
+      return this.signToken(existing)
     }
-
-    // 3. No verified email from the provider — ask the client for one.
-    if (!clientEmail) return { requiresEmail: true, name }
-
-    // Client-supplied email is unverified: only allowed to create a *new*
-    // account. If one already exists we refuse to link (prevents takeover).
-    const clash = await this.users.findOne({ where: { email: clientEmail } })
-    if (clash) {
-      throw new ConflictException('An account with this email already exists. Please sign in with your password.')
+    const collision = await this.users.createQueryBuilder('u')
+      .where('LOWER(u.email) = LOWER(:email)', { email: providerEmail }).getOne()
+    if (collision) {
+      throw new ConflictException('Use the original sign-in method for this email, or reset your password. Accounts are not linked automatically.')
     }
-    return this.createSocialUser(clientEmail, name, authProvider, providerKey, providerId, lang)
+    return this.createSocialUser(providerEmail, name, authProvider, providerKey, providerId, params.lang ?? 'th')
   }
 
   private async createSocialUser(
@@ -233,10 +223,10 @@ export class AuthService {
   /** Confirm a Google access token's audience matches our OAuth client id. */
   private async assertGoogleAudience(accessToken: string) {
     const expectedAud = process.env.GOOGLE_CLIENT_ID
-    if (!expectedAud) return // not configured (e.g. local dev) — skip
+    if (!expectedAud) throw new UnauthorizedException('Google sign-in is not configured')
     try {
       const { data } = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
-        params: { access_token: accessToken },
+        params: { access_token: accessToken }, timeout: 10000,
       })
       const aud = data.aud || data.azp
       if (aud !== expectedAud) throw new UnauthorizedException('Google token audience mismatch')
@@ -250,10 +240,10 @@ export class AuthService {
   private async assertFacebookAppToken(accessToken: string) {
     const appId = process.env.FACEBOOK_APP_ID
     const appSecret = process.env.FACEBOOK_APP_SECRET
-    if (!appId || !appSecret) return // not configured (e.g. local dev) — skip
+    if (!appId || !appSecret) throw new UnauthorizedException('Facebook sign-in is not configured')
     try {
       const { data } = await axios.get('https://graph.facebook.com/debug_token', {
-        params: { input_token: accessToken, access_token: `${appId}|${appSecret}` },
+        params: { input_token: accessToken, access_token: `${appId}|${appSecret}` }, timeout: 10000,
       })
       const info = data?.data
       if (!info?.is_valid || String(info.app_id) !== String(appId)) {
@@ -302,7 +292,14 @@ export class AuthService {
       patch.monthlySpendingLimit = null
     }
 
-    if (Object.keys(patch).length > 0) await this.users.update(userId, patch)
+    if (Object.keys(patch).length > 0) await this.users.manager.transaction(async em => {
+      const user = await lockLedger(em, userId)
+      await em.update(User, userId, patch)
+      if (patch.monthlySpendingLimit !== undefined) {
+        const month = localToday(safeTimezone(patch.timezone ?? user.timezone)).slice(0, 7)
+        await this.spendingPlans.setTotal(userId, month, patch.monthlySpendingLimit, em)
+      }
+    })
 
     const user = await this.users.findOne({ where: { id: userId } })
     return user ? this.toProfile(user) : null
@@ -338,7 +335,13 @@ export class AuthService {
     const nextVersion = (user.tokenVersion ?? 0) + 1
     // Bump tokenVersion to revoke every other outstanding session, then hand
     // back a fresh token so *this* session (the one that just re-authed) stays.
-    await this.users.update(userId, { passwordHash: hash, tokenVersion: nextVersion })
+    const changed = await this.users.createQueryBuilder().update(User)
+      .set({ passwordHash: hash, tokenVersion: nextVersion, resetToken: null, resetTokenExpiry: null })
+      .where('id = :id AND token_version = :version', { id: userId, version: user.tokenVersion ?? 0 })
+      .andWhere('password_hash IS NOT DISTINCT FROM :hash', { hash: user.passwordHash })
+      .execute()
+    // A reset or another password change may have won while bcrypt was running.
+    if (changed.affected !== 1) throw new UnauthorizedException('Credentials changed; sign in again')
     const refreshed = { ...user, passwordHash: hash, tokenVersion: nextVersion } as User
     return { message: 'เปลี่ยนรหัสผ่านสำเร็จ', ...this.signToken(refreshed) }
   }
@@ -365,15 +368,12 @@ export class AuthService {
     }
     if (dto.timezone) patch.timezone = this.assertTimezone(dto.timezone)
 
-    await this.users.update(userId, patch)
-
-    // The plan also has to land in the month-scoped table, or there is nothing for the
-    // following month to inherit — the legacy column carries no month and so cannot be
-    // carried forward. Written after the user update so it picks up the new timezone.
-    if (patch.monthlySpendingLimit) {
-      const month = await this.spendingPlans.currentMonth(userId)
-      await this.spendingPlans.setTotal(userId, month, patch.monthlySpendingLimit)
-    }
+    await this.users.manager.transaction(async em => {
+      const lockedUser = await lockLedger(em, userId)
+      await em.update(User, userId, patch)
+      const month = localToday(safeTimezone(patch.timezone ?? lockedUser.timezone)).slice(0, 7)
+      await this.spendingPlans.setTotal(userId, month, patch.monthlySpendingLimit, em)
+    })
 
     const refreshed = await this.users.findOne({ where: { id: userId } })
     return { success: true, user: refreshed ? this.toProfile(refreshed) : null }
@@ -444,13 +444,15 @@ export class AuthService {
       throw new BadRequestException('ลิงก์หมดอายุหรือไม่ถูกต้อง')
     }
     const hash = await bcrypt.hash(newPassword, SALT_ROUNDS)
-    // Invalidate every existing session (including any attacker's) on reset.
-    await this.users.update(user.id, {
-      passwordHash: hash,
-      resetToken: null,
-      resetTokenExpiry: null,
-      tokenVersion: (user.tokenVersion ?? 0) + 1,
-    })
+    // Consume once, and remove old social credentials as part of email recovery.
+    const consumed = await this.users.createQueryBuilder().update(User).set({
+      passwordHash: hash, resetToken: null, resetTokenExpiry: null,
+      googleId: null, facebookId: null, authProvider: 'local',
+      tokenVersion: () => 'token_version + 1',
+    }).where('id = :id AND reset_token = :token AND reset_token_expiry > CURRENT_TIMESTAMP', {
+      id: user.id, token: this.hashResetToken(token),
+    }).execute()
+    if (consumed.affected !== 1) throw new BadRequestException('Reset link expired or already used')
     return { message: 'ตั้งรหัสผ่านใหม่สำเร็จแล้ว' }
   }
 

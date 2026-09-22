@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { analyticsApi, expensesApi, categoriesApi, allocationsApi, budgetsApi, loansApi } from '../api'
+import { analyticsApi, expensesApi, categoriesApi, allocationsApi, budgetsApi, loansApi, planningApi } from '../api'
 import { apiErrorMessage } from '../utils/apiError'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
@@ -64,6 +64,7 @@ function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
 }
 
 // ── Domain hooks ──────────────────────────────────────────────
+export const usePlanning = () => useFetch(planningApi.overview)
 
 /**
  * The home screen's single above-the-fold request.

@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
-import { MulterModule } from '@nestjs/platform-express'
-import { memoryStorage } from 'multer'
 import { ChatMessage } from './chat-message.entity'
 import { AiUsageLog } from './ai-usage-log.entity'
 import { ChatService } from './chat.service'
@@ -20,7 +18,6 @@ import { User } from '../users/user.entity'
   imports: [
     // User: the timezone every month/day boundary in the tools is measured in.
     TypeOrmModule.forFeature([ChatMessage, AiUsageLog, User]),
-    MulterModule.register({ storage: memoryStorage() }),
     CategoriesModule,
     LoansModule,
     BudgetsModule,

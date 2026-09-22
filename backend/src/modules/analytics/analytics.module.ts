@@ -7,6 +7,7 @@ import { CheckinsModule } from '../checkins/checkins.module';
 import { BudgetsModule } from '../budgets/budgets.module';
 import { AnalyticsService } from './analytics.service';
 import { AnalyticsController } from './analytics.controller';
+import { PlanningModule } from '../planning/planning.module';
 
 @Module({
   // Coverage is folded into the daily brief rather than fetched separately, so Home
@@ -16,6 +17,7 @@ import { AnalyticsController } from './analytics.controller';
     TypeOrmModule.forFeature([Expense, AllocationMovement, User]),
     CheckinsModule,
     BudgetsModule,
+    PlanningModule,
   ],
   providers: [AnalyticsService],
   controllers: [AnalyticsController],

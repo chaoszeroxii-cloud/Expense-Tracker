@@ -10,8 +10,8 @@ import {
  * answer "what was my plan in June?" — the Plan screen showed the current value above a
  * month selector, so the headline and the rows beneath it described different periods.
  *
- * A row means a plan exists for that month. Absence means no plan, which is not the same
- * as a total of 0 ("spend nothing"); the table forbids 0 to keep the two distinct.
+ * Missing months inherit the latest row. A null total explicitly clears the plan and
+ * stops inheritance; zero remains invalid.
  */
 @Entity('monthly_spending_plans')
 @Unique('monthly_spending_plans_unique_month', ['userId', 'month'])
@@ -27,8 +27,8 @@ export class MonthlySpendingPlan {
   @Column({ length: 7 })
   month: string
 
-  @Column({ name: 'total_amount', type: 'numeric', precision: 14, scale: 2 })
-  totalAmount: number
+  @Column({ name: 'total_amount', type: 'numeric', precision: 14, scale: 2, nullable: true })
+  totalAmount: number | null
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date

@@ -1,40 +1,42 @@
-# MoneyFlow Expense Tracker
+# MoneyFlow: daily money tracking and life planning
 
-Personal envelope-budgeting expense tracker. Users record income/expenses, and split money into named "wallets" (envelopes) that track their own running balance.
+Primary loop: record a transaction, check today's planned allowance, review monthly
+bills and update a savings goal. Envelopes are optional advanced tools.
 
-## Language
+## Domain language
 
-**Allocation (ซอง / Wallet)**:
-A named envelope with a running `balance` that accumulates over the account's lifetime — it never resets on a calendar boundary. Funded by moving money in from the Unallocated Pool, or automatically credited/debited when an Expense's category is linked to it.
-_Avoid_: Envelope (UI-only synonym; code and API use "Allocation")
+| Concept | Meaning | Moves recorded money? |
+|---|---|---|
+| Expense / income | A real-world transaction explicitly recorded by the user | Yes, updates the ledger and any linked envelope |
+| Recorded balance | All recorded income minus expenses, starting at zero | Derived; not a verified bank balance |
+| Monthly spending plan | Overall spending limit including bills, after intended savings | No |
+| Category limit (`Budget`) | Optional monthly detail inside that spending plan | No |
+| Recurring bill | Monthly commitment; unpaid amount is reserved before the daily allowance | Only when explicitly paid through `ExpensesService` |
+| Bill occurrence | Frozen obligation for one bill/month; remains outstanding until paid or waived | Waiving releases the reserve without recording an expense |
+| Bill payment | Link to one real expense for one bill and month | Linking an existing expense does not create another |
+| Savings goal | Self-reported saved amount, target and date | No |
+| Allocation / envelope | A lifetime running balance for linked expense/income categories | Changes recorded allocation, never transfers money between banks |
+| Unallocated pool | Recorded balance minus the sum of envelope balances | Derived; may be negative |
+| Allocation movement | Explicit funding/transfer/unallocation within the recorded balance | Reallocates without changing total balance |
+| Allocation funding target | Advanced monthly intent for funding an envelope | Saving a target does not fund it |
 
-**Unallocated Pool (เงินรอจัดสรร)**:
-`user.totalBalance − Σ(allocation.balance)`. Real money the user has that hasn't been assigned to any wallet yet. Can go negative ("over-allocated") if an expense drains `totalBalance` without a linked wallet to drain alongside it — see [[project_envelope_balance]].
+A category may be linked to at most one envelope, enforced in the database and service.
+Reversals and amount edits use the expense's stored `allocation_id`, never today's link.
+Envelope balances do not reset at month boundaries or determine the daily allowance.
 
-**Distribute (แบ่งเงิน / แบ่งเข้าซอง)**:
-The act of moving money from the Unallocated Pool into one wallet (`moveToAllocation`). Always a real, immediate movement of real money — never virtual/planned money.
+Absent monthly plans inherit the latest earlier override. A null override clears the
+limit until a newer non-null plan exists. Zero is not a substitute for absence.
+Preferences, onboarding and the monthly page write through `SpendingPlanService`.
 
-**Allocation Movement**:
-An immutable log entry (`fund` / `transfer_in` / `transfer_out` / `unallocate`) recording one real money movement into or out of a wallet. This is transaction history, not a plan.
+Bill templates start in the user's current month and repeat until stopped. Due dates
+clamp to short months. Monthly occurrences retain unpaid debts across month boundaries
+and after stopping recurrence. Deleting a payment reopens its original occurrence.
+Late payment is recorded today against the original bill month. Template edits change
+the current unpaid and future cycles; prior cycles are edited or waived individually.
 
-**Allocation Plan** *(new)*:
-An explicit, editable **target total** stored per (wallet, month) — "how much I intend this wallet to hold from this month's funding, in total." Distinct from Allocation Movement: a plan is *intent*, not a record of money that actually moved. Only ever written as a byproduct of the "Apply Last Month's Plan" distribute action (no standalone planning screen exists). Carries forward as the prefill default for the following month.
-Because it's a *total*, applying it tops each wallet up to the plan amount — it prefills `plan − fundedThisMonth` (floored at 0), not the full plan amount, so money already funded this month by other means isn't double-counted.
-_Avoid_: Budget (a different, pre-existing concept — see flagged ambiguity below)
+Expected monthly income is a user-supplied reference used for income prefills and the
+work-time lens. It is never a recorded deposit or spendable money.
 
-**Expected Monthly Income (เงินเดือนที่คาดว่าจะได้)**:
-A single reference number the user sets once (in Settings). Used only to prefill the amount field when manually recording a new income transaction. Never substitutes for real recorded income anywhere else — the Unallocated Pool and Distribute flow always use real money only.
-
-**Budget** *(pre-existing, unrelated)*:
-A per-(category, month) planned spending amount compared against actual expense totals in that category (see `Budget` entity). Operates on **expense categories**, not wallets, and has no relationship to Allocation Plan — the two "monthly amount" concepts are intentionally separate because a category can span multiple wallets and vice versa.
-
-## Flagged ambiguities
-
-- **"Plan" is overloaded.** `Budget` (category-scoped, spend-tracking) and `Allocation Plan` (wallet-scoped, funding-intent) are both "a monthly planned amount" in plain conversation but are unrelated entities serving different questions ("did I overspend this category?" vs "how do I want to split my income this month?"). Always qualify which one you mean.
-
-## Example dialogue
-
-> **Dev**: So when the user hits "Apply Last Month's Plan," where does the money come from?
-> **Domain expert**: The Unallocated Pool — real money only. If last month's Allocation Plan totals more than what's sitting in the pool right now, the button stays disabled until they either record more income or edit the numbers down.
-> **Dev**: And does that touch the Budget page at all?
-> **Domain expert**: No. Budget tracks category spend against a category-level target. Allocation Plan is purely "which wallet gets how much of my income" — different axis entirely.
+See [ADR-0002](docs/adr/0002-daily-money-and-life-planning.md) for the architecture,
+allowance formula, trade-offs and failure behavior. ADR-0001 remains background for
+the advanced envelope funding target, not the primary monthly spending plan.

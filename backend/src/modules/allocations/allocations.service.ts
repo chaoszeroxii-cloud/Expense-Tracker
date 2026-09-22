@@ -10,6 +10,7 @@ import { CreateAllocationDto, UpdateAllocationDto } from './allocation.dto'
 import { round2 } from '../../common/money.util'
 import { localToday, safeTimezone } from '../../common/local-date.util'
 import { normalizeMdiIconId } from '../../common/icon.util'
+import { lockLedger } from '../../common/ledger-lock.util'
 
 @Injectable()
 export class AllocationsService {
@@ -64,23 +65,28 @@ export class AllocationsService {
   }
 
   async update(id: string, dto: UpdateAllocationDto, userId: string): Promise<Allocation> {
-    const allocation = await this.findOne(id, userId)
-    if (dto.name  !== undefined) allocation.name  = dto.name
-    if (dto.icon  !== undefined) allocation.icon  = normalizeMdiIconId(dto.icon, 'wallet')
-    if (dto.color !== undefined) allocation.color = dto.color
+    return this.dataSource.transaction(async em => {
+      await lockLedger(em, userId)
+      const repo = em.getRepository(Allocation)
+      const allocation = await repo.findOne({ where: { id, userId }, relations: ['categories', 'incomeCategories'] })
+      if (!allocation) throw new NotFoundException('Allocation not found')
+      if (dto.name  !== undefined) allocation.name  = dto.name
+      if (dto.icon  !== undefined) allocation.icon  = normalizeMdiIconId(dto.icon, 'wallet')
+      if (dto.color !== undefined) allocation.color = dto.color
 
-    const nextCategories = dto.categoryIds !== undefined
-      ? await this.resolveCategories(dto.categoryIds, userId, 'expense')
-      : null
-    const nextIncomeCategories = dto.incomeCategoryIds !== undefined
-      ? await this.resolveCategories(dto.incomeCategoryIds, userId, 'income')
-      : null
+      const nextCategories = dto.categoryIds !== undefined
+        ? await this.resolveCategories(dto.categoryIds, userId, 'expense')
+        : null
+      const nextIncomeCategories = dto.incomeCategoryIds !== undefined
+        ? await this.resolveCategories(dto.incomeCategoryIds, userId, 'income')
+        : null
 
-    await this.assertCategoriesUnlinked(userId, nextCategories, nextIncomeCategories, id)
+      await this.assertCategoriesUnlinked(userId, nextCategories, nextIncomeCategories, id)
 
-    if (nextCategories) allocation.categories = nextCategories
-    if (nextIncomeCategories) allocation.incomeCategories = nextIncomeCategories
-    return this.repo.save(allocation)
+      if (nextCategories) allocation.categories = nextCategories
+      if (nextIncomeCategories) allocation.incomeCategories = nextIncomeCategories
+      return repo.save(allocation)
+    })
   }
 
   /**
@@ -102,6 +108,7 @@ export class AllocationsService {
    */
   async remove(id: string, userId: string): Promise<void> {
     await this.dataSource.transaction(async (em: EntityManager) => {
+      await lockLedger(em, userId)
       const allocation = await em.getRepository(Allocation)
         .createQueryBuilder('a')
         .setLock('pessimistic_write')
@@ -139,16 +146,10 @@ export class AllocationsService {
     if (amount <= 0) throw new BadRequestException('Amount must be positive')
 
     return this.dataSource.transaction(async (em: EntityManager) => {
-      const userRepo  = em.getRepository(User)
+      const user = await lockLedger(em, userId)
       const allocRepo = em.getRepository(Allocation)
 
-      // Lock the user row so concurrent allocations for the same user serialize
-      // — prevents two requests both passing the capacity check and over-funding.
-      const user = await userRepo.createQueryBuilder('u')
-        .setLock('pessimistic_write')
-        .where('u.id = :userId', { userId })
-        .getOne()
-      if (!user) throw new NotFoundException('User not found')
+
 
       const target = await allocRepo.findOne({ where: { id: allocationId, userId }, loadEagerRelations: false })
       if (!target) throw new NotFoundException(`Allocation ${allocationId} not found`)
@@ -179,6 +180,7 @@ export class AllocationsService {
     if (sourceId === targetId) throw new BadRequestException('Cannot transfer to the same wallet')
 
     await this.dataSource.transaction(async (em: EntityManager) => {
+      await lockLedger(em, userId)
       const allocRepo = em.getRepository(Allocation)
 
       // Atomic guarded debit: only succeeds if the wallet is owned and has funds.
@@ -209,6 +211,7 @@ export class AllocationsService {
     if (amount <= 0) throw new BadRequestException('Amount must be positive')
 
     await this.dataSource.transaction(async (em: EntityManager) => {
+      await lockLedger(em, userId)
       const allocRepo = em.getRepository(Allocation)
 
       const debit = await allocRepo.createQueryBuilder()
@@ -391,15 +394,10 @@ export class AllocationsService {
     const currentMonth = await this.currentMonthFor(userId)
 
     return this.dataSource.transaction(async (em: EntityManager) => {
+      const user = await lockLedger(em, userId)
       const allocRepo = em.getRepository(Allocation)
-      const userRepo  = em.getRepository(User)
 
-      // Lock the user row so this can't race with moveToAllocation / another apply.
-      const user = await userRepo.createQueryBuilder('u')
-        .setLock('pessimistic_write')
-        .where('u.id = :userId', { userId })
-        .getOne()
-      if (!user) throw new NotFoundException('User not found')
+
 
       // Duplicate ids were accepted and each credited in turn, so the same wallet could be
       // funded twice from one submission while the capacity check counted it once.
@@ -472,6 +470,7 @@ export class AllocationsService {
     }
 
     return this.dataSource.transaction(async (em: EntityManager) => {
+      await lockLedger(em, userId)
       // A full snapshot: wallets left out of the payload have their target for this
       // month removed, so dropping one does not resurrect it from an older row.
       await em.delete(AllocationPlan, { userId, month })

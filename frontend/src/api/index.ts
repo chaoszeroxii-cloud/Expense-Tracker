@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store/auth.store'
+import type { BillInput, GoalInput, PlanningOverview } from '../types/planning'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Expense, Category, CreateExpensePayload, BalanceSummary,
@@ -124,8 +125,16 @@ export const checkInsApi = {
 
 // ── Expenses ─────────────────────────────────────────────────
 export const expensesApi = {
+  exportAll: (params: { from?: string; to?: string; month?: string; type?: string }) =>
+    http.get<Expense[]>('/expenses/export', { params }).then(r => r.data.map(entry => ({
+      ...entry, amount: Number(entry.amount),
+    }))),
   list: (params?: { month?: string; from?: string; to?: string; type?: string; categoryId?: string }) =>
-    http.get<Expense[]>('/expenses', { params }).then(r => r.data),
+    // PostgreSQL numeric columns arrive as decimal strings. UI totals and formatters
+    // require numbers; normalize once at the boundary, including the export path.
+    http.get<Expense[]>('/expenses', { params }).then(r => r.data.map(entry => ({
+      ...entry, amount: Number(entry.amount),
+    }))),
 
   create: (payload: CreateExpensePayload) =>
     http.post<Expense>('/expenses', payload).then(r => r.data),
@@ -232,6 +241,22 @@ export const budgetsApi = {
   /** Saves a whole month at once. An amount of 0 removes that category's budget. */
   saveBatch: (month: string, items: { categoryId: string; amount: number }[]) =>
     http.put<{ saved: number; removed: number }>('/budgets/batch', { month, items }).then(r => r.data),
+}
+
+// Monthly commitments and self-reported savings; payments use the expense ledger.
+export const planningApi = {
+  overview: () => http.get<PlanningOverview>('/planning').then(r => r.data),
+  saveBill: (payload: BillInput, id?: string) => id
+    ? http.put(`/planning/bills/${id}`, payload).then(r => r.data)
+    : http.post('/planning/bills', payload).then(r => r.data),
+  archiveBill: (id: string) => http.delete(`/planning/bills/${id}`).then(r => r.data),
+  payBill: (id: string, expenseId?: string, month?: string) => http.post(`/planning/bills/${id}/pay`, { expenseId, month }).then(r => r.data),
+  updateOccurrence: (id: string, month: string, input: BillInput) => http.put(`/planning/bills/${id}/occurrences/${month}`, input).then(r => r.data),
+  waiveOccurrence: (id: string, month: string) => http.delete(`/planning/bills/${id}/occurrences/${month}`).then(r => r.data),
+  saveGoal: (payload: GoalInput, id?: string) => id
+    ? http.put(`/planning/goals/${id}`, payload).then(r => r.data)
+    : http.post('/planning/goals', payload).then(r => r.data),
+  removeGoal: (id: string) => http.delete(`/planning/goals/${id}`).then(r => r.data),
 }
 
 // ── Account (destructive) ─────────────────────────────────────

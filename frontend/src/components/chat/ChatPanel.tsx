@@ -18,6 +18,12 @@ interface Props {
   onClose: () => void
 }
 
+// Model output is untrusted: navigation actions may only select known app screens.
+const CHAT_ROUTES = new Set([
+  '/', '/add', '/history', '/budget', '/reports', '/more', '/settings',
+  '/wallets', '/loans', '/investments', '/tax', '/finance',
+])
+
 interface LocalMessage extends ChatMessage {
   localId: string
   loading?: boolean
@@ -193,7 +199,7 @@ export default function ChatPanel({ onClose }: Props) {
         setTheme(pendingAction.theme as 'light' | 'dark')
         showToast(`เปลี่ยนเป็น ${pendingAction.theme === 'dark' ? 'Dark' : 'Light'} mode แล้ว`)
       }
-      if (pendingAction.navigate) {
+      if (pendingAction.navigate && CHAT_ROUTES.has(pendingAction.navigate)) {
         showToast(`กำลังพาไปที่ ${pendingAction.navigate}...`)
         setTimeout(() => { navigate(pendingAction.navigate!); onClose() }, 800)
       }

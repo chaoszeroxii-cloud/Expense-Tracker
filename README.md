@@ -2,6 +2,11 @@
 
 Mobile-first expense tracking PWA — React + NestJS + PostgreSQL + Docker.
 
+The primary **Plan** page combines a monthly spending limit, recurring bills and
+self-reported savings goals. Unpaid bills are reserved before calculating today's
+allowance; paying or linking a bill records it once. Envelope tools remain optional.
+See [everyday UX](docs/everyday-ux.md) and [planning architecture](docs/adr/0002-daily-money-and-life-planning.md).
+
 ## Quick Start (Development)
 
 ```bash
@@ -27,6 +32,14 @@ open http://localhost:3000
 | pgAdmin  | http://localhost:5050        | admin@local.dev / admin |
 
 ## Production Deployment
+
+Requires Docker Compose 2.24.4+ for `!reset` / `!override`. The production override
+removes development mounts and direct database/API ports, starts the compiled backend
+with migrations, and serves the frontend through nginx on port 3000.
+
+`TRUST_PROXY_HOPS=0` is the direct development default. For the production topology
+below, set it to `1` (nginx is the only trusted hop). Only increase it when every route
+to the API passes through that many trusted proxies; block shorter direct routes.
 
 ```bash
 # 1. Fill production values in .env
@@ -54,6 +67,23 @@ PATCH /api/auth/profile  { name }
 ```
 
 All other endpoints require `Authorization: Bearer <token>`.
+
+Google sign-in requires backend `GOOGLE_CLIENT_ID`; Facebook requires backend
+`FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET`. Compose maps the public IDs from the
+corresponding `VITE_*` values. Missing configuration disables that provider. Only the
+provider-returned email is trusted; an email entered by a client cannot prove ownership.
+Matching email addresses never automatically link different sign-in methods. Existing
+users must use their original method or recover through email. Password recovery consumes
+its token once, revokes sessions, disconnects social credentials and enables email/password
+sign-in. Previously linked accounts can use this recovery flow to remove old credentials.
+
+Transaction exports use `GET /api/expenses/export` with `month` or `from` / `to` filters.
+They return one consistent snapshot, up to 50,000 rows. Larger exports fail explicitly
+and require a shorter date range instead of silently downloading a partial file.
+
+Offline captures keep one idempotency key from their first online request through retries.
+Temporary failures retain pending entries; invalid entries can be corrected from Home.
+They are removed only after confirmation from the server or an explicit user discard.
 
 ## Analytics Endpoints
 

@@ -18,16 +18,16 @@ export function Card({ children, className, padding = true, id }:
 
 // ── Skeleton ──────────────────────────────────────────────────
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={clsx('animate-pulse rounded-xl bg-slate-200 dark:bg-slate-700', className)} />
+  return <div aria-hidden="true" data-skeleton className={clsx('skeleton rounded-xl', className)} />
 }
 
 // ── Amount ────────────────────────────────────────────────────
 export function Amount({ value, currency = '฿', type, size = 'md' }:
   { value: number; currency?: string; type?: 'expense'|'income'|'net'; size?: 'sm'|'md'|'lg'|'xl' }) {
   const color = type ? {
-    expense: 'text-rose-500',
-    income:  'text-emerald-500',
-    net:     value >= 0 ? 'text-emerald-500' : 'text-rose-500',
+    expense: 'text-expense',
+    income:  'text-income',
+    net:     value >= 0 ? 'text-income' : 'text-expense',
   }[type] : 'text-base-theme'
   const sz = { sm:'text-sm font-semibold', md:'text-base font-semibold',
                lg:'text-xl font-bold', xl:'text-3xl font-bold tracking-tight' }[size]

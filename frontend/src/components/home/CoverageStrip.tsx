@@ -54,7 +54,7 @@ export default function CoverageStrip({ coverage, onChange }: {
   const complete = coverage.covered === coverage.total
 
   return (
-    <section className="surface p-5 sm:p-6" aria-label={t('ux_habit_title')}>
+    <section className="surface p-5 sm:p-6 flex-1" aria-label={t('ux_habit_title')}>
       <h2 className="section-title">{t('ux_habit_title')}</h2>
       <p className="text-xs text-muted-theme mt-1.5 mb-5 leading-relaxed">{t('ux_habit_sub')}</p>
       <div className="flex items-center justify-between mb-3">

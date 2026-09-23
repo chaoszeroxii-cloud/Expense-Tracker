@@ -41,38 +41,36 @@ export default function Layout() {
   }, [pathname])
 
   return (
-    <div className="flex h-dvh bg-app">
+    <div className="flex h-dvh overflow-hidden bg-app">
       <a href="#main-content" className="skip-link">
         {t('ux_skip')}
       </a>
-      <aside className="hidden lg:flex flex-col w-64 shrink-0 border-r border-theme bg-card px-5 py-8 overflow-y-auto">
+      <aside className="app-sidebar app-scroll hidden lg:flex flex-col w-64 shrink-0 border-r border-theme px-5 py-6 overflow-y-auto">
         <NavLink to="/" className="flex items-center gap-2.5 px-2" aria-label="MoneyFlow">
-          <span className="flex items-center justify-center w-10 h-10 rounded-2xl bg-brand-600 text-white">
-            <Icon path={mdiLeaf} size={1} />
-          </span>
+          <img src="/app_icon.svg" alt="" width="40" height="40" className="shrink-0" />
           <span className="text-xl font-extrabold tracking-tight text-base-theme">
             MoneyFlow<span className="text-brand-500">.</span>
           </span>
         </NavLink>
         <p className="text-xs text-muted-theme px-2 mt-3">{t('ux_tagline')}</p>
-        <button onClick={() => navigate('/add')} className="primary-action mt-8 w-full shrink-0">
+        <button onClick={() => navigate('/add')} className="primary-action mt-6 w-full shrink-0">
           <Icon path={mdiPlus} size={0.8} />
           {t('add_transaction')}
         </button>
-        <nav aria-label={t('ux_daily')} className="mt-8 space-y-1">
+        <nav aria-label={t('ux_daily')} className="mt-6 space-y-1">
           <p className="section-kicker px-4 mb-3">{t('ux_daily')}</p>
           {NAV.slice(0, 3).map((item) => (
             <SideNavItem key={item.to} {...item} label={t(item.labelKey)} />
           ))}
         </nav>
-        <nav aria-label={t('ux_explore')} className="mt-8 space-y-1">
+        <nav aria-label={t('ux_explore')} className="mt-6 space-y-1">
           <p className="section-kicker px-4 mb-3">{t('ux_explore')}</p>
           <SideNavItem to="/reports" icon={mdiChartTimelineVariant} label={t('reports_title')} />
           <SideNavItem to="/more" icon={mdiViewGridOutline} label={t('nav_more')} />
           <SideNavItem to="/settings" icon={mdiCogOutline} label={t('nav_settings')} />
         </nav>
         <div className="mt-auto pt-8">
-          <div className="rounded-2xl bg-[var(--accent-soft)] px-4 py-5">
+          <div className="sidebar-note rounded-2xl bg-[var(--input)] px-4 py-4">
             <Icon path={mdiLeaf} size={0.9} className="text-brand-600 mb-2" />
             <p className="text-sm font-bold text-base-theme leading-relaxed">{t('ux_today_sub')}</p>
             <p className="text-xs text-muted-theme mt-2 leading-relaxed">{t('ux_habit_sub')}</p>
@@ -92,12 +90,12 @@ export default function Layout() {
           </button>
         </div>
       </aside>
-      <div className="flex-1 flex flex-col min-w-0 relative">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 relative">
         <main
           id="main-content"
           tabIndex={-1}
           ref={mainRef}
-          className="flex-1 overflow-y-auto pb-nav-sheet lg:pb-8"
+          className="app-scroll flex-1 min-h-0 overflow-y-auto pb-nav-sheet lg:pb-8"
         >
           <div
             className={clsx(

@@ -48,13 +48,15 @@ type GoalForm = {
 export default function LifePlanning({
   categories,
   month,
+  planning,
 }: {
   categories: Category[]
   month: string
+  planning: ReturnType<typeof usePlanning>
 }) {
   const t = useT()
   const { lang } = useI18n()
-  const { data, loading, error, refetch } = usePlanning()
+  const { data, loading, error, refetch } = planning
   const [billForm, setBillForm] = useState<BillForm | null>(null)
   const [goalForm, setGoalForm] = useState<GoalForm | null>(null)
   const [paying, setPaying] = useState<Bill | null>(null)
@@ -149,7 +151,10 @@ export default function LifePlanning({
     }
   }
 
-  if (loading && !data) return <Skeleton className="h-56 w-full rounded-3xl" />
+  if (loading && !data) return <div className="grid xl:grid-cols-2 gap-5">
+    <Skeleton className="h-72 w-full rounded-3xl" />
+    <Skeleton className="h-72 w-full rounded-3xl" />
+  </div>
   if (error)
     return (
       <ErrorState
@@ -169,8 +174,8 @@ export default function LifePlanning({
   const goalMonthly = data.goals.reduce((sum, g) => sum + g.monthlyNeeded, 0)
 
   return (
-    <div className="grid xl:grid-cols-2 gap-5 items-start">
-      <section className="surface p-5 sm:p-6" aria-labelledby="bills-title">
+    <div className="grid xl:grid-cols-2 gap-5 items-stretch" data-planning-grid>
+      <section className="surface p-5 sm:p-6 flex flex-col min-h-72" aria-labelledby="bills-title">
         <div className="flex items-start gap-3 mb-4">
           <span className="p-2.5 rounded-xl bg-[var(--accent-soft)] text-brand-600">
             <Icon path={mdiCalendarCheckOutline} size={0.9} />
@@ -202,7 +207,7 @@ export default function LifePlanning({
             {t('life_bills_empty')}
           </p>
         )}
-        <ul className="divide-y divide-[var(--border)]">
+        <ul className="flex-1 divide-y divide-[var(--border)]">
           {[...data.bills]
             .sort((a, b) => Number(!!a.expenseId) - Number(!!b.expenseId))
             .map((b) => (
@@ -497,7 +502,7 @@ export default function LifePlanning({
         )}
       </section>
 
-      <section className="surface p-5 sm:p-6" aria-labelledby="goals-title">
+      <section className="surface p-5 sm:p-6 flex flex-col min-h-72" aria-labelledby="goals-title">
         <div className="flex items-start gap-3 mb-4">
           <span className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 text-amber-600">
             <Icon path={mdiFlagOutline} size={0.9} />
@@ -529,7 +534,7 @@ export default function LifePlanning({
             {t('life_goals_empty')}
           </p>
         )}
-        <ul className="divide-y divide-[var(--border)]">
+        <ul className="flex-1 divide-y divide-[var(--border)]">
           {data.goals.map((g) => (
             <li key={g.id} className="py-4">
               <div className="flex items-start gap-3">

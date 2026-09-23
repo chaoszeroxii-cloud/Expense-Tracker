@@ -69,7 +69,7 @@ export default function AiInsightsSection({
           {loading ? (
             <div className="space-y-2">
               {[1, 2, 3].map(i => (
-                <div key={i} className="h-16 rounded-2xl bg-slate-100 dark:bg-slate-700/40 animate-pulse" />
+                <div key={i} className="skeleton h-16 rounded-2xl" />
               ))}
             </div>
           ) : !hasRun ? (

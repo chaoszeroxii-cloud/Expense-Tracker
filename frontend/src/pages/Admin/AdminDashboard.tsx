@@ -88,7 +88,7 @@ export default function AdminDashboard() {
           </span>
         </div>
         {loading ? (
-          <div className="h-12 bg-[var(--input)] rounded-xl animate-pulse" />
+          <div className="skeleton h-12 rounded-xl" />
         ) : !aiUsage || aiUsage.users.length === 0 ? (
           <p className="text-xs text-muted-theme text-center py-3">ยังไม่มีการใช้งาน AI</p>
         ) : (
@@ -122,7 +122,7 @@ export default function AdminDashboard() {
 
       {/* User list */}
       {loading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-card rounded-2xl animate-pulse border border-[var(--border)]" />)}</div>
+        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="skeleton h-16 rounded-2xl" />)}</div>
       ) : (
         <div className="space-y-2">
           {filtered.map(user => (

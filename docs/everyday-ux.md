@@ -1,8 +1,18 @@
 # Everyday MoneyFlow
 
 The daily loop is **open → understand today → record → leave**. The interface uses a
-warm neutral background, forest green actions, Thai-capable typography, and generous
+cool neutral surfaces, teal actions, Thai-capable typography, and generous
 spacing. Financial status still uses text as well as color.
+
+Dark mode uses ink and slate surfaces with mint accents. Adjacent planning cards and
+the home detail columns stretch to a shared lower edge; their content remains responsive.
+The MoneyFlow mark combines a wallet with a rising arrow: recording money and moving
+toward a goal. Its editable master is `frontend/public/app_icon.svg`.
+
+Loading placeholders reveal once after a short delay, without a repeating pulse. A
+same-query refresh retains the existing cards and in-progress forms. Changing month,
+account or timezone hides the old query immediately, and late responses cannot overwrite
+the current results. The saved theme is applied before React starts, including offline.
 
 ## Destinations
 

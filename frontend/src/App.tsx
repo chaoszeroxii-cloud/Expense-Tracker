@@ -26,8 +26,14 @@ const AdminDashboard = lazy(() => import('./pages/Admin/AdminDashboard'))
 
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center h-64">
-      <div className="w-8 h-8 border-4 border-brand-600 border-t-transparent rounded-full animate-spin" />
+    <div aria-hidden="true" className="px-4 pt-6 sm:px-6 lg:px-2 space-y-6">
+      <div className="skeleton h-9 w-40 rounded-xl" />
+      <div className="skeleton h-4 w-64 max-w-full rounded-xl" />
+      <div className="skeleton h-16 rounded-2xl" />
+      <div className="grid sm:grid-cols-2 gap-5">
+        <div className="skeleton h-52 rounded-3xl" />
+        <div className="skeleton h-52 rounded-3xl" />
+      </div>
     </div>
   )
 }

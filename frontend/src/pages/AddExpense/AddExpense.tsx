@@ -8,7 +8,7 @@ import {
 import clsx from 'clsx'
 import { expensesApi } from '../../api'
 import { useCategories, useAllocations, useDailyBrief } from '../../hooks'
-import { IconDisplay, WorkTimeBadge, ErrorState } from '../../components/ui'
+import { IconDisplay, WorkTimeBadge, ErrorState, Skeleton } from '../../components/ui'
 import { useT } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
 import { toast, UNDO_WINDOW_MS } from '../../store/toast.store'
@@ -304,7 +304,7 @@ export default function AddExpense() {
           {catsError ? <ErrorState compact message={t('err_load_failed')} onRetry={reloadCats} retryLabel={t('action_retry')} /> : !loadingCats && filteredCats.length === 0 ? <div className="surface p-5 text-sm text-muted-theme"><p>{t('ux_categories_empty')}</p><button type="button" className="text-action mt-2" onClick={() => navigate('/settings')}>{t('nav_settings')}</button></div> : <div className="grid grid-cols-4 gap-2">
             {loadingCats
               ? Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-16 rounded-2xl bg-slate-200 dark:bg-slate-700 animate-pulse" />
+                  <Skeleton key={i} className="h-16 rounded-2xl" />
                 ))
               : visibleCats.map(cat => (
                   <button key={cat.id} type="button" onClick={() => setCatId(cat.id)}

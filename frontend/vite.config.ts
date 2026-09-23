@@ -30,8 +30,8 @@ export default defineConfig({
         name: 'MoneyFlow — Expense Tracker',
         short_name: 'MoneyFlow',
         description: 'Track every baht, effortlessly.',
-        theme_color: '#286449',
-        background_color: '#f6f7f2',
+        theme_color: '#087f75',
+        background_color: '#f5f6f8',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
@@ -55,6 +55,7 @@ export default defineConfig({
       injectManifest: {
         globPatterns: [
           'index.html',
+          'theme-init.js',
           'assets/index-*.js',
           'assets/index-*.css',
           'icons/*.png',

@@ -24,7 +24,7 @@ export default function Dashboard() {
   const { lang } = useI18n()
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
-  const { data: brief, loading, error, refetch, setData } = useDailyBrief()
+  const { data: brief, loading, refreshing, error, refetch, setData } = useDailyBrief()
   useEffect(() => {
     const handler = (e: Event) => {
       const types: string[] = (e as CustomEvent).detail?.types ?? []
@@ -40,7 +40,7 @@ export default function Dashboard() {
   const date = brief ? new Date(`${brief.date}T12:00:00`) : new Date()
 
   return (
-    <div className="px-4 pt-6 pb-4 sm:px-6 lg:px-2 space-y-6 animate-fade-in">
+    <div aria-busy={loading || refreshing} className="px-4 pt-6 pb-4 sm:px-6 lg:px-2 space-y-6">
       <header className="flex justify-between items-start gap-3 pb-1">
         <div className="min-w-0">
           <p className="text-xs text-muted-theme mb-2 truncate">
@@ -92,8 +92,8 @@ export default function Dashboard() {
           {t('ux_today_done')}
         </p>
       )}
-      <div className="grid md:grid-cols-[1.3fr_1fr] gap-5 items-start">
-        <section className="surface p-5 sm:p-6" aria-label={t('home_recent')}>
+      <div className="grid md:grid-cols-[1.3fr_1fr] gap-5 items-stretch" data-home-detail-grid>
+        <section className="surface p-5 sm:p-6 flex flex-col" aria-label={t('home_recent')}>
           <div className="flex items-center justify-between gap-2 mb-3">
             <h2 className="section-title">{t('home_recent')}</h2>
             <button onClick={() => navigate('/history')} className="text-action">
@@ -123,21 +123,21 @@ export default function Dashboard() {
               action={{ label: t('action_add_first'), onPress: () => navigate('/add') }}
             />
           ) : (
-            <ul className="divide-y divide-[var(--border)]">
+            <ul className="flex-1 flex flex-col divide-y divide-[var(--border)]">
               {brief.recentTransactions.map((tx) => (
                 <RecentRow key={tx.id} tx={tx} lang={lang} />
               ))}
             </ul>
           )}
         </section>
-        <div className="space-y-5">
+        <div className="flex flex-col gap-5">
           {!error && brief?.nextBill && <button onClick={() => navigate('/budget')} className="surface w-full p-5 text-left">
             <p className="text-xs text-muted-theme">{t('life_upcoming')}</p>
             <p className="font-bold text-base-theme mt-2 break-words">{brief.nextBill.name}</p>
             <p className="text-xs text-muted-theme mt-2">{new Date(`${brief.nextBill.dueDate}T12:00:00`).toLocaleDateString(lang === 'th' ? 'th-TH' : 'en-US', { day: 'numeric', month: 'short' })} · ฿{brief.nextBill.amount.toLocaleString(lang === 'th' ? 'th-TH' : 'en-US')}</p>
             <span className="text-action mt-3">{t('life_back_plan')} <Icon path={mdiArrowTopRight} size={0.65} /></span>
           </button>}
-          {!error && brief && (
+          {loading ? <Skeleton className="h-72 w-full rounded-3xl" /> : !error && brief && (
             <CoverageStrip
               coverage={brief.coverage}
               onChange={(next) => setData((current) => (current ? { ...current, coverage: next } : current))}
@@ -145,7 +145,7 @@ export default function Dashboard() {
           )}
           <button
             onClick={() => navigate('/reports')}
-            className="w-full flex items-start gap-3 p-5 rounded-3xl bg-[var(--accent-soft)] text-left hover:brightness-95 transition-all"
+            className="surface w-full flex items-start gap-3 p-5 text-left hover:border-brand-300 transition-colors"
           >
             <span className="w-10 h-10 rounded-xl bg-card flex items-center justify-center text-brand-600 shrink-0">
               <Icon path={mdiChartTimelineVariant} size={0.9} />
@@ -174,7 +174,7 @@ function RecentRow({ tx, lang }: { tx: DailyBriefTransaction; lang: string }) {
     ...(timezone ? { timeZone: timezone } : {}),
   })
   return (
-    <li className="flex items-center gap-3 py-4">
+    <li className="flex flex-1 items-center gap-3 py-4">
       <div
         className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0"
         style={{ backgroundColor: (tx.categoryColor ?? '#94a3b8') + '18' }}
@@ -190,9 +190,9 @@ function RecentRow({ tx, lang }: { tx: DailyBriefTransaction; lang: string }) {
           {time}
         </p>
       </div>
-      <div className="text-right shrink-0">
+      <div className="text-right shrink-0 max-w-[48%]">
         <Amount value={tx.amount} type={tx.type} size="sm" />
-        {tx.type === 'expense' && <WorkTimeBadge amount={tx.amount} className="block mt-0.5" />}
+        {tx.type === 'expense' && <div className="mt-1"><WorkTimeBadge amount={tx.amount} className="justify-end" /></div>}
       </div>
     </li>
   )

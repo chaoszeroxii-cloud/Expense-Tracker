@@ -142,7 +142,7 @@ export default function Investments() {
 
       {/* List */}
       {loading ? (
-        <div className="space-y-3">{[1,2].map(i => <div key={i} className="h-28 bg-card rounded-2xl animate-pulse border border-[var(--border)]" />)}</div>
+        <div className="space-y-3">{[1,2].map(i => <div key={i} className="skeleton h-28 rounded-2xl" />)}</div>
       ) : investments.length === 0 ? (
         <div className="text-center py-12 text-muted-theme">
           <Icon path={mdiChartLine} size={2} aria-hidden="true" className="mx-auto mb-2" />

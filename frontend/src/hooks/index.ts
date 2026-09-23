@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type SetStateAction } from 'react'
 import { analyticsApi, expensesApi, categoriesApi, allocationsApi, budgetsApi, loansApi, planningApi } from '../api'
 import { apiErrorMessage } from '../utils/apiError'
+import { useAuthStore } from '../store/auth.store'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Category, Expense, Allocation, AllocationSummary, BalanceSummary,
@@ -27,10 +28,17 @@ export { currentMonthLocal as currentMonth } from '../utils/localDate'
  * user can do nothing with. `apiErrorMessage` already existed for this and was only
  * being used on the write paths.
  */
-function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
-  const [data, setData]       = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState<string | null>(null)
+export function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
+  const userId = useAuthStore(s => s.user?.id)
+  const timezone = useAuthStore(s => s.user?.timezone)
+  // Scope retained data to this exact query/account. A new month must never show
+  // the preceding month's figures, even for the render before the effect runs.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const query = useCallback(fetchFn, [userId, timezone, ...deps])
+  const [state, setState] = useState<{
+    query: typeof query; data: T | null; fetching: boolean; error: string | null
+  }>({ query, data: null, fetching: true, error: null })
+  const current = state.query === query ? state : null
 
   const runIdRef = useRef(0)
   const mountedRef = useRef(true)
@@ -41,26 +49,35 @@ function useFetch<T>(fetchFn: () => Promise<T>, deps: unknown[] = []) {
 
   const fetch = useCallback(async () => {
     const runId = ++runIdRef.current
-    setLoading(true)
-    setError(null)
+    setState(previous => ({ query, data: previous.query === query ? previous.data : null, fetching: true, error: null }))
     try {
-      const result = await fetchFn()
+      const result = await query()
       if (runId !== runIdRef.current || !mountedRef.current) return
-      setData(result)
+      setState({ query, data: result, fetching: false, error: null })
     } catch (e: unknown) {
       if (runId !== runIdRef.current || !mountedRef.current) return
-      setError(apiErrorMessage(e, 'Something went wrong'))
-    } finally {
-      if (runId === runIdRef.current && mountedRef.current) setLoading(false)
+      setState(previous => ({ ...previous, fetching: false, error: apiErrorMessage(e, 'Something went wrong') }))
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
+  }, [query])
 
   useEffect(() => { fetch() }, [fetch])
 
   // `setData` lets a caller apply a server response it already has in hand — marking a
   // no-spend day returns the new coverage — instead of refetching the whole payload.
-  return { data, loading, error, refetch: fetch, setData }
+  const setData = useCallback((value: SetStateAction<T | null>) => {
+    setState(previous => previous.query !== query ? previous : {
+      ...previous,
+      data: typeof value === 'function' ? (value as (data: T | null) => T | null)(previous.data) : value,
+    })
+  }, [query])
+  return {
+    data: current?.data ?? null,
+    loading: !current || (current.fetching && current.data === null),
+    refreshing: !!current?.fetching && current.data !== null,
+    error: current?.error ?? null,
+    refetch: fetch,
+    setData,
+  }
 }
 
 // ── Domain hooks ──────────────────────────────────────────────

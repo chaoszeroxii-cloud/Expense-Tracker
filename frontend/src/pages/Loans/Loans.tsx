@@ -165,7 +165,7 @@ export default function Loans() {
       {/* List */}
       {loading ? (
         <div className="space-y-3">
-          {[1, 2].map(i => <div key={i} className="h-28 bg-card rounded-2xl animate-pulse border border-[var(--border)]" />)}
+          {[1, 2].map(i => <div key={i} className="skeleton h-28 rounded-2xl" />)}
         </div>
       ) : visible.length === 0 ? (
         <div className="text-center py-12 text-muted-theme">

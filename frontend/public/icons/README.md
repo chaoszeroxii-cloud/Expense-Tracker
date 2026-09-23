@@ -3,9 +3,11 @@
 `../app_icon.svg` is the **single master** — it is both the browser favicon
 (`<link rel="icon">` in `index.html`) and the source these PNGs are rendered from.
 
-There used to be a second master in this folder (`icon.svg`) holding different artwork.
-Nothing kept the two in sync, so the tab showed one logo while the installed home-screen
-app showed another. Do not reintroduce a local copy; render from `../app_icon.svg`.
+The wallet and rising flow arrow stand for recording money and moving toward a goal.
+The angular arrow uses mint against an ink-colored tile. `../icon.svg` is the transparent,
+single-color mark derived from this master, used on the authentication screens.
+The sidebar, favicon and installed app use the tile. Do not edit the derived files
+independently.
 
 | File | Size | Purpose |
 |---|---|---|
@@ -24,31 +26,13 @@ about the centre.
 
 ## Regenerating
 
-Headless Chrome needs no extra dependency and is the path used to produce the current files.
-Three traps, all of which fail silently:
+Run `node frontend/scripts/generate-icons.cjs` from the repository root. The generator
+renders the master SVG in Playwright, derives `../icon.svg`, and writes all four PNGs.
+It uses a full-bleed tile and a centered 78% mark for the maskable variant.
 
-1. **Give every invocation its own `--user-data-dir`.** Without it Chrome attaches to an
-   already-running instance and exits without writing a screenshot at all.
-2. **Never screenshot below ~500px.** Chrome clamps the window to a minimum width, so
-   `--window-size=192,192` renders a *larger* viewport and crops it to 192×192 — you get a
-   correctly-sized PNG containing a zoomed corner of the artwork. Render one master at
-   1024×1024 and downscale to 192 / 180 / 512 with a bicubic resize instead.
-3. **Inline the SVG in the render page.** Pointing an `<img>` at the SVG (especially with a
-   script-assigned `src`) races the screenshot and yields the same crop symptom.
-
-```bash
-# One master per variant, well above the minimum window width.
-chrome --headless --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
-  --default-background-color=00000000 --no-first-run --user-data-dir="$(mktemp -d)" \
-  --virtual-time-budget=5000 \
-  --screenshot=master-any.png --window-size=1024,1024 \
-  "file:///abs/path/render-any.html"
-# …then downscale master-any.png to 512 / 192 / 180 and master-maskable.png to 512.
-```
-
-Alternatives if installed, which avoid all three traps:
-`npx sharp-cli --input ../app_icon.svg --output icon-192.png --resize 192`,
-`inkscape ../app_icon.svg -w 192 -h 192 -o icon-192.png`, or https://realfavicongenerator.net.
+Playwright is already a root development dependency. Install its browser with
+`npx playwright install chromium` if needed. The generator uses isolated pages with
+exact viewports and inline SVG, avoiding Chrome CLI's minimum window-size cropping.
 
 After regenerating, **open every PNG and look at it.** Checking pixel dimensions is not
 enough — the cropping failure above produces files whose dimensions are exactly right. Two

@@ -70,7 +70,7 @@ export default function SafeToSpendCard({ brief }: { brief: DailyBrief }) {
             aria-valuemax={100}
             className="h-1.5 rounded-full bg-black/20 overflow-hidden"
           >
-            <div className="h-full rounded-full bg-[#c5dfa5]" style={{ width: `${monthPct}%` }} />
+            <div className="h-full rounded-full bg-brand-200" style={{ width: `${monthPct}%` }} />
           </div>
           <div className="flex items-end justify-between gap-4 mt-6 pt-5 border-t border-white/15">
             <div>
@@ -94,7 +94,7 @@ export default function SafeToSpendCard({ brief }: { brief: DailyBrief }) {
           </div>
           <button
             onClick={() => navigate('/budget')}
-            className="flex items-center justify-center gap-2 rounded-2xl bg-[#e0edca] text-[#244d39] w-full px-4 py-3 text-sm font-bold"
+            className="flex items-center justify-center gap-2 rounded-2xl bg-brand-100 text-brand-900 w-full px-4 py-3 text-sm font-bold"
           >
             <Icon path={mdiTargetVariant} size={0.8} />
             {t('home_set_plan')}

@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import Icon from '@mdi/react'
 import { mdiChevronDown, mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
 import clsx from 'clsx'
 import { budgetsApi, categoriesApi } from '../../api'
-import type { SpendingPlanView, Category } from '../../types'
+import { useFetch, usePlanning } from '../../hooks'
 import CustomSelect from '../../components/ui/CustomSelect'
 import IconDisplay from '../../components/ui/IconDisplay'
 import ConfirmModal from '../../components/ui/ConfirmModal'
@@ -27,37 +27,24 @@ export default function Budget() {
   const currentMonth = () => new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()).slice(0, 7)
 
   const [month, setMonth] = useState(currentMonth())
-  const [plan, setPlan] = useState<SpendingPlanView | null>(null)
-  const [categories, setCategories] = useState<Category[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { data, loading, refreshing, error, refetch: load } = useFetch(async () => {
+    const [plan, categories] = await Promise.all([budgetsApi.getPlan(month), categoriesApi.list()])
+    return { plan, categories: categories.filter(c => c.type === 'expense') }
+  }, [month])
+  const plan = data?.plan ?? null
+  const categories = data?.categories ?? []
+  // Start together with the plan, and keep the resource mounted during refreshes.
+  const planning = usePlanning()
   const [showCategories, setShowCategories] = useState(false)
 
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ categoryId: '', amount: '' })
   const [saving, setSaving] = useState(false)
-  const requestId = useRef(0)
   const [confirmState, setConfirmState] = useState<{ open: boolean; onConfirm: () => void }>({ open: false, onConfirm: () => {} })
 
-  const load = useCallback(async () => {
-    const request = ++requestId.current
-    setLoading(true)
-    setError(null)
-    try {
-      const [p, c] = await Promise.all([budgetsApi.getPlan(month), categoriesApi.list()])
-      if (request !== requestId.current) return
-      setPlan(p)
-      setCategories(c.filter((x: Category) => x.type === 'expense'))
-      // Keep the section open once it is in use, so it does not hide the user's own data.
-      if (p.categoryTargets.length > 0) setShowCategories(true)
-    } catch (err) {
-      if (request === requestId.current) setError(apiErrorMessage(err, t('err_load_failed'), t('err_offline')))
-    } finally {
-      if (request === requestId.current) setLoading(false)
-    }
-  }, [month, t])
-
-  useEffect(() => { load(); return () => { requestId.current++ } }, [load])
+  useEffect(() => {
+    if (plan && plan.categoryTargets.length > 0) setShowCategories(true)
+  }, [plan])
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -107,7 +94,7 @@ export default function Budget() {
   const availableCategories = categories.filter(c => !used.has(c.id))
 
   return (
-    <div className="px-4 pt-6 pb-4 sm:px-6 lg:px-2 space-y-6 animate-fade-in">
+    <div aria-busy={loading || refreshing} className="px-4 pt-6 pb-4 sm:px-6 lg:px-2 space-y-6">
       <div>
         <h1 className="page-heading">{t('nav_plan')}</h1>
         <p className="page-description">{t('ux_plan_intro')}</p>
@@ -125,14 +112,20 @@ export default function Budget() {
       </div>
 
       {loading ? (
-        <Skeleton className="h-40 w-full rounded-2xl" />
+        <div className="space-y-6">
+          <Skeleton className="h-44 w-full rounded-3xl" />
+          <div className="grid xl:grid-cols-2 gap-5">
+            <Skeleton className="h-72 w-full rounded-3xl" />
+            <Skeleton className="h-72 w-full rounded-3xl" />
+          </div>
+        </div>
       ) : error ? (
         <ErrorState message={error} onRetry={load} retryLabel={t('action_retry')} />
       ) : plan && (
         <>
           <SpendingPlanCard plan={plan} month={month} onChanged={load} />
 
-          <LifePlanning categories={categories} month={month} />
+          <LifePlanning categories={categories} month={month} planning={planning} />
 
           {/* Per-category limits — the optional alternative, folded away by default. */}
           <div className="rounded-2xl bg-card border border-theme overflow-hidden">

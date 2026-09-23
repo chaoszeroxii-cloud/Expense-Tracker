@@ -46,12 +46,12 @@ function DayTotals({ items }: { items: Expense[] }) {
   return (
     <div className="flex items-baseline gap-2 shrink-0 tabular-nums">
       {spent > 0 && (
-        <span className="text-sm font-bold text-rose-500" aria-label={`${t('spent')} ${fmt(spent)}`}>
+        <span className="text-sm font-bold text-expense" aria-label={`${t('spent')} ${fmt(spent)}`}>
           −฿{fmt(spent)}
         </span>
       )}
       {earned > 0 && (
-        <span className="text-sm font-bold text-emerald-500" aria-label={`${t('income')} ${fmt(earned)}`}>
+        <span className="text-sm font-bold text-income" aria-label={`${t('income')} ${fmt(earned)}`}>
           ฿{fmt(earned)}
         </span>
       )}
@@ -250,7 +250,7 @@ export default function History() {
         </button>
       </div>
 
-      {loadingSummary ? <Skeleton className="h-24 mb-5" /> : summaryError ? <ErrorState compact message={t('err_load_failed')} onRetry={refetchSummary} retryLabel={t('action_retry')} /> : summary && <div className="grid grid-cols-2 gap-3 mb-5">
+      {loadingSummary ? <div className="grid grid-cols-2 gap-3 mb-5"><Skeleton className="h-[84px]" /><Skeleton className="h-[84px]" /></div> : summaryError ? <ErrorState compact message={t('err_load_failed')} onRetry={refetchSummary} retryLabel={t('action_retry')} /> : summary && <div className="grid grid-cols-2 gap-3 mb-5">
         <div className="surface px-4 py-4"><p className="text-xs text-muted-theme mb-2">{t('expense')}</p><Amount value={summary.totalExpense} type="expense" size="lg" /></div>
         <div className="surface px-4 py-4"><p className="text-xs text-muted-theme mb-2">{t('income')}</p><Amount value={summary.totalIncome} type="income" size="lg" /></div>
       </div>}
@@ -269,7 +269,7 @@ export default function History() {
             className={clsx(
               'flex-1 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5',
               filter === f
-                ? 'bg-white dark:bg-slate-700 text-base-theme shadow-sm'
+                ? 'bg-card text-brand-600 shadow-sm'
                 : 'text-muted-theme',
             )}
           >
@@ -312,7 +312,7 @@ export default function History() {
           />
         )
       ) : (
-        <div className="space-y-5 animate-fade-in">
+        <div className="space-y-5">
           {Object.entries(grouped)
             .sort(([a], [b]) => b.localeCompare(a))
             .map(([date, items]) => (

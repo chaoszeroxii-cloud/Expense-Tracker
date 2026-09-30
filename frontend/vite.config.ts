@@ -17,8 +17,8 @@ export default defineConfig({
     react(),
     VitePWA({
       // injectManifest, not generateSW: a generated worker cannot carry a `push`
-      // listener, and push is the whole point of the daily reminder. src/sw.ts is a
-      // like-for-like port of the rules the generated one had.
+      // listener, and push is the whole point of the daily reminder. src/sw.ts also
+      // keeps online navigation fresh while preserving an offline app shell.
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',

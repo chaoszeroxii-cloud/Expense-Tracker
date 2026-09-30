@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
+import { precache, addRoute, cleanupOutdatedCaches, createHandlerBoundToURL } from 'workbox-precaching'
 import { NavigationRoute, registerRoute } from 'workbox-routing'
 import { CacheFirst } from 'workbox-strategies'
 import { ExpirationPlugin } from 'workbox-expiration'
@@ -8,10 +8,9 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 /**
  * Hand-written service worker.
  *
- * The plugin generated this file automatically until push arrived — a generated worker
- * has no way to add a `push` listener. The caching rules below are a deliberate,
- * like-for-like port of what the generated one did; the only additions are the two
- * listeners at the bottom.
+ * Fresh HTML while online, a precached shell while offline, and a bounded cache of
+ * visited code chunks. Do not bind online navigations to a release's cached HTML:
+ * after a deploy it can reference lazy chunks that no longer exist on the server.
  *
  * Note what is NOT here: any caching of `/api/`. Cache Storage keys on URL alone, so a
  * shared cache of authenticated responses serves one signed-in user's finances to the
@@ -21,12 +20,42 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response'
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST: Array<{ url: string; revision: string | null }> }
 
 cleanupOutdatedCaches()
-precacheAndRoute(self.__WB_MANIFEST)
+precache(self.__WB_MANIFEST)
 
-// App shell for client-side routes; API paths must fall through to the network.
-registerRoute(new NavigationRoute(createHandlerBoundToURL('index.html'), {
-  denylist: [/^\/api/],
+// Register before the precache route, which otherwise intercepts '/' and '/index.html'.
+const offlineShell = createHandlerBoundToURL('index.html')
+registerRoute(new NavigationRoute(async (options) => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 4000)
+  try {
+    // One public shell URL, never a password-reset query or authenticated API response.
+    const response = await fetch(new URL('index.html', self.registration.scope), {
+      cache: 'no-cache', signal: controller.signal,
+    })
+    if (response.ok && response.headers.get('content-type')?.includes('text/html')) return response
+  } catch {
+    // The installed shell and its matching entry chunk remain available offline.
+  } finally {
+    clearTimeout(timeout)
+  }
+  return offlineShell(options)
+}, {
+  denylist: [/^\/(?:api|assets|icons|_vercel)(?:\/|$)/, /^\/[^?]*\.(?!html(?:\?|$))[^/?]+(?:\?|$)/],
 }))
+addRoute()
+
+// Keep previously visited routes usable offline and in tabs left open during deploys.
+// Hash-named JS/CSS is public, immutable code; never cache API or user documents here.
+registerRoute(
+  ({ url }) => url.origin === self.location.origin && /^\/assets\/[^/]+-[\w-]+\.(?:js|css)$/.test(url.pathname),
+  new CacheFirst({
+    cacheName: 'moneyflow-code-v1',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxEntries: 80, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
+    ],
+  }),
+)
 
 registerRoute(
   ({ url }) => /^https:\/\/fonts\.(googleapis|gstatic)\.com/.test(url.href),
@@ -39,8 +68,7 @@ registerRoute(
   }),
 )
 
-// `registerType: 'autoUpdate'` previously handled this; keep the same behaviour so a
-// deploy does not leave someone on a stale bundle until they close every tab.
+// Activate updated workers without forcing healthy tabs to reload (and lose form input).
 self.addEventListener('install', () => { self.skipWaiting() })
 self.addEventListener('activate', (event) => { event.waitUntil(self.clients.claim()) })
 

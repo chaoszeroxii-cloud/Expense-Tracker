@@ -56,6 +56,11 @@ services:
       BREVO_API_KEY:          ${BREVO_API_KEY}
       BREVO_SENDER_EMAIL:     ${BREVO_SENDER_EMAIL}
       FRONTEND_URL:           ${FRONTEND_URL:-http://localhost:3000}
+      GMAIL_CLIENT_ID:        ${GMAIL_CLIENT_ID-}
+      GMAIL_CLIENT_SECRET:    ${GMAIL_CLIENT_SECRET-}
+      GMAIL_REDIRECT_URI:     ${GMAIL_REDIRECT_URI:-http://localhost:3001/api/bank-mail/gmail/callback}
+      BANK_MAIL_ENCRYPTION_KEY: ${BANK_MAIL_ENCRYPTION_KEY-}
+      CRON_SECRET:           ${CRON_SECRET-}
     volumes:
       - ./backend:/app            # hot reload in dev
       - /app/node_modules         # hot reload in dev

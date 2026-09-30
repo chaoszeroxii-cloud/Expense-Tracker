@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store/auth.store'
 import type { BillInput, GoalInput, PlanningOverview } from '../types/planning'
+import type { BankMailEntry, BankMailSettings, BankMailStatus } from '../types/bankMail'
 import type { PinnedEntry, CaptureRow, BatchPreview, ExpensePage, PayCycle, BillReminders } from '../types/companion'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
@@ -39,6 +40,20 @@ http.interceptors.response.use(
 )
 
 // ── Auth ─────────────────────────────────────────────────────
+export const bankMailApi = {
+  status: () => http.get<BankMailStatus>('/bank-mail/status').then(r => r.data),
+  connect: () => http.post<{ url: string }>('/bank-mail/connect').then(r => r.data),
+  complete: (state: string, code: string) => http.post<{ connected: boolean }>('/bank-mail/complete', { state, code }).then(r => r.data),
+  disconnect: () => http.delete<{ ok: boolean; revoked: boolean }>('/bank-mail/connection').then(r => r.data),
+  settings: (value: BankMailSettings) => http.put('/bank-mail/settings', value).then(r => r.data),
+  sync: () => http.post<{ busy: boolean; continued?: boolean }>('/bank-mail/sync').then(r => r.data),
+  entries: (status: BankMailEntry['status'], offset = 0) =>
+    http.get<{ rows: BankMailEntry[]; total: number }>('/bank-mail/entries', { params: { status, offset } }).then(r => r.data),
+  save: (id: string, categoryId: string, type: 'expense' | 'income', allowDuplicate = false) =>
+    http.post('/bank-mail/entries/' + id + '/save', { categoryId, type, allowDuplicate }).then(r => r.data),
+  ignore: (id: string) => http.post('/bank-mail/entries/' + id + '/ignore').then(r => r.data),
+}
+
 export const authApi = {
   // `lang` decides which language the starter categories are seeded in — they are
   // user data from then on, so it cannot be corrected by switching the UI later.

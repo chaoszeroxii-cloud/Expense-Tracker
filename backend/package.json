@@ -17,7 +17,9 @@
     "migration:generate": "typeorm migration:generate -d dist/config/data-source.js",
     "test:e2e": "node .e2e/run.mjs",
     "test:planning": "node .e2e/planning.mjs",
-    "test:allowance": "npm run build && node --test test/daily-allowance.test.js"
+    "test:allowance": "npm run build && node --test test/daily-allowance.test.js",
+    "test:bank-mail": "npm run build && node --test test/bank-mail.test.js",
+    "test:bank-mail:e2e": "npm run build && node .e2e/bank-mail.cjs --browser"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

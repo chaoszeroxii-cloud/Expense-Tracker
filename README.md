@@ -99,6 +99,11 @@ They are removed only after confirmation from the server or an explicit user dis
 | `GET /api/analytics/monthly-trend` | 12-month area chart |
 | `GET /api/analytics/daily?month=YYYY-MM` | Daily bar chart |
 
+## Gmail bank import
+
+Gmail bank-email import supports separate connections and settings for each user.
+See [setup, supported emails, scheduling and verification](docs/gmail-bank-import.md).
+
 ## PWA — Install on Mobile
 
 1. Open the deployed **HTTPS** website on your phone. A computer's `localhost` or

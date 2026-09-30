@@ -144,6 +144,8 @@ export class AccountService {
       await lockLedger(em, userId)
       // Order matters only where a table lacks ON DELETE CASCADE; the rest is explicit
       // so the set of things being destroyed is readable rather than implied.
+      await em.query(`DELETE FROM bank_mail_connections WHERE user_id = $1`, [userId])
+      await em.query(`DELETE FROM bank_mail_entries WHERE user_id = $1`, [userId])
       await em.query(`DELETE FROM allocation_movements WHERE user_id = $1`, [userId])
       await em.query(`DELETE FROM allocation_plans     WHERE user_id = $1`, [userId])
       await em.query(`DELETE FROM daily_checkins       WHERE user_id = $1`, [userId])

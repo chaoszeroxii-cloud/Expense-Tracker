@@ -49,7 +49,12 @@ function Lazy({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <BrowserRouter>
-      <SpeedInsights />
+      <SpeedInsights beforeSend={event => {
+        // OAuth completion and password reset URLs can carry short-lived secrets.
+        // Performance metrics need the route only, never the query or fragment.
+        const url = new URL(event.url, window.location.origin)
+        return { ...event, url: url.origin + url.pathname }
+      }} />
       {/* Mounted at the root so routes outside <Layout> (e.g. /add) can raise toasts too. */}
       <ToastHost />
       <Routes>

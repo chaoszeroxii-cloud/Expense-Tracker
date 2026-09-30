@@ -19,6 +19,7 @@ import type { Category, EntryType } from '../../types'
 import DangerZone from '../../components/settings/DangerZone'
 import ReminderSettings from '../../components/settings/ReminderSettings'
 import InstallAppCard from '../../components/pwa/InstallAppCard'
+import BankMailSettings from '../../components/settings/BankMailSettings'
 
 const PRESET_COLORS = [
   '#6366f1','#f97316','#3b82f6','#a855f7','#ef4444',
@@ -167,12 +168,13 @@ export default function Settings() {
     <div className="px-4 pt-6 pb-6 sm:px-6 lg:px-2 space-y-6 animate-fade-in">
       <h1 className="page-heading">{t('settings')}</h1>
       <nav aria-label={t('settings')} className="flex gap-2 flex-wrap">
-        {([['settings-profile', 'ux_profile'], ['settings-appearance', 'appearance'], ['settings-categories', 'categories']] as const).map(([id, key]) => (
+        {([['settings-profile', 'ux_profile'], ['settings-appearance', 'appearance'], ['settings-categories', 'categories'], ['settings-bank-mail', 'mail_nav']] as const).map(([id, key]) => (
           <button key={id} className="secondary-action !text-xs !py-2" onClick={() => document.getElementById(id)?.scrollIntoView({ block: 'start' })}>{t(key)}</button>
         ))}
       </nav>
 
       <InstallAppCard />
+      <BankMailSettings key={user?.id} categories={categories ?? []} />
 
       {/* ── Profile ── */}
       <Card id="settings-profile" className="scroll-mt-5">

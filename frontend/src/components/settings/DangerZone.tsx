@@ -214,6 +214,7 @@ export default function DangerZone() {
             <input
               id="dz-confirm"
               value={confirmText}
+              placeholder={expected}
               onChange={e => setConfirmText(e.target.value)}
               autoComplete="off"
               autoCapitalize="none"

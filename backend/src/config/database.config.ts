@@ -16,11 +16,12 @@ import { MonthlySpendingPlan } from '../modules/budgets/monthly-spending-plan.en
 import { DailyCheckin } from '../modules/checkins/daily-checkin.entity'
 import { PushSubscription } from '../modules/notifications/push-subscription.entity'
 import { RecurringBill, BillOccurrence, BillPayment, SavingsGoal } from '../modules/planning/planning.entity'
+import { CaptureTemplate } from '../modules/capture/capture.entity'
 
 export const databaseConfig = (): TypeOrmModuleOptions => {
   const base: Partial<TypeOrmModuleOptions> = {
     type: 'postgres',
-    entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog, ProductEvent, DailyCheckin, MonthlySpendingPlan, PushSubscription, RecurringBill, BillOccurrence, BillPayment, SavingsGoal],
+    entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog, ProductEvent, DailyCheckin, MonthlySpendingPlan, PushSubscription, RecurringBill, BillOccurrence, BillPayment, SavingsGoal, CaptureTemplate],
 
     // Off everywhere. Migrations are the only schema owner.
     //

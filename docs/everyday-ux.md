@@ -38,8 +38,28 @@ See [ADR-0002](adr/0002-daily-money-and-life-planning.md) for the exact rules.
 
 The existing accounting services and schema remain authoritative. PostgreSQL decimal
 strings are normalized by the expense-list API client. History's month totals come from
-the analytics endpoint rather than summing the capped list. Search filters the loaded
-month's entries (the existing API limit is 500).
+the analytics endpoint rather than summing the visible list. History now searches on
+the server, including entries beyond the former 500-row limit, with 50-row pages,
+optional all-month/date/category filters and labelled page subtotals.
+
+## Daily companion
+
+See [the usage and rollout guide](daily-companion.md) for pinned shortcuts, batch entry,
+CSV/receipt drafts, day review, bill reminders, goal simulation and payday plans.
+
+- A day with an entry means recorded activity. Optional explicit review (up to 90 days
+  back) and no-spend confirmation are separate signals. Creating, editing or deleting an
+  entry reopens its affected day(s); a no-spend confirmation and expense creation share
+  the user ledger lock so they cannot contradict one another after concurrent writes.
+- Weekly advice compares ordinary spending excluding linked bill payments, and requires
+  both seven-day windows to have been reviewed. Period budgets use real month/cycle
+  lengths, actual bill payments in that period and unpaid obligations, including carryover.
+- A payday plan replaces the daily allowance basis only when explicitly enabled. The
+  calendar-month plan folds into a reference section; switching to track-only disables
+  the payday plan as well. Neither mode estimates an actual bank balance.
+- The new regression harness runs against a disposable database and uses a stub only for
+  image recognition and push transport. No live provider accuracy or device delivery is
+  claimed by these tests.
 
 ## Verification
 

@@ -1,6 +1,7 @@
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store/auth.store'
 import type { BillInput, GoalInput, PlanningOverview } from '../types/planning'
+import type { PinnedEntry, CaptureRow, BatchPreview, ExpensePage, PayCycle, BillReminders } from '../types/companion'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Expense, Category, CreateExpensePayload, BalanceSummary,
@@ -115,6 +116,8 @@ export const analyticsApi = {
 
 // ── Check-ins ────────────────────────────────────────────────
 export const checkInsApi = {
+  reviews: () => http.get<Coverage>('/check-ins/reviews').then(r => r.data),
+  review: (date: string, reviewed: boolean) => (reviewed ? http.put<Coverage>(`/check-ins/${date}/review`) : http.delete<Coverage>(`/check-ins/${date}/review`)).then(r => r.data),
   /** Declares a day as no-spend. Idempotent; only today or yesterday are accepted. */
   markNoSpend: (date: string) =>
     http.put<Coverage>(`/check-ins/${date}`).then(r => r.data),
@@ -125,6 +128,8 @@ export const checkInsApi = {
 
 // ── Expenses ─────────────────────────────────────────────────
 export const expensesApi = {
+  page: (params: { month?: string; type?: string; categoryId?: string; search?: string; startDate?: string; endDate?: string; offset?: number }) =>
+    http.get<ExpensePage>('/expenses/page', { params }).then(r => ({ ...r.data, items: r.data.items.map(e => ({ ...e, amount: Number(e.amount) })) })),
   exportAll: (params: { from?: string; to?: string; month?: string; type?: string }) =>
     http.get<Expense[]>('/expenses/export', { params }).then(r => r.data.map(entry => ({
       ...entry, amount: Number(entry.amount),
@@ -245,6 +250,11 @@ export const budgetsApi = {
 
 // Monthly commitments and self-reported savings; payments use the expense ledger.
 export const planningApi = {
+  cycle: () => http.get<PayCycle>('/planning/pay-cycle').then(r => r.data),
+  saveCycle: (payload: { enabled: boolean; payDay: number; budget: number }) => http.put<PayCycle>('/planning/pay-cycle', payload).then(r => r.data),
+  reminders: () => http.get<BillReminders>('/planning/reminders').then(r => r.data),
+  saveReminders: (payload: BillReminders['preferences']) => http.put('/planning/reminders', payload).then(r => r.data),
+  snoozeBill: (id: string, month: string, until: string) => http.put(`/planning/bills/${id}/snooze`, { month, until }).then(r => r.data),
   overview: () => http.get<PlanningOverview>('/planning').then(r => r.data),
   saveBill: (payload: BillInput, id?: string) => id
     ? http.put(`/planning/bills/${id}`, payload).then(r => r.data)
@@ -257,6 +267,16 @@ export const planningApi = {
     ? http.put(`/planning/goals/${id}`, payload).then(r => r.data)
     : http.post('/planning/goals', payload).then(r => r.data),
   removeGoal: (id: string) => http.delete(`/planning/goals/${id}`).then(r => r.data),
+}
+
+export const captureApi = {
+  templates: () => http.get<PinnedEntry[]>('/capture/templates').then(r => r.data),
+  saveTemplate: (payload: Omit<PinnedEntry, 'id'>, id?: string) => (id ? http.put(`/capture/templates/${id}`, payload) : http.post('/capture/templates', payload)).then(r => r.data),
+  removeTemplate: (id: string) => http.delete(`/capture/templates/${id}`),
+  preview: (rows: CaptureRow[]) => http.post<BatchPreview>('/capture/preview', { rows }).then(r => r.data),
+  commit: (rows: CaptureRow[]) => http.post<BatchPreview>('/capture/batch', { rows }).then(r => r.data),
+  receiptStatus: () => http.get<{ configured: boolean }>('/chat/receipt-status').then(r => r.data),
+  receipt: (imageBase64: string, mimeType: string) => http.post<{ amount: number; note: string; date: string | null }>('/chat/receipt-draft', { imageBase64, mimeType }).then(r => r.data),
 }
 
 // ── Account (destructive) ─────────────────────────────────────

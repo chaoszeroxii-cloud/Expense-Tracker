@@ -92,6 +92,9 @@ export class UpdateExpenseDto {
 }
 
 export class QueryExpenseDto {
+  @IsOptional() @IsString() @MaxLength(200) search?: string
+  @IsOptional() @IsDateString({ strict: true }) startDate?: string
+  @IsOptional() @IsDateString({ strict: true }) endDate?: string
   @IsOptional()
   @IsIn(['expense', 'income'])
   type?: 'expense' | 'income'

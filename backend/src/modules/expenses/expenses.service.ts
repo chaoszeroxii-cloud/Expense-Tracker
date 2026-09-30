@@ -31,7 +31,7 @@ export class ExpensesService {
    * today. Same data, two answers, depending on the screen. Wrapping the column also
    * stopped `idx_expenses_user_occurred` from being usable for the range.
    */
-  async findAll(userId: string, query: QueryExpenseDto, em = this.dataSource.manager): Promise<Expense[]> {
+  private async listQuery(userId: string, query: QueryExpenseDto, em = this.dataSource.manager) {
     const user = await em.getRepository(User)
       .findOne({ where: { id: userId }, select: ['id', 'timezone'] })
     const tz = safeTimezone(user?.timezone)
@@ -61,6 +61,18 @@ export class ExpensesService {
 
     if (query.type)       qb.andWhere('e.type = :type', { type: query.type })
     if (query.categoryId) qb.andWhere('e.category_id = :categoryId', { categoryId: query.categoryId })
+    if (query.search?.trim()) {
+      const term = query.search.trim().replace(/[\\%_]/g, '\\$&')
+      qb.andWhere(`(e.note ILIKE :search OR category.name ILIKE :search OR e.amount::text ILIKE :amountSearch)`,
+        { search: `%${term}%`, amountSearch: `%${term.replace(/,/g, '')}%` })
+    }
+    for (const value of [query.startDate, query.endDate]) {
+      if (value && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) ||
+        new Date(value).toISOString().slice(0, 10) !== value)) throw new BadRequestException('Use valid YYYY-MM-DD dates')
+    }
+    if (query.startDate && query.endDate && query.startDate > query.endDate) throw new BadRequestException('Start date must not follow end date')
+    if (query.startDate) qb.andWhere(`e.occurred_at >= (:startDate::date::timestamp AT TIME ZONE :tz)`, { startDate: query.startDate, tz })
+    if (query.endDate) qb.andWhere(`e.occurred_at < ((:endDate::date+1)::timestamp AT TIME ZONE :tz)`, { endDate: query.endDate, tz })
 
     if (query.from && query.to) {
       // Inclusive month range, e.g. 2026-01 → 2026-06
@@ -73,7 +85,17 @@ export class ExpensesService {
     } else if (query.year) {
       qb.andWhere(yearRangePredicate('e.occurred_at', ':year', ':tz')).setParameters({ year: query.year, tz })
     }
-    return qb.getMany()
+    return qb
+  }
+
+  async findAll(userId: string, query: QueryExpenseDto, em = this.dataSource.manager): Promise<Expense[]> {
+    return (await this.listQuery(userId, query, em)).getMany()
+  }
+
+  async page(userId: string, query: QueryExpenseDto) {
+    const limit = Math.min(query.limit ?? 50, 100)
+    const [items, total] = await (await this.listQuery(userId, { ...query, limit })).getManyAndCount()
+    return { items, total, offset: query.offset ?? 0, limit, hasMore: (query.offset ?? 0) + items.length < total }
   }
 
   /** One database snapshot, complete or explicitly rejected; never a partial backup. */
@@ -176,6 +198,7 @@ export class ExpensesService {
     )
 
     const expense = em.create(Expense, { ...rest, userId, allocationId })
+    await this.invalidateReview(em, userId, dto.occurredAt)
     return em.save(Expense, expense)
   }
 
@@ -255,6 +278,8 @@ export class ExpensesService {
 
       // Metadata-only edits never touch balances or resolve today's wallet links.
       const { allocationId: _ignoredAllocationId, ...patch } = dto
+      await this.invalidateReview(em, userId, expense.occurredAt)
+      if (dto.occurredAt) await this.invalidateReview(em, userId, dto.occurredAt)
       Object.assign(expense, patch)
       return em.save(Expense, expense)
     })
@@ -269,10 +294,17 @@ export class ExpensesService {
         em, userId, expense.type, Number(expense.amount), expense.allocationId,
       )
       await em.delete(Expense, { id: expense.id, userId })
+      await this.invalidateReview(em, userId, expense.occurredAt)
     })
   }
 
   // ── Balance effects ───────────────────────────────────────────
+  private async invalidateReview(em: EntityManager, userId: string, at: Date | string) {
+    await em.query(`DELETE FROM day_reviews WHERE user_id=$1 AND local_date=(
+      $2::timestamptz AT TIME ZONE (SELECT COALESCE(timezone,'Asia/Bangkok') FROM users WHERE id=$1))::date`, [userId,at])
+    await em.query(`DELETE FROM daily_checkins WHERE user_id=$1 AND local_date=(
+      $2::timestamptz AT TIME ZONE (SELECT COALESCE(timezone,'Asia/Bangkok') FROM users WHERE id=$1))::date`, [userId,at])
+  }
 
   /**
    * Undo what a stored transaction did to the balances.

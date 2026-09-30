@@ -19,6 +19,7 @@ const Onboarding    = lazy(() => import('./pages/Onboarding/Onboarding'))
 const More          = lazy(() => import('./pages/More/More'))
 const Reports       = lazy(() => import('./pages/Reports/Reports'))
 const Budget        = lazy(() => import('./pages/Budget/Budget'))
+const BatchCapture = lazy(() => import('./pages/Capture/BatchCapture'))
 const Loans         = lazy(() => import('./pages/Loans/Loans'))
 const Investments   = lazy(() => import('./pages/Investments/Investments'))
 const Tax           = lazy(() => import('./pages/Tax/Tax'))
@@ -71,6 +72,7 @@ export default function App() {
             {/* Finance was the old hub; keep the URL working for existing bookmarks. */}
             <Route path="/finance"    element={<Navigate to="/more" replace />} />
             <Route path="/budget"     element={<Lazy><Budget /></Lazy>} />
+            <Route path="/capture" element={<Lazy><BatchCapture /></Lazy>} />
             <Route path="/loans"      element={<Lazy><Loans /></Lazy>} />
             <Route path="/investments" element={<Lazy><Investments /></Lazy>} />
             <Route path="/tax"        element={<Lazy><Tax /></Lazy>} />

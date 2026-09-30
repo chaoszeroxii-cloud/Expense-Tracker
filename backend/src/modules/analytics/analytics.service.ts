@@ -15,6 +15,7 @@ import { CheckinsService, Coverage } from '../checkins/checkins.service';
 import { SpendingPlanService } from '../budgets/spending-plan.service';
 import { PlanningService } from '../planning/planning.service';
 import { dailyAllowance } from '../planning/daily-allowance';
+import { PlanningExtrasService, payCycleBounds } from '../planning/planning-extras.service';
 
 export interface AiRecommendation {
   type: 'warning' | 'tip' | 'good';
@@ -80,6 +81,11 @@ export interface DailyBriefTransaction {
 }
 
 export interface WeeklyReview {
+  reviewedDays: number
+  previousReviewedDays: number
+  ordinaryThisWeek: number
+  ordinaryLastWeek: number
+  plannedOrdinary: number | null
   timezone: string
   /** Inclusive `YYYY-MM-DD` bounds of the seven days ending today. */
   from: string
@@ -89,7 +95,7 @@ export interface WeeklyReview {
   /** `thisWeek - lastWeek`; negative means spending came down. */
   delta: number
   deltaPct: number | null
-  topCategory: { name: string; icon: string | null; color: string | null; total: number; share: number } | null
+  topCategory: { id: string | null; name: string; icon: string | null; color: string | null; total: number; share: number } | null
   biggestDay: { date: string; total: number } | null
   dailyAverage: number
   /** One deterministic suggestion, or null when the data does not support one. */
@@ -103,6 +109,7 @@ export interface WeeklyReview {
 }
 
 export interface DailyBrief {
+  planPeriod: { kind: 'month' | 'pay_cycle'; from: string; to: string; spent: number };
   date: string;
   timezone: string;
   mode: 'plan' | 'track_only';
@@ -139,6 +146,7 @@ export class AnalyticsService {
     private readonly checkins: CheckinsService,
     private readonly spendingPlan: SpendingPlanService,
     private readonly planning: PlanningService,
+    private readonly planningExtras: PlanningExtrasService,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -176,10 +184,11 @@ export class AnalyticsService {
       .setParameters({ userId, tz, today, month })
       .getRawOne();
 
-    const [totals, effectivePlan, billState] = await Promise.all([
+    const [totals, effectivePlan, billState, cycle] = await Promise.all([
       totalsPromise,
       this.spendingPlan.resolve(userId, month),
       this.planning.billsForMonth(userId, month, today, tz),
+      this.planningExtras.cycle(userId),
     ]);
     const spentToday = round2(parseFloat(totals.spentToday) || 0);
     const monthSpent = round2(parseFloat(totals.monthSpent) || 0);
@@ -193,7 +202,8 @@ export class AnalyticsService {
     //
     // Resolved per month, and inherited from the last month the user set one, so the
     // daily figure keeps working on the 1st instead of vanishing until they re-enter it.
-    const limitRaw = effectivePlan.totalAmount;
+    const activeCycle = cycle.enabled ? cycle.period : null;
+    const limitRaw = activeCycle ? cycle.budget : effectivePlan.totalAmount;
     const hasPlan  = user.trackingMode === 'plan' && limitRaw !== null && limitRaw > 0;
 
     let safeToday: number | null = null;
@@ -206,6 +216,10 @@ export class AnalyticsService {
       else if (safeToday === 0)        planStatus = 'close';
       else if (monthSpent > limitRaw! * 0.8) planStatus = 'close';
       else                             planStatus = 'on_track';
+      if (activeCycle) {
+        safeToday = activeCycle.safeToday;
+        planStatus = activeCycle.spent > limitRaw! ? 'over' : safeToday === 0 || activeCycle.spent > limitRaw!*.8 ? 'close' : 'on_track';
+      }
     }
 
     // ── Categories to offer first in Quick Add ──────────────────────────────
@@ -247,14 +261,17 @@ export class AnalyticsService {
       date: today,
       timezone: tz,
       mode: user.trackingMode,
+      planPeriod: activeCycle
+        ? { kind: 'pay_cycle', from: activeCycle.start, to: activeCycle.end, spent: activeCycle.spent }
+        : { kind: 'month', from: month+'-01', to: `${month}-${daysInMonth}`, spent: monthSpent },
       spentToday,
       monthSpent,
       monthlyLimit: hasPlan ? round2(limitRaw!) : null,
       safeToday,
-      daysRemaining,
-      unpaidBills: billState.unpaidBills,
-      unpaidBillCount: billState.bills.filter(b => !b.expenseId).length,
-      nextBill: nextBill ? { name: nextBill.name, amount: nextBill.amount, dueDate: nextBill.dueDate } : null,
+      daysRemaining: activeCycle?.daysRemaining ?? daysRemaining,
+      unpaidBills: activeCycle?.unpaidBills ?? billState.unpaidBills,
+      unpaidBillCount: activeCycle ? activeCycle.unpaidBillCount : billState.bills.filter(b => !b.expenseId).length,
+      nextBill: activeCycle ? activeCycle.nextBill : nextBill ? { name: nextBill.name, amount: nextBill.amount, dueDate: nextBill.dueDate } : null,
       planStatus,
       transactionsToday,
       recentCategoryIds: recentCats.map((r) => r.categoryId),
@@ -295,22 +312,24 @@ export class AnalyticsService {
       .createQueryBuilder('e')
       .where('e.user_id = :userId')
       .andWhere(`e.type = 'expense'`)
+      .andWhere(`e.occurred_at >= (:prevFrom::date::timestamp AT TIME ZONE :tz) AND e.occurred_at < ((:to::date+1)::timestamp AT TIME ZONE :tz)`)
       .setParameters({ userId, tz, from, to, prevFrom, prevTo });
 
-    const [totals, categories, days] = await Promise.all([
+    const [totals, categories, days, coverage, cycle] = await Promise.all([
       base()
         .select([
           `COALESCE(SUM(CASE WHEN ${day} BETWEEN :from::date AND :to::date THEN e.amount ELSE 0 END), 0) AS "thisWeek"`,
           `COALESCE(SUM(CASE WHEN ${day} BETWEEN :prevFrom::date AND :prevTo::date THEN e.amount ELSE 0 END), 0) AS "lastWeek"`,
         ])
-        .andWhere(`${day} BETWEEN :prevFrom::date AND :to::date`)
+        .andWhere(`e.occurred_at >= (:prevFrom::date::timestamp AT TIME ZONE :tz) AND e.occurred_at < ((:to::date+1)::timestamp AT TIME ZONE :tz)`)
         .getRawOne(),
 
       base()
-        .select(['c.name AS name', 'c.icon AS icon', 'c.color AS color', 'SUM(e.amount) AS total'])
+        .select(['c.id AS id', 'c.name AS name', 'c.icon AS icon', 'c.color AS color', 'SUM(e.amount) AS total'])
         .leftJoin('e.category', 'c')
+        .andWhere('NOT EXISTS (SELECT 1 FROM bill_payments bp WHERE bp.expense_id=e.id)')
         .andWhere(`${day} BETWEEN :from::date AND :to::date`)
-        .groupBy('c.name, c.icon, c.color')
+        .groupBy('c.id, c.name, c.icon, c.color')
         .orderBy('total', 'DESC')
         .limit(1)
         .getRawMany(),
@@ -322,19 +341,59 @@ export class AnalyticsService {
         .orderBy('total', 'DESC')
         .limit(1)
         .getRawMany(),
+      this.dataSource.query(`WITH checked AS (
+        SELECT local_date FROM day_reviews WHERE user_id=$1
+        UNION SELECT local_date FROM daily_checkins WHERE user_id=$1 AND status='no_spend'
+      ) SELECT count(*) FILTER(WHERE local_date BETWEEN $2::date AND $3::date)::int AS current,
+        count(*) FILTER(WHERE local_date BETWEEN $4::date AND $5::date)::int AS previous FROM checked`, [userId,from,to,prevFrom,prevTo]),
+      this.planningExtras.cycle(userId),
     ]);
 
     const thisWeek = round2(parseFloat(totals?.thisWeek) || 0);
     const lastWeek = round2(parseFloat(totals?.lastWeek) || 0);
-    const delta = round2(thisWeek - lastWeek);
+    const [ordinary] = await base().select([
+      `COALESCE(sum(e.amount) FILTER(WHERE ${day} BETWEEN :from::date AND :to::date),0) AS current`,
+      `COALESCE(sum(e.amount) FILTER(WHERE ${day} BETWEEN :prevFrom::date AND :prevTo::date),0) AS previous`,
+    ]).andWhere(`e.occurred_at >= (:prevFrom::date::timestamp AT TIME ZONE :tz) AND e.occurred_at < ((:to::date+1)::timestamp AT TIME ZONE :tz)`)
+      .andWhere('NOT EXISTS (SELECT 1 FROM bill_payments bp WHERE bp.expense_id=e.id)').getRawMany();
+    const ordinaryThisWeek = Number(ordinary.current), ordinaryLastWeek = Number(ordinary.previous);
+    const delta = round2(ordinaryThisWeek - ordinaryLastWeek);
+    // Resolve each distinct period, including weeks crossing a month/payday boundary.
+    const allowances = new Map<string, number | null>();
+    let plannedOrdinary: number | null = 0;
+    for (let i=0; i<7; i++) {
+      const date = shiftDate(from,i), month = date.slice(0,7);
+      const period = cycle.enabled ? payCycleBounds(date,cycle.payDay)
+        : { start: month+'-01', end: `${month}-${daysInMonthOf(date)}`, nextPayday: shiftMonth(month,1)+'-01' };
+      if (!allowances.has(period.start)) {
+        const limit = cycle.enabled ? cycle.budget : (await this.spendingPlan.resolve(userId,month)).totalAmount;
+        const [bills, [paid]] = await Promise.all([
+          this.planningExtras.schedule(userId,period.end,tz),
+          this.dataSource.query(`SELECT COALESCE(sum(e.amount),0) AS total FROM bill_payments p
+            JOIN expenses e ON e.id=p.expense_id WHERE p.user_id=$1
+            AND e.occurred_at >= ($2::date::timestamp AT TIME ZONE $4)
+            AND e.occurred_at < (($3::date+1)::timestamp AT TIME ZONE $4)`, [userId,period.start,period.end,tz]),
+        ]);
+        // Actual bill payments consume this period, including payments for another month's bill.
+        // Add obligations still unpaid at its end; a bill paid before this period is not reserved twice.
+        const reserved = Number(paid.total) + bills.filter(b => !b.expenseId || b.paidDate > period.end).reduce((s,b) => s+b.amount,0);
+        const dayCount = (Date.parse(period.nextPayday)-Date.parse(period.start))/86400000;
+        allowances.set(period.start, limit === null ? null : Math.max(0,limit-reserved)/dayCount);
+      }
+      const daily = allowances.get(period.start);
+      plannedOrdinary = daily === null || plannedOrdinary === null ? null : plannedOrdinary + daily;
+    }
+    if (plannedOrdinary !== null) plannedOrdinary = round2(plannedOrdinary);
+    const reviewedDays = coverage[0].current, previousReviewedDays = coverage[0].previous;
 
     const top = categories[0]
       ? {
+          id: categories[0].id ?? null,
           name: categories[0].name ?? 'Uncategorized',
           icon: categories[0].icon ?? null,
           color: categories[0].color ?? null,
           total: round2(parseFloat(categories[0].total)),
-          share: thisWeek > 0 ? Math.round((parseFloat(categories[0].total) / thisWeek) * 100) : 0,
+          share: ordinaryThisWeek > 0 ? Math.round((parseFloat(categories[0].total) / ordinaryThisWeek) * 100) : 0,
         }
       : null;
 
@@ -344,14 +403,16 @@ export class AnalyticsService {
       to,
       thisWeek,
       lastWeek,
+      reviewedDays, previousReviewedDays, ordinaryThisWeek, ordinaryLastWeek, plannedOrdinary,
       delta,
-      deltaPct: lastWeek > 0 ? Math.round((delta / lastWeek) * 100) : null,
+      deltaPct: ordinaryLastWeek > 0 ? Math.round((delta / ordinaryLastWeek) * 100) : null,
       topCategory: top,
       biggestDay: days[0]
         ? { date: days[0].date, total: round2(parseFloat(days[0].total)) }
         : null,
       dailyAverage: round2(thisWeek / 7),
-      action: this.weeklyAction({ user, thisWeek, lastWeek, delta, top }),
+      action: reviewedDays < 7 || previousReviewedDays < 7 ? { kind: 'need_more_data' }
+        : this.weeklyAction({ user, thisWeek: ordinaryThisWeek, lastWeek: ordinaryLastWeek, delta, top, plannedOrdinary }),
     };
   }
 
@@ -367,18 +428,19 @@ export class AnalyticsService {
     lastWeek: number;
     delta: number;
     top: WeeklyReview['topCategory'];
+    plannedOrdinary: number | null;
   }): WeeklyReview['action'] {
     const { user, thisWeek, lastWeek, delta, top } = input;
 
     // Nothing worth saying without a week of history to compare against.
-    if (thisWeek === 0 && lastWeek === 0) return { kind: 'need_more_data' };
+    if (thisWeek === 0 && lastWeek === 0) return null;
 
-    const limit = user.monthlySpendingLimit === null ? null : Number(user.monthlySpendingLimit);
-    if (user.trackingMode === 'plan' && (limit === null || limit <= 0)) return { kind: 'set_plan' };
+    const limit = input.plannedOrdinary;
+    if (user.trackingMode === 'plan' && limit === null) return { kind: 'set_plan' };
 
     // Running ahead of the pace the monthly limit allows for a week.
-    if (limit && limit > 0) {
-      const weeklyAllowance = (limit / 30) * 7;
+    if (user.trackingMode === 'plan' && limit !== null) {
+      const weeklyAllowance = limit;
       if (thisWeek > weeklyAllowance * 1.1) {
         return { kind: 'over_plan', amount: round2(thisWeek - weeklyAllowance) };
       }

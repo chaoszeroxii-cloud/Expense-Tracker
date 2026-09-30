@@ -9,6 +9,7 @@ import { track } from '../../utils/telemetry'
 import { fmtRound } from '../../utils/money'
 import IconDisplay from '../ui/IconDisplay'
 import type { DailyBriefTransaction } from '../../types'
+import PinnedEntries from './PinnedEntries'
 
 export default function QuickCaptureBar({ recent = [] }: { recent?: DailyBriefTransaction[] }) {
   const t = useT()
@@ -120,6 +121,8 @@ export default function QuickCaptureBar({ recent = [] }: { recent?: DailyBriefTr
           </div>
         </div>
       )}
+      <PinnedEntries />
+      <button className="text-action justify-start !text-xs mt-3" onClick={() => navigate('/capture')}>{t('dc_batch')} →</button>
       <details className="group mt-auto pt-5">
         <summary className="flex items-center justify-between gap-2 cursor-pointer list-none text-xs font-semibold text-muted-theme min-h-11 border-t border-theme pt-3">
           {t('ux_ai_title')}

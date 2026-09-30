@@ -32,6 +32,31 @@ docker rm -f mf_e2e_db
 
 ## Adding a check
 
+Daily companion verification (run from the project root):
+
+```powershell
+docker run -d --name moneyflow_visual_db -p 127.0.0.1:15435:5432 `
+  -e POSTGRES_PASSWORD=visual-local-only -e POSTGRES_USER=expense_user `
+  -e POSTGRES_DB=moneyflow_visual_test postgres:16-alpine
+npm run build --workspace backend
+# In a separate terminal, keep Vite running for the browser checks:
+$env:VITE_API_URL = 'http://127.0.0.1:3096'
+npm run dev --workspace frontend -- --host 127.0.0.1 --port 5175 --strictPort
+# Run after Vite is ready:
+node backend/.e2e/companion-regression.cjs --with-flows
+```
+
+This harness guards the exact disposable DB name, strips outbound credentials, runs
+migrations and starts/closes its own Nest server on 3096. It covers capture ownership,
+atomic batches/retries/duplicates, search beyond 500 rows, review invalidation, payday
+boundaries, bill snooze/digest claims, draft-only imports, reset and browser integration.
+`--with-flows` also runs the existing planning/daily browser suites and planning API
+suite. It clears only the in-memory test limiter between independent suites; production
+guards stay enabled. Receipt recognition and push transport are stubbed, not real provider
+tests. Thai mobile/desktop screenshots in both themes and `results.json` are written to
+`frontend/.smoke/ux-artifacts/companion/` (ignored). Stop Vite and remove only the named
+test container when done. These credentials are disposable local fixtures.
+
 Audit regressions (disposable database only): start Postgres on loopback port 15434,
 database `moneyflow_fix_test`, user `expense_user`, password `fix-local-only`.
 Start Vite on 5174 with `VITE_API_URL=http://127.0.0.1:3098`, build the backend,

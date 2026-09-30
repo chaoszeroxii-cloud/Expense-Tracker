@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useCallback } from 'react'
+import { companionEn, companionTh } from './companion.i18n'
 
 export type Lang = 'en' | 'th'
 
@@ -8,6 +9,7 @@ export type Lang = 'en' | 'th'
 // ─────────────────────────────────────────────────────────────
 const dict = {
   en: {
+    ...companionEn,
     action_back: 'Back',
     action_confirm: 'Confirm',
     life_bills: 'Monthly and outstanding bills',
@@ -568,12 +570,12 @@ const dict = {
 
     // ── Seven-day coverage (not a streak) ───────────────────
     cov_title:        'Last 7 days',
-    cov_counted:      'accounted for',
+    cov_counted:      'days with activity or no-spend check-in',
     cov_no_spend_cta: 'Nothing spent today',
     cov_no_spend_yesterday: 'Nothing spent yesterday either',
     cov_marked:       'Marked as a no-spend day',
     cov_undo:         'Undo',
-    cov_all_done:     'All seven days accounted for',
+    cov_all_done:     'Activity or a no-spend check-in on all seven days',
     cov_hint:         'A day with no spending counts too — mark it and it stays counted.',
 
     // ── Weekly review ───────────────────────────────────────
@@ -587,7 +589,7 @@ const dict = {
     wk_act_over:       'Ahead of your plan by',
     wk_act_reduce:     'Most of this week went to',
     wk_act_set_plan:   'Set a monthly limit to see how the week compares',
-    wk_act_more_data:  'Record a few days and a comparison appears here',
+    wk_act_more_data:  'Review the days in both weeks before comparing spending',
     wk_no_data:        'Nothing recorded in the last 7 days',
 
     // ── Budget rollover ─────────────────────────────────────
@@ -719,6 +721,7 @@ const dict = {
     dash_more_items:        'more',
   },
   th: {
+    ...companionTh,
     action_back: 'กลับ',
     action_confirm: 'ยืนยัน',
     life_bills: 'บิลประจำและยอดค้างจ่าย',
@@ -1281,12 +1284,12 @@ const dict = {
 
     // ── Seven-day coverage (not a streak) ───────────────────
     cov_title:        '7 วันล่าสุด',
-    cov_counted:      'วันที่บันทึกครบ',
+    cov_counted:      'วันที่จดหรือระบุว่าไม่ใช้เงิน',
     cov_no_spend_cta: 'วันนี้ไม่มีรายจ่าย',
     cov_no_spend_yesterday: 'เมื่อวานก็ไม่มีรายจ่าย',
     cov_marked:       'บันทึกว่าเป็นวันไม่มีรายจ่ายแล้ว',
     cov_undo:         'เลิกทำ',
-    cov_all_done:     'ครบทั้ง 7 วันแล้ว',
+    cov_all_done:     'มีการจดหรือเช็กอินไม่ใช้เงินทั้ง 7 วัน',
     cov_hint:         'วันที่ไม่ได้ใช้เงินก็นับ — กดบอกไว้แล้วมันจะยังนับให้',
 
     // ── Weekly review ───────────────────────────────────────
@@ -1300,7 +1303,7 @@ const dict = {
     wk_act_over:       'เกินจังหวะที่แผนตั้งไว้',
     wk_act_reduce:     'สัปดาห์นี้ส่วนใหญ่หมดไปกับ',
     wk_act_set_plan:   'ตั้งวงเงินต่อเดือน แล้วจะเทียบให้เห็นว่าสัปดาห์นี้เป็นยังไง',
-    wk_act_more_data:  'บันทึกอีกสัก 2-3 วัน แล้วจะมีตัวเปรียบเทียบขึ้นตรงนี้',
+    wk_act_more_data:  'ทบทวนข้อมูลของทั้งสองสัปดาห์ก่อนเปรียบเทียบการใช้เงิน',
     wk_no_data:        '7 วันที่ผ่านมายังไม่มีรายการ',
 
     // ── Budget rollover ─────────────────────────────────────

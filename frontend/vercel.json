@@ -1,0 +1,32 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    { "source": "/login", "destination": "/index.html" },
+    { "source": "/forgot-password", "destination": "/index.html" },
+    { "source": "/reset-password", "destination": "/index.html" },
+    { "source": "/onboarding", "destination": "/index.html" },
+    { "source": "/history", "destination": "/index.html" },
+    { "source": "/wallets", "destination": "/index.html" },
+    { "source": "/settings", "destination": "/index.html" },
+    { "source": "/more", "destination": "/index.html" },
+    { "source": "/reports", "destination": "/index.html" },
+    { "source": "/finance", "destination": "/index.html" },
+    { "source": "/budget", "destination": "/index.html" },
+    { "source": "/capture", "destination": "/index.html" },
+    { "source": "/loans", "destination": "/index.html" },
+    { "source": "/investments", "destination": "/index.html" },
+    { "source": "/tax", "destination": "/index.html" },
+    { "source": "/add", "destination": "/index.html" },
+    { "source": "/admin", "destination": "/index.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+    }
+  ]
+}

@@ -53,6 +53,11 @@ cp nginx/https.conf /etc/nginx/sites-available/flo
 certbot --nginx -d yourdomain.com
 ```
 
+For a Vercel frontend deployment, set Root Directory to `frontend`. Its `vercel.json`
+provides the React route rewrites and cache headers; keep it with the frontend project.
+See [deployment recovery](docs/deploy-recovery.md) for stale PWA/lazy-route recovery
+and the local two-release browser regression test.
+
 ## Auth Flow
 
 ```

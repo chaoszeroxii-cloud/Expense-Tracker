@@ -28,6 +28,25 @@ render; only the visible sign-in buttons should differ.
 Exit code is 0 when the app rendered and produced no page errors. `/_vercel/speed-insights`
 404s outside Vercel and is filtered out.
 
+## Deployment and offline recovery
+
+From the repository root, run `node frontend/.smoke/deploy-recovery.cjs`.
+It builds two production releases, starts a local static server using the Vercel route
+map, and switches releases while real Chromium tabs and service workers are open.
+No database, backend, Vercel credentials or real user data is involved. Builds,
+screenshots and results stay under the ignored `.smoke/ux-artifacts/deploy-recovery/`.
+
+Checks cover an uncached old Login chunk returning 404 after deployment; preservation
+of the token, capture draft and IndexedDB offline queue; worker activation without
+interrupting a form; fresh online HTML even when worker updates fail; permanent chunk
+failure without a reload loop; unrelated application errors; blocked sessionStorage;
+offline cached pages; reconnecting with the route/query intact; and exclusion of API
+responses and reset-password query strings from shared caches. Every concrete route
+in `App.tsx` must have a rewrite, and missing assets must remain 404s.
+
+This is local browser/routing verification, not a production Vercel deployment check.
+See [deployment recovery](../../docs/deploy-recovery.md) for the incident and rollout notes.
+
 ## Visual and loading regression checks
 
 `visual-refresh.cjs` starts its own real Nest server and migrates a disposable database.

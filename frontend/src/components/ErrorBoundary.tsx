@@ -1,67 +1,69 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
+import { useT } from '../store/i18n.store'
+import { isChunkLoadError, reloadApp } from '../utils/appRecovery'
 
-/**
- * Last line of defence for a render-time throw.
- *
- * Without one, any exception during render unmounts the entire tree and leaves a blank
- * white page with nothing on screen to act on. That was not hypothetical here: a missing
- * `VITE_GOOGLE_CLIENT_ID` made Google's sign-in script throw while initialising, and
- * because the provider sits at the root of the app, the whole thing went blank — no
- * error, no login form, no way to tell a misconfigured build from a dead server.
- *
- * A boundary cannot make a broken dependency work, but it turns "nothing at all" into a
- * message and a reload button, which is the difference between a bug someone can report
- * and one they can only describe as "it doesn't open".
- */
 interface Props { children: ReactNode }
-interface State { error: Error | null }
+interface State { error: Error | null; recovering: boolean }
 
+function ErrorScreen({ error, recovering, retry }: {
+  error: Error; recovering: boolean; retry: () => void
+}) {
+  const t = useT()
+  const [online, setOnline] = useState(navigator.onLine)
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine)
+    window.addEventListener('online', update)
+    window.addEventListener('offline', update)
+    return () => {
+      window.removeEventListener('online', update)
+      window.removeEventListener('offline', update)
+    }
+  }, [])
+  const chunkError = isChunkLoadError(error)
+
+  return (
+    <main className="min-h-dvh bg-app text-base-theme flex items-center justify-center p-6">
+      <section className="surface w-full max-w-md p-6 sm:p-8 text-center" aria-labelledby="app-error-title">
+        <img src="/icon.svg" alt="MoneyFlow" width="56" height="56" className="mx-auto mb-5" />
+        <h1 id="app-error-title" className="text-xl font-bold mb-3">
+          {t(chunkError ? 'app_error_page_title' : 'app_error_title')}
+        </h1>
+        <p role="status" className="text-sm text-muted-theme leading-relaxed mb-6">
+          {t(!online ? 'app_error_offline' : recovering ? 'app_error_updating' : chunkError ? 'app_error_page_hint' : 'app_error_hint')}
+        </p>
+        <button className="primary-action w-full" onClick={retry} disabled={recovering || !online}>
+          {t(recovering ? 'app_error_updating' : 'app_error_reload')}
+        </button>
+        <details className="mt-5 text-left text-xs text-muted-theme">
+          <summary className="cursor-pointer py-2">{t('app_error_details')}</summary>
+          <pre className="mt-2 whitespace-pre-wrap break-words font-mono leading-relaxed">{error.message}</pre>
+        </details>
+      </section>
+    </main>
+  )
+}
+
+/** Render-time failures stay actionable; stale lazy routes get one bounded retry. */
 export default class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null }
+  state: State = { error: null, recovering: false }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Pick<State, 'error'> {
     return { error }
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    // Kept as a console error rather than shipped anywhere: the app has no error
-    // reporting service, and inventing one here would send user data off-device.
     console.error('[MoneyFlow] unhandled render error:', error, info.componentStack)
+    if (isChunkLoadError(error)) void this.retry(true)
+  }
+
+  retry = async (automatic = false) => {
+    this.setState({ recovering: true })
+    const reloading = await reloadApp(automatic)
+    if (!reloading) this.setState({ recovering: false })
   }
 
   render() {
     if (!this.state.error) return this.props.children
-
-    return (
-      <div style={{
-        minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '24px', background: '#f8fafc', color: '#1e293b',
-        fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      }}>
-        <div style={{ maxWidth: 420, textAlign: 'center' }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>😵</div>
-          <h1 style={{ fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>
-            เปิดแอปไม่สำเร็จ
-          </h1>
-          <p style={{ fontSize: 14, lineHeight: 1.6, color: '#64748b', margin: '0 0 20px' }}>
-            มีบางอย่างผิดพลาดตอนโหลดหน้านี้ ลองโหลดใหม่อีกครั้ง
-            ถ้ายังไม่ได้ ให้ตรวจว่าตั้งค่า environment ของแอปครบแล้ว
-          </p>
-          <pre style={{
-            fontSize: 11, textAlign: 'left', background: '#f1f5f9', padding: 12,
-            borderRadius: 10, overflowX: 'auto', color: '#475569', margin: '0 0 20px',
-          }}>{this.state.error.message}</pre>
-          <button
-            onClick={() => window.location.reload()}
-            style={{
-              background: '#4f46e5', color: '#fff', border: 0, padding: '12px 28px',
-              borderRadius: 12, fontWeight: 700, fontSize: 14, cursor: 'pointer',
-            }}
-          >
-            โหลดใหม่
-          </button>
-        </div>
-      </div>
-    )
+    return <ErrorScreen error={this.state.error} recovering={this.state.recovering} retry={() => { void this.retry() }} />
   }
 }

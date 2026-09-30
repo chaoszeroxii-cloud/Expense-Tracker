@@ -1,0 +1,84 @@
+{
+  "checks": [
+    "pins persist and reject foreign categories/template access",
+    "batch preview has no ledger effect",
+    "concurrent batch retries create once and debit once",
+    "likely duplicates require explicit acknowledgement",
+    "edited retries cannot silently return a different saved transaction",
+    "invalid batch row rolls back every entry and balance change",
+    "invalid dates, future dates and oversized batches are rejected",
+    "new captures reopen reviewed days instead of claiming completeness",
+    "older day reviews can be inspected and reopened without leaking another account",
+    "weekly advice does not praise incomplete recording",
+    "payday plan is the daily allowance source across short/leap months and years",
+    "disabling payday mode restores the existing calendar plan",
+    "daily bill totals, count and next bill use the active payday period consistently",
+    "bill reminders and snoozes are scoped to owner and exact bill cycle",
+    "linking an existing payment clears the reminder without duplicating spending",
+    "next-cycle bills can be explicitly paid early exactly once",
+    "weekly comparisons exclude linked bills and require two reviewed weeks",
+    "receipt endpoint validates input, handles missing provider, and extracts only a draft (provider stubbed)",
+    "history searches beyond 500 entries, paginates stably, and isolates accounts",
+    "CSV parser supports quotes/newlines and explicit Buddhist dates; invalid input fails",
+    "goal simulation uses remaining savings and calendar contributions without ledger writes",
+    "track-only mode disables the payday plan and does not resurrect it later",
+    "factory reset clears pins and payday settings while preserving other accounts",
+    "reviewed days suppress daily reminder delivery (transport stubbed)",
+    "concurrent sweeps send one bill digest, respect snooze, and never create payments (transport stubbed)",
+    "factory reset clears new reminder and review records",
+    "pin creation and reuse open an editable draft without saving",
+    "batch saves only selected rows and preserves unchecked invalid drafts across reload",
+    "CSV rejects unknown transaction types instead of silently turning them into expenses",
+    "CSV mapping creates editable drafts without saving",
+    "batch draft survives reload in account-scoped tab storage",
+    "receipt UI creates an unsaved editable draft (vision provider stubbed)",
+    "payday setup works through the browser and updates the authoritative daily plan",
+    "bill reminder deep link opens an explicit payment action and clears after saving",
+    "simulation requires confirmation and changes only the goal date",
+    "weekly catch-up opens 14-day review and persists older-day review and undo",
+    "history browser pagination and cross-month search find entries beyond 500",
+    "all five affected screens fit Thai mobile/desktop in both themes with no runtime exceptions"
+  ],
+  "externalProviders": "stubbed",
+  "database": "disposable",
+  "date": "2026-09-30",
+  "baseCommit": "b79f342",
+  "companionChecks": 38,
+  "existingSuites": {
+    "planningBrowser": 10,
+    "dailyBrowser": 19,
+    "planningApi": 29,
+    "dailyAllowanceUnit": 3
+  },
+  "builds": {
+    "backend": "passed",
+    "backendAndServerlessTypecheck": "passed",
+    "frontend": "passed",
+    "finalFrontendTypecheck": "passed",
+    "gitDiffCheck": "passed"
+  },
+  "visualCoverage": {
+    "language": "th",
+    "themes": [
+      "light",
+      "dark"
+    ],
+    "widths": [
+      390,
+      1440
+    ],
+    "screens": [
+      "capture",
+      "plan",
+      "history",
+      "reports",
+      "home"
+    ],
+    "screenshots": "frontend/.smoke/ux-artifacts/companion/"
+  },
+  "limitations": [
+    "Receipt vision and push transport were stubbed; live recognition accuracy and real device delivery were not tested.",
+    "Migration ran only against the disposable database; apply it before starting this backend version elsewhere.",
+    "Vite reports the existing html2canvas chunk above 500 kB."
+  ]
+}

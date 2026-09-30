@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import Icon from '@mdi/react'
 import { mdiChevronDown, mdiPlus, mdiTrashCanOutline, mdiPencilOutline, mdiClose, mdiCheck } from '@mdi/js'
 import clsx from 'clsx'
-import { budgetsApi, categoriesApi } from '../../api'
+import { budgetsApi, categoriesApi, planningApi } from '../../api'
 import { useFetch, usePlanning } from '../../hooks'
 import CustomSelect from '../../components/ui/CustomSelect'
 import IconDisplay from '../../components/ui/IconDisplay'
@@ -11,6 +11,9 @@ import { Skeleton, ErrorState } from '../../components/ui'
 import SpendingPlanCard from '../../components/plan/SpendingPlanCard'
 import BudgetRollover from '../../components/plan/BudgetRollover'
 import LifePlanning from '../../components/plan/LifePlanning'
+import PayCycleCard from '../../components/plan/PayCycleCard'
+import BillReminders from '../../components/plan/BillReminders'
+import GoalSimulator from '../../components/plan/GoalSimulator'
 import { useT, useI18n } from '../../store/i18n.store'
 import { useAuthStore } from '../../store/auth.store'
 import { toast } from '../../store/toast.store'
@@ -35,6 +38,7 @@ export default function Budget() {
   const categories = data?.categories ?? []
   // Start together with the plan, and keep the resource mounted during refreshes.
   const planning = usePlanning()
+  const cycle = useFetch(planningApi.cycle)
   const [showCategories, setShowCategories] = useState(false)
 
   const [showForm, setShowForm] = useState(false)
@@ -50,10 +54,12 @@ export default function Budget() {
     const handler = (e: Event) => {
       const types: string[] = (e as CustomEvent).detail?.types ?? []
       if (types.includes('budget') || types.includes('transactions')) load()
+      if (types.includes('planning') || types.includes('transactions')) planning.refetch()
+      if (types.includes('planning') || types.includes('transactions')) cycle.refetch()
     }
     window.addEventListener('moneyflow:refresh', handler)
     return () => window.removeEventListener('moneyflow:refresh', handler)
-  }, [load])
+  }, [load, planning.refetch, cycle.refetch])
 
   const handleSave = async () => {
     if (!form.categoryId || !form.amount) return
@@ -100,7 +106,10 @@ export default function Budget() {
         <p className="page-description">{t('ux_plan_intro')}</p>
       </div>
 
-      {/* One month selector for the whole page — the headline used to ignore it. */}
+      <PayCycleCard resource={cycle} onChanged={load}/>
+      <BillReminders />
+
+      {/* Calendar controls affect the sections below; current payday/reminder actions stay above. */}
       <div className="flex items-center justify-between gap-4 surface px-4 py-2">
         <button onClick={() => changeMonth(-1)} aria-label={t('ux_previous_month')}
           className="p-3 rounded-full hover:bg-[var(--input)] text-muted-theme">‹</button>
@@ -123,9 +132,12 @@ export default function Budget() {
         <ErrorState message={error} onRetry={load} retryLabel={t('action_retry')} />
       ) : plan && (
         <>
-          <SpendingPlanCard plan={plan} month={month} onChanged={load} />
+          {cycle.data?.enabled ? <details className="surface p-4"><summary className="cursor-pointer text-sm font-bold">{t('dc_calendar_reference')}</summary>
+            <div className="mt-3"><SpendingPlanCard plan={plan} month={month} onChanged={load} /></div>
+          </details> : <SpendingPlanCard plan={plan} month={month} onChanged={load} />}
 
           <LifePlanning categories={categories} month={month} planning={planning} />
+          {planning.data&&month===currentMonth()&&<GoalSimulator planning={planning.data} limit={cycle.data?.enabled?cycle.data.budget:plan.totalAmount} onChanged={planning.refetch}/>}
 
           {/* Per-category limits — the optional alternative, folded away by default. */}
           <div className="rounded-2xl bg-card border border-theme overflow-hidden">

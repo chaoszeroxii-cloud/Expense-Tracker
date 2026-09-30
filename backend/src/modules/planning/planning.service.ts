@@ -14,6 +14,7 @@ import {
   localToday,
   safeTimezone,
   daysInMonthOf,
+  shiftMonth,
 } from '../../common/local-date.util'
 import { lockLedger } from '../../common/ledger-lock.util'
 import { round2 } from '../../common/money.util'
@@ -205,8 +206,11 @@ export class PlanningService {
       const now = new Date()
       const currentMonth = localToday(tz, now).slice(0, 7)
       const month = dto.month ?? currentMonth
-      if (month > currentMonth) throw new BadRequestException('Cannot pay a future cycle')
+      if (month > shiftMonth(currentMonth,1)) throw new BadRequestException('Only the next cycle can be paid early')
       await this.materialize(em, userId, currentMonth)
+      if (month > currentMonth) await em.query(`INSERT INTO bill_occurrences(bill_id,user_id,month,name,amount,category_id,due_day)
+        SELECT id,user_id,$3::varchar,name,amount,category_id,due_day FROM recurring_bills
+        WHERE id=$1 AND user_id=$2 AND active AND start_month <= $3::varchar ON CONFLICT DO NOTHING`, [id,userId,month])
       const [bill] = await em.query(`SELECT name,amount,category_id AS "categoryId",waived
         FROM bill_occurrences WHERE bill_id=$1 AND user_id=$2 AND month=$3`, [id,userId,month])
       if (!bill || bill.waived) throw new NotFoundException('Bill cycle not found')

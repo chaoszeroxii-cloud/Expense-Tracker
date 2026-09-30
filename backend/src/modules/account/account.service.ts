@@ -114,6 +114,7 @@ export class AccountService {
       if (from) { checkinParams.push(`${from}-01`); checkinWhere += ` AND local_date >= $${checkinParams.length}::date` }
       if (to)   { checkinParams.push(`${to}-01`);   checkinWhere += ` AND local_date < ($${checkinParams.length}::date + INTERVAL '1 month')` }
       await em.query(`DELETE FROM daily_checkins WHERE ${checkinWhere}`, checkinParams)
+      await em.query(`DELETE FROM day_reviews WHERE ${checkinWhere}`, checkinParams)
 
       // Envelope funding history only makes sense alongside the transactions it sat
       // beside; clearing the whole ledger clears it too.
@@ -157,6 +158,9 @@ export class AccountService {
         `DELETE FROM loan_payments WHERE loan_id IN (SELECT id FROM loans WHERE user_id = $1)`,
         [userId],
       )
+      for (const table of ['capture_templates', 'day_reviews', 'pay_cycle_plans', 'bill_reminder_preferences']) {
+        await em.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId])
+      }
       await em.query(`DELETE FROM recurring_bills WHERE user_id = $1`, [userId])
       await em.query(`DELETE FROM savings_goals WHERE user_id = $1`, [userId])
       await em.query(`DELETE FROM loans      WHERE user_id = $1`, [userId])

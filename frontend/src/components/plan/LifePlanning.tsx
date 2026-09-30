@@ -211,7 +211,7 @@ export default function LifePlanning({
           {[...data.bills]
             .sort((a, b) => Number(!!a.expenseId) - Number(!!b.expenseId))
             .map((b) => (
-              <li key={`${b.id}-${b.month}`} className="py-4">
+              <li id={`bill-${b.id}-${b.month}`} key={`${b.id}-${b.month}`} className="py-4 scroll-mt-5 target:bg-[var(--accent-soft)] target:rounded-xl target:px-3">
                 <div className="flex justify-between items-start gap-3">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-base-theme break-words">

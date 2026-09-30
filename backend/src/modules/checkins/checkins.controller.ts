@@ -1,4 +1,4 @@
-import { Controller, Delete, Param, Put, UseGuards } from '@nestjs/common'
+import { Controller, Delete, Get, Param, Put, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { CurrentUser } from '../auth/current-user.decorator'
 import { User } from '../users/user.entity'
@@ -8,6 +8,17 @@ import { CheckinsService } from './checkins.service'
 @UseGuards(JwtAuthGuard)
 export class CheckinsController {
   constructor(private readonly service: CheckinsService) {}
+
+  @Get('reviews') reviews(@CurrentUser() user: User) {
+    return this.service.getCoverage(user.id, user.timezone, 91)
+  }
+
+  @Put(':date/review') review(@CurrentUser() user: User, @Param('date') date: string) {
+    return this.service.review(user.id, date, true)
+  }
+  @Delete(':date/review') undoReview(@CurrentUser() user: User, @Param('date') date: string) {
+    return this.service.review(user.id, date, false)
+  }
 
   // PUT /api/check-ins/:date  — "nothing spent that day"
   // Idempotent: tapping twice is the same as tapping once.

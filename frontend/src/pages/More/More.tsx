@@ -30,6 +30,7 @@ interface Item {
  * permanent, named home.
  */
 const TOOLS: Item[] = [
+  { to: '/capture', icon: mdiReceiptTextOutline, color: '#087f75', bg: 'bg-brand-50 dark:bg-brand-900/30', titleKey: 'dc_batch', descKey: 'dc_batch_hint' },
   { action: 'chat', icon: mdiRobot,             color: '#10b981', bg: 'bg-emerald-50 dark:bg-emerald-900/20', titleKey: 'more_ai_title',       descKey: 'more_ai_desc' },
   { action: 'calc', icon: mdiClockMinusOutline, color: '#8b5cf6', bg: 'bg-violet-50 dark:bg-violet-900/20',   titleKey: 'more_worktime_title', descKey: 'more_worktime_desc' },
   { to: '/reports', icon: mdiChartTimelineVariant, color: '#6366f1', bg: 'bg-indigo-50 dark:bg-indigo-900/20', titleKey: 'reports_title',      descKey: 'reports_subtitle' },

@@ -117,6 +117,7 @@ export class CategoriesService {
         );
         await em.query(`UPDATE recurring_bills SET category_id = $1 WHERE user_id = $2 AND category_id = $3`, [reassignTo, userId, id]);
         await em.query(`UPDATE bill_occurrences SET category_id = $1 WHERE user_id = $2 AND category_id = $3`, [reassignTo, userId, id]);
+        await em.query(`UPDATE capture_templates SET category_id = $1 WHERE user_id = $2 AND category_id = $3`, [reassignTo, userId, id]);
       }
       await em.delete(Category, { id, userId });
     });

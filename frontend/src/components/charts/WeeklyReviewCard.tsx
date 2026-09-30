@@ -8,6 +8,7 @@ import { Card, Skeleton, ErrorState, IconDisplay } from '../ui'
 import { useT, useI18n } from '../../store/i18n.store'
 import { fmt, fmtRound } from '../../utils/money'
 import type { WeeklyReview } from '../../types'
+import { Link } from 'react-router-dom'
 
 /**
  * The weekly half of the reward loop: enough to notice a change, not a dashboard.
@@ -33,6 +34,9 @@ export default function WeeklyReviewCard({ data, loading, error, onRetry }: {
 
   const improved = data.delta < 0
   const hasData = data.thisWeek > 0 || data.lastWeek > 0
+  const reliable = data.reviewedDays===7 && data.previousReviewedDays===7
+  const details = new URLSearchParams({ startDate:data.from,endDate:data.to })
+  if(data.action?.kind==='reduce_category' && data.topCategory?.id) details.set('categoryId',data.topCategory.id)
 
   const formatDay = (date: string) =>
     new Date(`${date}T12:00:00`).toLocaleDateString(
@@ -59,7 +63,7 @@ export default function WeeklyReviewCard({ data, loading, error, onRetry }: {
                 ฿{fmtRound(data.thisWeek)}
               </p>
             </div>
-            {data.lastWeek > 0 && (
+            {reliable && data.ordinaryLastWeek > 0 && (
               <div className={clsx(
                 'flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold',
                 improved
@@ -74,6 +78,7 @@ export default function WeeklyReviewCard({ data, loading, error, onRetry }: {
           </div>
 
           <dl className="space-y-2 text-xs">
+            <Row label={t('dc_ordinary')} value={`฿${fmt(data.ordinaryThisWeek)}`} />
             <Row label={t('wk_daily_avg')} value={`฿${fmt(data.dailyAverage)}`} />
             {data.topCategory && (
               <Row
@@ -95,6 +100,10 @@ export default function WeeklyReviewCard({ data, loading, error, onRetry }: {
       )}
 
       {data.action && <ActionLine action={data.action} />}
+      <p className="text-xs text-muted-theme mt-3">{t('dc_week_quality')}: {data.reviewedDays}/7 · {data.from} – {data.to}</p>
+      {!reliable && <p className="text-xs text-muted-theme leading-relaxed mt-2">{t('dc_week_missing')}</p>}
+      <div className="flex gap-4 flex-wrap mt-3"><Link className="text-action !text-xs" to={`/history?${details}`}>{t('dc_week_details')} →</Link>
+        <Link className="text-action !text-xs" to={data.action?.kind==='need_more_data'?'/capture?review=1':'/budget'}>{t(data.action?.kind==='need_more_data'?'dc_catch_up':'dc_adjust_plan')} →</Link></div>
     </Card>
   )
 }

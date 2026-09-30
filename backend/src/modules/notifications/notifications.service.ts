@@ -8,6 +8,7 @@ import { localToday, safeTimezone } from '../../common/local-date.util'
 import { pushAgent, pushUrl } from './push-endpoint'
 import { lockLedger } from '../../common/ledger-lock.util'
 import { ECDH } from 'node:crypto'
+import { PlanningExtrasService } from '../planning/planning-extras.service'
 
 export interface DispatchResult {
   considered: number
@@ -37,6 +38,7 @@ export class NotificationsService {
     private readonly subs: Repository<PushSubscription>,
     @InjectRepository(User)
     private readonly users: Repository<User>,
+    private readonly planningExtras: PlanningExtrasService,
   ) {
     const publicKey = process.env.VAPID_PUBLIC_KEY
     const privateKey = process.env.VAPID_PRIVATE_KEY
@@ -186,11 +188,13 @@ export class NotificationsService {
                     WHERE e.user_id = $1
                       AND (e.occurred_at AT TIME ZONE $2)::date = $3::date) AS has_tx,
            EXISTS (SELECT 1 FROM daily_checkins c
-                    WHERE c.user_id = $1 AND c.local_date = $3::date) AS has_checkin`,
+                    WHERE c.user_id = $1 AND c.local_date = $3::date) AS has_checkin,
+           EXISTS (SELECT 1 FROM day_reviews r
+                    WHERE r.user_id = $1 AND r.local_date = $3::date) AS has_review`,
         [row.id, row.timezone, row.for_date],
       )
 
-      if (covered?.has_tx || covered?.has_checkin) {
+      if (covered?.has_tx || covered?.has_checkin || covered?.has_review) {
         await this.users.update(row.id, { lastRemindedDate: row.for_date })
         result.skipped++
         continue
@@ -220,6 +224,43 @@ export class NotificationsService {
 
     if (result.considered > 0) {
       this.logger.log(`reminder sweep: ${JSON.stringify(result)}`)
+    }
+    const billResult = await this.dispatchBillReminders()
+    result.sent += billResult.sent
+    result.failed += billResult.failed
+    return result
+  }
+
+  private async dispatchBillReminders() {
+    const accounts = await this.users.query(`SELECT p.user_id AS id FROM bill_reminder_preferences p
+      JOIN users u ON u.id=p.user_id WHERE p.enabled AND u.push_enabled
+      AND EXISTS(SELECT 1 FROM push_subscriptions s WHERE s.user_id=u.id)`)
+    const result = { sent: 0, failed: 0 }
+    for (const { id } of accounts) {
+      // One digest per local day, even when many old bills are overdue or two workers sweep.
+      // Use the same user lock as payments, and re-read while holding it before claiming.
+      const reminder = await this.users.manager.transaction(async em => {
+        await lockLedger(em, id)
+        const view = await this.planningExtras.reminders(id)
+        const clock = new Intl.DateTimeFormat('en-GB', { timeZone: view.timezone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date())
+        if (clock < view.remindAt || !view.preferences.enabled || !view.pushEnabled) return null
+        const sentToday = await em.query(`SELECT 1 FROM bill_reminder_deliveries WHERE user_id=$1 AND last_sent=$2::date LIMIT 1`, [id, view.today])
+        if (sentToday.length) return null
+        const bills = view.bills.filter(b => !b.snoozedUntil || b.snoozedUntil <= view.today)
+        if (!bills.length) return null
+        const claimed = await em.query(`INSERT INTO bill_reminder_deliveries(user_id,bill_id,month,last_sent)
+          SELECT $1,b.id,b.month,$3::date FROM jsonb_to_recordset($2::jsonb) AS b(id uuid,month varchar)
+          ON CONFLICT(user_id,bill_id,month) DO UPDATE SET last_sent=$3::date
+          WHERE bill_reminder_deliveries.last_sent IS DISTINCT FROM $3::date
+          AND (bill_reminder_deliveries.snoozed_until IS NULL OR bill_reminder_deliveries.snoozed_until <= $3::date)
+          RETURNING bill_id,month`, [id, JSON.stringify(bills.map(b => ({ id: b.id, month: b.month }))), view.today])
+        if (!claimed.length) return null
+        return { day: view.today, first: claimed[0] }
+      })
+      if (!reminder) continue
+      const sent = await this.sendToUser(id, { title: 'MoneyFlow', body: 'มีบิลที่ใกล้ถึงกำหนดหรือยังค้างอยู่ เปิดดูและจัดการได้เลย',
+        url: `/budget?bill=${encodeURIComponent(reminder.first.bill_id)}&month=${reminder.first.month}`, tag: `bills-${reminder.day}` })
+      result.sent += sent.sent; result.failed += sent.failed
     }
     return result
   }

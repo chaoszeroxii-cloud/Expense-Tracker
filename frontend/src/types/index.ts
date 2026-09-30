@@ -306,6 +306,7 @@ export interface DailyBriefTransaction {
 // that resets to zero for it would punish the outcome the app exists to encourage.
 // Missing a day costs one square out of seven; the count never resets.
 export interface CoverageDay {
+  reviewed: boolean
   date: string
   covered: boolean
   source: 'transaction' | 'no_spend' | null
@@ -332,6 +333,11 @@ export type WeeklyAction =
   | null
 
 export interface WeeklyReview {
+  reviewedDays: number
+  previousReviewedDays: number
+  ordinaryThisWeek: number
+  ordinaryLastWeek: number
+  plannedOrdinary: number | null
   timezone: string
   from: string
   to: string
@@ -340,7 +346,7 @@ export interface WeeklyReview {
   /** Negative means spending came down. */
   delta: number
   deltaPct: number | null
-  topCategory: { name: string; icon: string | null; color: string | null; total: number; share: number } | null
+  topCategory: { id: string | null; name: string; icon: string | null; color: string | null; total: number; share: number } | null
   biggestDay: { date: string; total: number } | null
   dailyAverage: number
   /** Exactly one suggestion — a review ending in five is one nobody acts on. */
@@ -359,6 +365,7 @@ export interface BudgetSuggestion {
 }
 
 export interface DailyBrief {
+  planPeriod: { kind: 'month' | 'pay_cycle'; from: string; to: string; spent: number }
   date: string
   timezone: string
   mode: TrackingMode

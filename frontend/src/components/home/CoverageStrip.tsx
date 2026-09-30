@@ -8,6 +8,7 @@ import { toast } from '../../store/toast.store'
 import { apiErrorMessage } from '../../utils/apiError'
 import { shiftDateLocal } from '../../utils/localDate'
 import type { Coverage } from '../../types'
+import DayReview from './DayReview'
 
 /**
  * Seven days, and how many of them are accounted for.
@@ -57,7 +58,7 @@ export default function CoverageStrip({ coverage, onChange }: {
     <section className="surface p-5 sm:p-6 flex-1" aria-label={t('ux_habit_title')}>
       <h2 className="section-title">{t('ux_habit_title')}</h2>
       <p className="text-xs text-muted-theme mt-1.5 mb-5 leading-relaxed">{t('ux_habit_sub')}</p>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between gap-3 mb-3">
         <span className="text-xs text-muted-theme">{t('cov_title')}</span>
         <span className={clsx('text-xs font-bold tabular-nums',
           complete ? 'text-emerald-500' : 'text-base-theme')}>
@@ -67,7 +68,7 @@ export default function CoverageStrip({ coverage, onChange }: {
 
       <div className="grid grid-cols-7 gap-1.5">
         {coverage.days.map(day => (
-          <div key={day.date} className="habit-day" data-covered={day.covered} aria-current={day.isToday ? 'date' : undefined} aria-label={`${day.date}: ${day.covered ? t(day.source === 'no_spend' ? 'ux_habit_no_spend' : 'ux_habit_recorded') : t('ux_habit_missing')}`}>
+          <div key={day.date} className="habit-day" data-covered={day.covered} aria-current={day.isToday ? 'date' : undefined} aria-label={`${day.date}: ${day.reviewed ? t('dc_reviewed') : day.covered ? t(day.source === 'no_spend' ? 'ux_habit_no_spend' : 'ux_habit_recorded') : t('ux_habit_missing')}`}>
             <div className={clsx(
               'w-6 h-6 rounded-full flex items-center justify-center transition-colors',
               day.covered
@@ -83,6 +84,7 @@ export default function CoverageStrip({ coverage, onChange }: {
               />
             </div>
             <span className="text-[10px] font-medium">{weekday(day.date).replace(/\./g, '')}</span>
+            {day.reviewed && <span className="text-brand-600" aria-hidden="true">✓</span>}
           </div>
         ))}
       </div>
@@ -113,6 +115,7 @@ export default function CoverageStrip({ coverage, onChange }: {
           {t('cov_all_done')}
         </p>
       )}
+      <DayReview coverage={coverage} onChange={onChange} />
     </section>
   )
 }

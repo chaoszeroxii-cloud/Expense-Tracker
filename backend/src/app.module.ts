@@ -23,6 +23,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { JwtAuthGuard } from './modules/auth/jwt-auth.guard'
 import { HealthController } from './health.controller'
 import { PlanningModule } from './modules/planning/planning.module'
+import { CaptureModule } from './modules/capture/capture.module'
 
 @Module({
   controllers: [HealthController],
@@ -38,6 +39,7 @@ import { PlanningModule } from './modules/planning/planning.module'
     AnalyticsModule,
     BudgetsModule,
     PlanningModule,
+    CaptureModule,
     LoansModule,
     InvestmentsModule,
     TaxModule,

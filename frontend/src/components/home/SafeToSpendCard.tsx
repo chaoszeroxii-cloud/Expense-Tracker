@@ -11,11 +11,13 @@ export default function SafeToSpendCard({ brief }: { brief: DailyBrief }) {
   const t = useT()
   const navigate = useNavigate()
   const hasPlan = brief.mode !== 'track_only' && brief.monthlyLimit !== null && brief.safeToday !== null
+  const periodSpent=brief.planPeriod?.spent ?? brief.monthSpent
+  const isCycle=brief.planPeriod?.kind==='pay_cycle'
   const monthPct =
     hasPlan && brief.monthlyLimit! > 0
-      ? Math.min(100, Math.max(0, (brief.monthSpent / brief.monthlyLimit!) * 100))
+      ? Math.min(100, Math.max(0, (periodSpent / brief.monthlyLimit!) * 100))
       : 0
-  const overBy = hasPlan ? Math.max(0, brief.monthSpent - brief.monthlyLimit!) : 0
+  const overBy = hasPlan ? Math.max(0, periodSpent - brief.monthlyLimit!) : 0
   const status =
     brief.planStatus === 'over'
       ? t('home_status_over')
@@ -44,6 +46,7 @@ export default function SafeToSpendCard({ brief }: { brief: DailyBrief }) {
           {hasPlan ? t('home_safe_caveat') : t('home_track_only_body')}
         </p>
         {hasPlan && brief.unpaidBills > 0 && <p className="text-xs text-white/90 mt-3 leading-relaxed">{t('life_reserved_home')} ฿{fmt(brief.unpaidBills)}</p>}
+        {hasPlan && isCycle && <p className="text-xs text-white/80 mt-2">{t('dc_cycle_range')}: {brief.planPeriod.from} – {brief.planPeriod.to}</p>}
         <WorkTimeBadge
           amount={hasPlan ? brief.safeToday! : brief.spentToday}
           className="!text-white/80 mt-2"
@@ -58,7 +61,7 @@ export default function SafeToSpendCard({ brief }: { brief: DailyBrief }) {
         <div className="mt-auto">
           <div className="flex justify-between flex-wrap gap-2 text-xs text-white/80 mb-2">
             <span>
-              {t('ux_month_spent')} ฿{fmtRound(brief.monthSpent)}
+              {t(isCycle?'dc_cycle_spent':'ux_month_spent')} ฿{fmtRound(periodSpent)}
             </span>
             <span>฿{fmtRound(brief.monthlyLimit!)}</span>
           </div>

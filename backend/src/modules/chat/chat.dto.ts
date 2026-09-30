@@ -2,6 +2,11 @@ import {
   IsString, IsOptional, MaxLength, IsObject, IsIn, MinLength,
 } from 'class-validator'
 
+export class ReceiptDraftDto {
+  @IsString() @MinLength(12) @MaxLength(7_000_000) imageBase64: string
+  @IsIn(['image/jpeg', 'image/png', 'image/webp']) mimeType: string
+}
+
 /**
  * The chat endpoints took inline body types (`@Body() body: { message: string }`), and
  * Nest's ValidationPipe skips any parameter whose metatype is not a class — so these

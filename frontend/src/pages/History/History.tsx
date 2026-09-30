@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Icon from '@mdi/react'
 import {
   mdiTrashCan, mdiPencilOutline, mdiChevronLeft, mdiChevronRight, mdiCash, mdiWallet, mdiClose,
@@ -7,7 +7,7 @@ import {
   mdiCalendar, mdiMagnify, mdiInboxOutline,
 } from '@mdi/js'
 import clsx from 'clsx'
-import { useExpenses, useCategories, useSummary, currentMonth } from '../../hooks'
+import { useFetch, useCategories, useSummary, currentMonth } from '../../hooks'
 import { expensesApi } from '../../api'
 import { Amount, Empty, ErrorState, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
@@ -67,13 +67,31 @@ function parseMonth(m: string) {
 export default function History() {
   const t          = useT()
   const { lang }   = useI18n()
+  const [params] = useSearchParams()
   const [month, setMonth]   = useState(currentMonth())
   const [filter, setFilter] = useState<'all' | 'expense' | 'income'>('all')
-  const [search, setSearch] = useState('')
+  const [search, setSearch] = useState(params.get('search') ?? '')
+  const [debouncedSearch,setDebouncedSearch] = useState(search)
+  useEffect(() => { const timer=setTimeout(()=>setDebouncedSearch(search),250); return()=>clearTimeout(timer) },[search])
+  const [allMonths,setAllMonths] = useState(!!params.get('startDate'))
+  const [startDate,setStartDate] = useState(params.get('startDate') ?? '')
+  const [endDate,setEndDate] = useState(params.get('endDate') ?? '')
+  const [categoryFilter,setCategoryFilter] = useState(params.get('categoryId') ?? '')
+  const scope=JSON.stringify([month,allMonths,filter,debouncedSearch,startDate,endDate,categoryFilter])
+  const [page,setPage] = useState({scope:'',offset:0})
+  const offset=page.scope===scope?page.offset:0
   const [showPicker, setShowPicker] = useState(false)
   const [pickerYear, setPickerYear] = useState(() => parseMonth(currentMonth()).year)
   const navigate   = useNavigate()
-  const { data, loading, error, refetch } = useExpenses(month)
+  const { data: result, loading, error, refetch } = useFetch(()=>expensesApi.page({ month:allMonths?undefined:month,
+    type:filter==='all'?undefined:filter,search:debouncedSearch,categoryId:categoryFilter||undefined,
+    startDate:startDate||undefined,endDate:endDate||undefined,offset }),[scope,offset])
+  const data=result?.items
+  useEffect(() => {
+    if (!loading && !error && result && result.offset === offset && offset > 0 && offset >= result.total) {
+      setPage({ scope, offset: Math.max(0, Math.ceil(result.total / result.limit) - 1) * result.limit })
+    }
+  }, [result, loading, error, offset, scope])
   const { data: summary, loading: loadingSummary, error: summaryError, refetch: refetchSummary } = useSummary(month)
   const { data: categories } = useCategories()
   const [confirmState, setConfirmState] = useState<{
@@ -160,10 +178,7 @@ export default function History() {
     return () => window.removeEventListener('moneyflow:refresh', handler)
   }, [refetch, refetchSummary])
 
-  const query = search.trim().toLocaleLowerCase()
-  const filtered = data?.filter(e => (filter === 'all' || e.type === filter)
-    && (!query || [e.note ?? '', e.category?.name ?? '', String(e.amount), fmt(e.amount)]
-      .some(value => value.toLocaleLowerCase().includes(query)))) ?? []
+  const filtered = data ?? []
 
   const grouped = filtered.reduce<Record<string, typeof filtered>>((acc, e) => {
     const day = timestampToDateInput(e.occurredAt)
@@ -221,6 +236,7 @@ export default function History() {
       </div>
 
       {/* Month navigator */}
+      <button className="text-action mt-2" onClick={()=>navigate('/capture')}>{t('dc_batch')} →</button>
       <div className="flex items-center justify-between bg-card border border-theme rounded-2xl px-3 py-2 mb-4 mt-6">
         <button
           onClick={() => setMonth(m => monthOffset(m, -1))}
@@ -259,6 +275,14 @@ export default function History() {
         <input type="search" aria-label={t('ux_search')} placeholder={t('ux_search')} value={search} onChange={e => setSearch(e.target.value)} className="min-w-0 w-full py-3.5 bg-transparent text-sm text-base-theme rounded-lg" />
         {search && <button onClick={() => setSearch('')} aria-label={t('ux_search_clear')} className="text-action shrink-0 !text-xs">{t('ux_clear')}</button>}
       </div>
+      <details className="surface p-4 mb-4" open={allMonths||!!startDate||!!endDate||!!categoryFilter||undefined}>
+        <summary className="text-sm font-semibold cursor-pointer">{t('dc_all_months')}</summary>
+        <label className="flex gap-2 text-sm mt-3"><input type="checkbox" checked={allMonths} onChange={e=>setAllMonths(e.target.checked)}/>{t('dc_all_months')}</label>
+        <div className="grid sm:grid-cols-3 gap-3 mt-3"><label className="field-label">{t('dc_date_from')}<input type="date" className="field-input" max={endDate||undefined} value={startDate} onChange={e=>{setStartDate(e.target.value);setAllMonths(true)}}/></label>
+          <label className="field-label">{t('dc_date_to')}<input type="date" className="field-input" min={startDate||undefined} value={endDate} onChange={e=>{setEndDate(e.target.value);setAllMonths(true)}}/></label>
+          <label className="field-label">{t('category')}<select className="field-input" value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}><option value="">{t('all')}</option>{categories?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div>
+      </details>
+      {(allMonths || search || startDate || endDate || categoryFilter) && <p className="text-xs text-muted-theme mb-4">{t('dc_month_totals')} · {displayLabel}</p>}
       {/* Type filter */}
       <div className="flex bg-[var(--input)] rounded-2xl p-1 gap-1 mb-5">
         {(['all', 'expense', 'income'] as const).map(f => (
@@ -285,6 +309,9 @@ export default function History() {
       </div>
 
       {/* List */}
+      {result && <div className="flex items-center justify-between gap-2 mb-4 text-xs text-muted-theme"><span>{t('dc_results')}: {result.total} · {offset+ (result.total?1:0)}–{offset+result.items.length}</span>
+        <div className="flex gap-2"><button className="secondary-action !text-xs !px-3" disabled={!offset} onClick={()=>setPage({scope,offset:Math.max(0,offset-50)})}>{t('dc_prev')}</button><button className="secondary-action !text-xs !px-3" disabled={!result.hasMore} onClick={()=>setPage({scope,offset:offset+50})}>{t('dc_next')}</button></div></div>}
+      {result && (result.hasMore || offset > 0) && <p className="text-xs text-muted-theme mb-4">{t('dc_page_totals')}</p>}
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -296,12 +323,12 @@ export default function History() {
            truthful zero and makes the user distrust every other figure. */
         <ErrorState message={t('err_load_failed')} onRetry={refetch} retryLabel={t('action_retry')} />
       ) : filtered.length === 0 ? (
-        (data?.length ?? 0) > 0 ? (
+        (search || filter!=='all' || categoryFilter || startDate || endDate) ? (
           <Empty
             icon={mdiMagnify}
             title={t('empty_filtered_title')}
             sub={t('empty_filtered_sub')}
-            action={{ label: t('action_clear_filter'), onPress: () => { setFilter('all'); setSearch('') } }}
+            action={{ label: t('action_clear_filter'), onPress: () => { setFilter('all'); setSearch(''); setStartDate(''); setEndDate(''); setCategoryFilter(''); setAllMonths(false) } }}
           />
         ) : (
           <Empty

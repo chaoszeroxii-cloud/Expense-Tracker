@@ -295,6 +295,9 @@ export class AuthService {
     if (Object.keys(patch).length > 0) await this.users.manager.transaction(async em => {
       const user = await lockLedger(em, userId)
       await em.update(User, userId, patch)
+      if (dto.trackingMode === 'track_only') {
+        await em.query('UPDATE pay_cycle_plans SET enabled=false WHERE user_id=$1', [userId])
+      }
       if (patch.monthlySpendingLimit !== undefined) {
         const month = localToday(safeTimezone(patch.timezone ?? user.timezone)).slice(0, 7)
         await this.spendingPlans.setTotal(userId, month, patch.monthlySpendingLimit, em)

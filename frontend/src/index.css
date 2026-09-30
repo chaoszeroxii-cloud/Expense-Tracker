@@ -74,6 +74,8 @@
 }
 
 @layer components {
+  .field-label { @apply block text-xs font-semibold text-muted-theme; }
+  .field-input { @apply mt-1.5 block w-full min-w-0 rounded-xl border border-theme bg-card px-3 py-2.5 text-sm text-base-theme; min-height: 44px; }
   .page-heading { @apply text-2xl sm:text-3xl font-extrabold text-base-theme tracking-tight; line-height: 1.45; }
   .page-description { @apply text-sm text-muted-theme mt-1; line-height: 1.8; }
   .section-kicker { @apply text-xs font-bold text-muted-theme; letter-spacing: .03em; }

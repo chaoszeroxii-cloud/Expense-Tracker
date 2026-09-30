@@ -1,5 +1,12 @@
 # Boot smoke test
 
+The frontend build typechecks browser code against ES2020. Keep `types: ["vite/client"]`
+in `tsconfig.json`: automatically including workspace-wide Node types used to add
+`Array.at` through `@types/node/compatibility/indexable.d.ts`, masking an ES2022 API
+in local builds that failed with TS2550 on Vercel. Last-element access in capture and
+day review uses indexing so the ES2020 requirement is preserved. `npm run build`
+now catches this mismatch locally even when the backend's Node types are installed.
+
 Loads the production bundle in a real browser and asserts the app actually renders.
 
 It exists because a build can be green in every static check and still white-screen. That

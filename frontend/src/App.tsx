@@ -5,10 +5,13 @@ import { SpeedInsights } from '@vercel/speed-insights/react'
 import Layout from './components/layout/Layout'
 import PrivateRoute, { AdminRoute } from './components/layout/PrivateRoute'
 import Dashboard from './pages/Dashboard/Dashboard'
+// Login is part of the precached boot bundle. On a first visit its lazy chunk used
+// to load before the worker took control, leaving a newly installed app unable to
+// open the sign-in screen offline until the user visited it a second time.
+import AuthPage from './pages/Auth/AuthPage'
 import { ToastHost } from './components/ui'
 
 // ── Lazy-loaded pages ──────────────────────────────────
-const AuthPage         = lazy(() => import('./pages/Auth/AuthPage'))
 const ForgotPassword   = lazy(() => import('./pages/Auth/ForgotPasswordPage'))
 const ResetPassword    = lazy(() => import('./pages/Auth/ResetPasswordPage'))
 const AddExpense    = lazy(() => import('./pages/AddExpense/AddExpense'))
@@ -51,7 +54,7 @@ export default function App() {
       <ToastHost />
       <Routes>
         {/* Public */}
-        <Route path="/login" element={<Lazy><AuthPage /></Lazy>} />
+        <Route path="/login" element={<AuthPage />} />
         <Route path="/forgot-password" element={<Lazy><ForgotPassword /></Lazy>} />
         <Route path="/reset-password" element={<Lazy><ResetPassword /></Lazy>} />
 

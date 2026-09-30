@@ -18,6 +18,7 @@ import { MDI_ICON_CATEGORIES } from '../../utils/iconMap'
 import type { Category, EntryType } from '../../types'
 import DangerZone from '../../components/settings/DangerZone'
 import ReminderSettings from '../../components/settings/ReminderSettings'
+import InstallAppCard from '../../components/pwa/InstallAppCard'
 
 const PRESET_COLORS = [
   '#6366f1','#f97316','#3b82f6','#a855f7','#ef4444',
@@ -170,6 +171,8 @@ export default function Settings() {
           <button key={id} className="secondary-action !text-xs !py-2" onClick={() => document.getElementById(id)?.scrollIntoView({ block: 'start' })}>{t(key)}</button>
         ))}
       </nav>
+
+      <InstallAppCard />
 
       {/* ── Profile ── */}
       <Card id="settings-profile" className="scroll-mt-5">

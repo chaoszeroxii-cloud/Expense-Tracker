@@ -27,6 +27,8 @@ export default defineConfig({
 
       // ── Web App Manifest ────────────────────────────────────
       manifest: {
+        // Matches the previous inferred ID (start_url) so existing installs stay the same app.
+        id: '/',
         name: 'MoneyFlow — Expense Tracker',
         short_name: 'MoneyFlow',
         description: 'Track every baht, effortlessly.',

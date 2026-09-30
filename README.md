@@ -101,9 +101,15 @@ They are removed only after confirmation from the server or an explicit user dis
 
 ## PWA — Install on Mobile
 
-1. Open http://localhost:3000 in Chrome/Safari on your phone
-2. Chrome: tap ⋮ → "Add to Home screen"
-3. Safari: tap □↑ → "Add to Home Screen"
+1. Open the deployed **HTTPS** website on your phone. A computer's `localhost` or
+   plain HTTP LAN address is not a mobile installation URL.
+2. Use the install card on the sign-in page or in Settings. Android Chrome opens
+   its native prompt when available; otherwise the card explains the browser menu.
+3. On iPhone/iPad, use Share → Add to Home Screen in Safari or Chrome. The card
+   provides these steps; iOS does not expose Chrome's Android install prompt.
+
+See [mobile installation and troubleshooting](docs/pwa-installation.md). Successful
+web installability checks do not prove that Android completed its native installation.
 
 `frontend/public/app_icon.svg` is the single icon master — the favicon and every installed
 icon are rendered from it. To regenerate the PNGs:

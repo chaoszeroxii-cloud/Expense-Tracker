@@ -3,7 +3,11 @@ import ReactDOM from 'react-dom/client'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
+import { trackAppInstallation } from './store/install.store'
 import './index.css'
+
+const stopInstallTracking = trackAppInstallation()
+if (import.meta.hot) import.meta.hot.dispose(stopInstallTracking)
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
 

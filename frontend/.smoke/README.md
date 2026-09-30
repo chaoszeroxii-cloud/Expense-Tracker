@@ -36,16 +36,32 @@ map, and switches releases while real Chromium tabs and service workers are open
 No database, backend, Vercel credentials or real user data is involved. Builds,
 screenshots and results stay under the ignored `.smoke/ux-artifacts/deploy-recovery/`.
 
-Checks cover an uncached old Login chunk returning 404 after deployment; preservation
+Checks cover an uncached old lazy-route chunk returning 404 after deployment; preservation
 of the token, capture draft and IndexedDB offline queue; worker activation without
 interrupting a form; fresh online HTML even when worker updates fail; permanent chunk
 failure without a reload loop; unrelated application errors; blocked sessionStorage;
 offline cached pages; reconnecting with the route/query intact; and exclusion of API
 responses and reset-password query strings from shared caches. Every concrete route
-in `App.tsx` must have a rewrite, and missing assets must remain 404s.
+in `App.tsx` must have a rewrite, and missing assets must remain 404s. A first-visit
+offline launch now checks that Login ships in the precached boot bundle, without
+requiring a second visit. Forgot Password exercises the remaining lazy-route cases.
 
 This is local browser/routing verification, not a production Vercel deployment check.
 See [deployment recovery](../../docs/deploy-recovery.md) for the incident and rollout notes.
+
+## Install-button browser checks
+
+Run `npm run build --workspace frontend`, then `node frontend/.smoke/pwa-install.cjs`
+from the repository root. The script serves the production bundle locally and tests
+early prompt capture, one use per prompt, cancellation/retry, prompt failure, preserved
+form input, the Settings entry point, Android/iPhone/iPad instructions, standalone
+hiding, HTTPS/offline guidance, and the manifest's existing identity and icon sizes.
+It also checks for page exceptions and unexpected API writes.
+
+Native prompt events and user choices are simulated; this does **not** install an
+Android WebAPK or an iOS home-screen app. Mobile user agents in desktop Chromium are
+not a substitute for testing on the affected phone. Screenshots and results live in
+the ignored `.smoke/ux-artifacts/pwa-install/` directory.
 
 ## Visual and loading regression checks
 

@@ -34,8 +34,8 @@ async function main() {
   pass('Every current client route has a Vercel rewrite; assets/API are excluded')
   console.log('Building releases A and B…')
   const builds = { a: build('recovery-a'), b: build('recovery-b') }
-  const authA = fs.readdirSync(path.join(builds.a, 'assets')).find(name => /^AuthPage-.*\.js$/.test(name))
-  assert(!fs.existsSync(path.join(builds.b, 'assets', authA)), 'Release B must remove the old AuthPage chunk')
+  const lazyA = fs.readdirSync(path.join(builds.a, 'assets')).find(name => /^ForgotPasswordPage-.*\.js$/.test(name))
+  assert(!fs.existsSync(path.join(builds.b, 'assets', lazyA)), 'Release B must remove the old ForgotPasswordPage chunk')
   let active = 'a'
   let missing = null
   let runtimeError = false
@@ -50,7 +50,7 @@ async function main() {
       return res.end(JSON.stringify({ synthetic: true, sequence: ++apiCalls }))
     }
     if (pathname.startsWith('/_vercel/')) { res.writeHead(200, { 'Content-Type': 'application/javascript' }); return res.end('') }
-    if (runtimeError && /\/AuthPage-.*\.js$/.test(pathname)) {
+    if (runtimeError && /\/ForgotPasswordPage-.*\.js$/.test(pathname)) {
       res.writeHead(200, { 'Content-Type': 'application/javascript', 'Cache-Control': 'no-store' })
       return res.end('throw new Error("Synthetic application exception")')
     }
@@ -98,10 +98,26 @@ async function main() {
     }
     pass('Direct routes serve HTML and missing static files keep their 404s')
 
-    // Start on a different route so AuthPage is genuinely unvisited and uncached.
+    // On the old build AuthPage loaded before SW activation and was never cached.
+    // One visit must now suffice: no second navigation to warm the runtime cache.
     {
       const { page, context } = await newPage()
-      await page.goto(base + '/forgot-password')
+      await page.goto(base + '/')
+      await login(page)
+      await ready(page)
+      await context.setOffline(true)
+      await page.goto(base + '/')
+      await login(page)
+      assert.equal(new URL(page.url()).pathname, '/login')
+      assert.equal(await page.locator('#app-error-title').count(), 0)
+      pass('First-visit app shell includes Login and opens from start_url while offline')
+      await context.close()
+    }
+
+    // Login is now eager; exercise deployment recovery with an unvisited lazy route.
+    {
+      const { page, context } = await newPage()
+      await page.goto(base + '/login')
       await login(page)
       await ready(page)
       await page.evaluate(async () => {
@@ -123,11 +139,11 @@ async function main() {
         })
       })
       active = 'b'
-      await page.locator('a[href="/login"]').click()
+      await page.locator('a[href="/forgot-password"]').click()
       await login(page)
       await page.waitForFunction(() => sessionStorage.getItem('test_documents') === '2')
-      assert(misses.includes('/assets/' + authA), 'Must exercise the actual old-chunk 404')
-      assert.equal(new URL(page.url()).pathname, '/login')
+      assert(misses.includes('/assets/' + lazyA), 'Must exercise the actual old-chunk 404')
+      assert.equal(new URL(page.url()).pathname, '/forgot-password')
       assert.equal(await page.evaluate(() => localStorage.getItem('flo_token')), 'synthetic-token-not-a-credential')
       assert.match(await page.evaluate(() => localStorage.getItem('flo_capture_draft_test-user')), /keep draft/)
       assert.equal(await page.evaluate(() => new Promise(resolve => {
@@ -138,7 +154,7 @@ async function main() {
           read.onsuccess = () => { resolve(read.result.payload.amount); db.close() }
         }
       })), 120)
-      pass('Real A → B deploy recovers an uncached old Login chunk in one reload; token/draft/queue survive')
+      pass('Real A → B deploy recovers an uncached old lazy-route chunk in one reload; token/draft/queue survive')
       await context.close()
     }
 
@@ -185,9 +201,9 @@ async function main() {
     // A permanently missing chunk produces an actionable screen instead of a reload loop.
     {
       active = 'b'
-      missing = /\/AuthPage-.*\.js$/
+      missing = /\/ForgotPasswordPage-.*\.js$/
       const { page, context } = await newPage({ workers: false, lang: 'th', dark: true })
-      await page.goto(base + '/login')
+      await page.goto(base + '/forgot-password')
       await page.getByRole('button', { name: 'ลองอีกครั้ง', exact: true }).waitFor({ state: 'visible' })
       await page.waitForFunction(() => sessionStorage.getItem('test_documents') === '2')
       await delay(1200)
@@ -208,7 +224,7 @@ async function main() {
     {
       runtimeError = true
       const { page, context } = await newPage({ workers: false })
-      await page.goto(base + '/login')
+      await page.goto(base + '/forgot-password')
       await page.getByRole('heading', { name: 'The app could not open' }).waitFor()
       await delay(500)
       assert.equal(await docs(page), 1)
@@ -221,9 +237,9 @@ async function main() {
     }
 
     {
-      missing = /\/AuthPage-.*\.js$/
+      missing = /\/ForgotPasswordPage-.*\.js$/
       const { page, context } = await newPage({ workers: false, blockStorage: true })
-      await page.goto(base + '/login')
+      await page.goto(base + '/forgot-password')
       await page.getByRole('button', { name: 'Try again', exact: true }).waitFor()
       await delay(500)
       assert.equal(await page.evaluate(() => performance.getEntriesByType('navigation')[0].type), 'navigate')
@@ -236,19 +252,19 @@ async function main() {
 
     {
       const { page, context } = await newPage()
-      await page.goto(base + '/forgot-password')
+      await page.goto(base + '/login')
       await login(page)
       await ready(page)
-      await page.locator('a[href="/login"]').click()
+      await page.locator('a[href="/forgot-password"]').click()
       await login(page)
-      await page.waitForFunction(async () => (await caches.open('moneyflow-code-v1')).keys().then(keys => keys.some(key => /AuthPage-/.test(key.url))))
+      await page.waitForFunction(async () => (await caches.open('moneyflow-code-v1')).keys().then(keys => keys.some(key => /ForgotPasswordPage-/.test(key.url))))
       await page.evaluate(async () => { await fetch('/api/probe'); await fetch('/api/probe') })
       assert(apiCalls >= 2)
       assert(!(await caches(page)).some(url => new URL(url).pathname.startsWith('/api/')))
       await context.setOffline(true)
       await page.reload()
       await login(page)
-      pass('Visited Login opens offline; API responses never enter shared caches')
+      pass('Visited lazy route opens offline; API responses never enter shared caches')
       // Reset-password is still unvisited. A dotted token must not defeat the shell fallback.
       await page.goto(base + '/reset-password?token=synthetic.test.token')
       await page.getByRole('heading', { name: 'This page could not load' }).waitFor()

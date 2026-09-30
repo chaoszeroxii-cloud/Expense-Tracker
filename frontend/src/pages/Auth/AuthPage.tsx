@@ -8,6 +8,7 @@ import { authApi } from '../../api'
 import { useAuthStore } from '../../store/auth.store'
 import { useT, useI18n } from '../../store/i18n.store'
 import { useThemeStore } from '../../store/theme.store'
+import InstallAppCard from '../../components/pwa/InstallAppCard'
 
 type Tab = 'login' | 'register'
 
@@ -290,7 +291,8 @@ export default function AuthPage() {
           </form>
         </div>
       </div>
-      <p className="text-brand-300 text-xs mt-8 text-center">{t('privacy_note')}</p>
+      <InstallAppCard className="w-full max-w-sm mt-4" />
+      <p className="text-brand-300 text-xs mt-6 text-center">{t('privacy_note')}</p>
 
       {/* Email modal */}
       {showEmailModal && (

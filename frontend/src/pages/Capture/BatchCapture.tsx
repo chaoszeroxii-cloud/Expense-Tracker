@@ -436,7 +436,7 @@ function CaptureWorkspace({ userId }: { userId: string }) {
               className="secondary-action"
               disabled={rows.length >= 100}
               onClick={() => {
-                setRows([...rows, newRow(rows.at(-1)?.date || today)])
+                setRows([...rows, newRow(rows[rows.length - 1]?.date || today)])
                 setPreview(null)
               }}
             >

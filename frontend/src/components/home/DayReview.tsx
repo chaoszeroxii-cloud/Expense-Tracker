@@ -23,7 +23,7 @@ export default function DayReview({
     navigate = useNavigate()
   const timezone = useAuthStore((s) => s.user?.timezone ?? 'Asia/Bangkok')
   const today =
-    coverage?.days.at(-1)?.date ??
+    coverage?.days[coverage.days.length - 1]?.date ??
     new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
       year: 'numeric',

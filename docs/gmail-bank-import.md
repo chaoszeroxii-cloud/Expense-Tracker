@@ -11,6 +11,7 @@ connecting Gmail to a coding assistant, does not grant this application mail acc
 | Bank notification | Result |
 | --- | --- |
 | Krungthai NEXT successful outgoing transfer / PromptPay transfer | Expense |
+| Krungthai NEXT successful bill payment (`แจ้งผลการจ่ายบิลสำเร็จ`) | Expense |
 | SCB Easy outgoing PromptPay transfer notification | Expense |
 | SCB Easy incoming PromptPay notification | Income |
 
@@ -24,8 +25,11 @@ transaction. This is email-driven import, not a real-time bank feed.
 The first scan covers seven days. Older received emails stay in review, even when
 automatic recording is later enabled. A new email can be automatically recorded
 only when its format and sender authentication pass, the source account is in the
-user's account list, both account suffixes are present, and a valid category is
-configured. Store all owned account and PromptPay suffixes to help detect transfers.
+user's account list, both account suffixes are present for transfers, and a valid category is
+configured. A verified KTB bill payment names a biller instead of a recipient bank
+account, so it needs the known payer account but not a recipient suffix. The biller
+name is checked for presence, then discarded; no merchant category is guessed.
+Store all owned account and PromptPay suffixes to help detect transfers.
 Only the last four digits are requested; collisions or hidden numbers need review.
 
 Possible own-account transfers, possible duplicates, fees and unknown accounts
@@ -127,6 +131,35 @@ project. Existing recorded and reviewed entries stay available. Factory reset
 disconnects locally and deletes that user's import records; the Google grant can
 also be removed from Google Account settings. Clearing only ledger transactions
 keeps import fingerprints so old mail cannot silently recreate deleted entries.
+
+## Missing emails and check results
+
+After a manual check, Settings shows the number of matching emails in that page,
+transactions successfully parsed, messages already imported, and skipped messages.
+Skipped results distinguish unverified senders, unsupported formats, incomplete or
+ambiguous fields, size limits and messages no longer available. These are counts
+and fixed reason codes only; no raw message, name, bank reference or subject is
+returned in the diagnostic summary or stored as a diagnostic log.
+
+“Last completed check” advancing only proves that the search window was processed.
+It does not prove that every bank notification was supported or recorded. An empty
+query result is shown separately from a parsing rejection. Accepted transactions
+can be in **To review** or **Recorded**, depending on automatic-recording settings.
+The reconnect action now appears immediately if a manual check discovers expired
+Google access. Paginated scans retain the existing continuation message.
+
+On 1 October 2026, a missing KTB email was confirmed as a successful **bill payment**.
+The old query only selected transfer subjects, and the parser only understood
+`จำนวนเงิน`, while bill emails use `จำนวนเงินที่ชำระ` and `ไปยังผู้ให้บริการ`.
+The query and parser now cover that exact successful bill-payment template while
+retaining sender authentication, amount/date checks, fees review and deduplication.
+Regression fixtures preserve the field structure using entirely synthetic values.
+
+Deploy both backend and frontend for this fix. It needs no additional environment
+variables or schema migration: the optional `kind: bill_payment` field lives in the
+existing transaction JSON. Previously stored transfer records remain compatible.
+The normal two-day overlap can find recently missed bills after deployment; normal
+auto-import opt-in and review rules still apply.
 
 ## Endpoints
 

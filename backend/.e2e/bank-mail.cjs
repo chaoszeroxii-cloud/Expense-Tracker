@@ -178,6 +178,51 @@ async function run() {
   await db.query('UPDATE bank_mail_connections SET state_expires_at=now()-interval \'1 minute\' WHERE user_id=$1', [b.user.id])
   assert.equal((await b.call('POST', '/bank-mail/complete', { state: expired, code: 'expired' })).connected, false)
   pass('expired or superseded OAuth attempts cannot replace a newer user connection')
+
+  const c = await account('bills'); await connect(c, 'charlie')
+  await c.call('PUT', '/bank-mail/settings', { ...c.settings, autoImport: false })
+  function billMessage(id, amount, options = {}) {
+    const m = message(id, amount, options)
+    m.payload.headers.find(h => h.name === 'Subject').value = 'แจ้งผลการจ่ายบิลสำเร็จ'
+    const html = Buffer.from(m.payload.body.data, 'base64url').toString()
+      .replace('คุณได้ทำรายการโอนเงินผ่าน', 'คุณได้จ่ายบิลผ่าน')
+      .replace(/<p>ไปยังบัญชี :.*?<\/p><p>เลขบัญชี :.*?<\/p>/, '<p>ไปยังผู้ให้บริการ : EXAMPLE BILLER CO., LTD.</p>')
+      .replace('จำนวนเงิน :', 'จำนวนเงินที่ชำระ :')
+    m.payload.body.data = Buffer.from(html).toString('base64url')
+    return m
+  }
+  const historicalBill = billMessage('c1', 10, { received: Date.now() - 30000 })
+  mailboxes.set('charlie', [historicalBill])
+  const firstBill = await c.call('POST', '/bank-mail/sync')
+  assert.deepEqual(firstBill.summary, { matched: 1, existing: 0, parsed: 1, skipped: 0, skipReasons: {} })
+  assert.equal((await c.call('GET', '/bank-mail/entries')).rows[0].transaction.kind, 'bill_payment')
+  await c.call('PUT', '/bank-mail/settings', c.settings)
+  await db.query("UPDATE bank_mail_connections SET auto_import_since=now()-interval '10 seconds' WHERE user_id=$1", [c.user.id])
+  const newBill = billMessage('c2', 45), feeBill = billMessage('c3', 20, { fee: '2.00' }), unknownBill = billMessage('c4', 30)
+  unknownBill.payload.body.data = Buffer.from(Buffer.from(unknownBill.payload.body.data, 'base64url').toString().replace('XXX-X-XX111-1', 'XXX-X-XX555-5')).toString('base64url')
+  mailboxes.set('charlie', [historicalBill, newBill, feeBill, unknownBill])
+  const billResult = await c.call('POST', '/bank-mail/sync')
+  assert.deepEqual(billResult.summary, { matched: 4, existing: 1, parsed: 3, skipped: 0, skipReasons: {} })
+  const savedBills = (await c.call('GET', '/bank-mail/entries?status=saved')).rows
+  assert.equal(savedBills.length, 1); assert.equal(savedBills[0].transaction.amount, 45)
+  const reviewBills = (await c.call('GET', '/bank-mail/entries')).rows
+  assert.equal(reviewBills.length, 3)
+  for (const reason of ['review_required', 'fee_review', 'account_required']) assert.ok(reviewBills.some(row => row.reason === reason))
+  assert.equal((await c.call('POST', '/bank-mail/sync')).summary.existing, 4)
+  assert.equal(Number((await db.query('SELECT total_balance FROM users WHERE id=$1', [c.user.id]))[0].total_balance), -45)
+  pass('KTB bills record once without a recipient account; historical mail, fees and unknown payers require review')
+
+  const malformed = billMessage('c6', 60), unverified = billMessage('c7', 70)
+  malformed.payload.body.data = Buffer.from(Buffer.from(malformed.payload.body.data, 'base64url').toString().replace('60.00 บาท', 'ไม่ทราบ')).toString('base64url')
+  unverified.payload.headers.find(h => h.name === 'Authentication-Results').value = 'mx.google.com; dkim=fail; dmarc=fail'
+  mailboxes.set('charlie', [malformed, unverified])
+  const skippedResult = await c.call('POST', '/bank-mail/sync')
+  assert.deepEqual(skippedResult.summary, { matched: 2, existing: 0, parsed: 0, skipped: 2,
+    skipReasons: { ambiguous_template: 1, unverified_sender: 1 } })
+  assert.ok(!JSON.stringify(skippedResult).includes('EXAMPLE BILLER'))
+  mailboxes.set('charlie', []); clearThrottle()
+  assert.deepEqual((await c.call('POST', '/bank-mail/sync')).summary, { matched: 0, existing: 0, parsed: 0, skipped: 0, skipReasons: {} })
+  pass('sync distinguishes no matches, existing imports and rejected content without returning raw mail')
   if (process.argv.includes('--browser')) {
     process.chdir(path.join(ROOT, 'frontend')) // Tailwind resolves content/config relative to the app.
     const { createServer } = await import('vite')
@@ -223,6 +268,37 @@ async function run() {
     await expect(card.getByRole('status')).toHaveText('เชื่อม Gmail แล้ว ตรวจการตั้งค่าก่อนเปิดบันทึกอัตโนมัติได้เลย')
     assert.equal(new URL(page.url()).hash, ''); assert.equal(new URL(page.url()).search, '')
     pass('OAuth callback completes only with the initiating user JWT and clears code/state from the URL')
+
+    const billContext = await browser.newContext({ viewport: { width: 390, height: 844 } })
+    await billContext.addInitScript(({ token, user }) => {
+      localStorage.setItem('flo_token', token); localStorage.setItem('flo_user', JSON.stringify(user)); localStorage.setItem('flo_lang', 'th')
+    }, c)
+    const billPage = await billContext.newPage(), billCard = billPage.locator('#settings-bank-mail')
+    const billErrors = []; billPage.on('pageerror', err => billErrors.push(err.message))
+    clearThrottle(); await billPage.goto(WEB + '/settings')
+    await expect(billCard.getByText('charlie@gmail.test')).toBeVisible()
+    await billCard.getByRole('button', { name: 'ตรวจเมลตอนนี้', exact: true }).click()
+    const summary = billCard.getByRole('status', { name: 'ผลตรวจรอบนี้', exact: true })
+    await expect(summary).toContainText('ไม่พบเมลที่ตรงกับผู้ส่ง')
+    mailboxes.set('charlie', [malformed]); clearThrottle()
+    await billCard.getByRole('button', { name: 'ตรวจเมลตอนนี้', exact: true }).click()
+    await expect(summary).toContainText('ข้อมูลธุรกรรมไม่ครบหรือไม่ชัดเจน: 1')
+    mailboxes.set('charlie', [newBill, billMessage('c5', 50)]); clearThrottle()
+    await billCard.getByRole('button', { name: 'ตรวจเมลตอนนี้', exact: true }).click()
+    await expect(summary).toContainText('รายการอาจอยู่ในรอตรวจทานหรือบันทึกแล้ว')
+    await billCard.getByRole('button', { name: 'บันทึกแล้ว', exact: true }).click()
+    await expect(billCard.locator('article')).toHaveCount(2)
+    await expect(billCard.getByText('จ่ายบิล', { exact: true })).toHaveCount(2)
+    const normalRefresh = gmail.refresh
+    gmail.refresh = async token => { if (token === 'refresh:charlie') throw new GmailFailure('reconnect_required'); return normalRefresh(token) }
+    clearThrottle()
+    await billCard.getByRole('button', { name: 'ตรวจเมลตอนนี้', exact: true }).click()
+    await expect(billCard.getByRole('alert')).toHaveText('สิทธิ์ Google หมดอายุหรือถูกถอน กรุณาเชื่อม Gmail ใหม่')
+    await expect(billCard.getByRole('button', { name: 'เชื่อม Gmail ใหม่', exact: true })).toBeVisible()
+    gmail.refresh = normalRefresh
+    assert.deepEqual(billErrors, [])
+    await billContext.close()
+    pass('browser explains empty/rejected checks, displays recorded bills and immediately offers reconnect on expired access')
   }
   clearThrottle()
   const previousSaved = (await a.call('GET', '/bank-mail/entries?status=saved')).total

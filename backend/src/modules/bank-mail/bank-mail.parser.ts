@@ -10,6 +10,8 @@ export interface GmailPart {
 export interface GmailMessage { id: string; internalDate: string; payload: GmailPart }
 export interface BankMailTransaction {
   bank: 'ktb' | 'scb'
+  // Absent on existing transfer imports. Bill payments identify a biller, not a bank account.
+  kind?: 'bill_payment'
   type: 'expense' | 'income'
   amount: number
   fee: number
@@ -24,6 +26,7 @@ export interface BankMailTransaction {
 }
 export const BANK_MAIL_QUERY = '{from:noreply@krungthai.com from:scbeasynet@scb.co.th} '
   + '{subject:"แจ้งผลการโอนเงินสำเร็จ" subject:"แจ้งผลการโอนเงินพร้อมเพย์สำเร็จ" '
+  + 'subject:"แจ้งผลการจ่ายบิลสำเร็จ" '
   + 'subject:"บริการอัตโนมัติแจ้งเตือนการทำธุรกรรม" subject:"คุณได้รับเงินผ่านรายการพร้อมเพย์"} '
   + '-in:spam -in:trash -in:sent -in:drafts -subject:OTP'
 
@@ -113,22 +116,32 @@ export function parseBankMail(message: GmailMessage): { transaction?: BankMailTr
     const text = mailText(part)
     const receivedAt = new Date(Number(message.internalDate)).toISOString()
     let type: 'income' | 'expense' = 'expense', sum: number, fee = 0, occurredAt: string
+    let kind: BankMailTransaction['kind']
     let accountSuffix = '', counterpartyBank = '', counterpartySuffix = '', possibleOwnTransfer = false, referenceHash: string = null
     if (bank === 'ktb') {
-      if (!/^แจ้งผลการโอนเงิน(?:พร้อมเพย์)?สำเร็จ$/.test(subject)) return { reason: 'unsupported_template' }
-      if (!/คุณได้ทำรายการโอนเงิน(?:พร้อมเพย์)?ผ่าน Krungthai NEXT สำเร็จ/.test(text)) throw new Error('unsupported_template')
+      const isBill = subject === 'แจ้งผลการจ่ายบิลสำเร็จ'
+      if (isBill) {
+        single(text, /คุณได้จ่ายบิลผ่าน Krungthai NEXT สำเร็จ/)
+        single(text, /ไปยังผู้ให้บริการ[^\S\r\n]*:[^\S\r\n]*([^\s][^\n]*)/)
+        kind = 'bill_payment'
+      } else {
+        if (!/^แจ้งผลการโอนเงิน(?:พร้อมเพย์)?สำเร็จ$/.test(subject)) return { reason: 'unsupported_template' }
+        if (!/คุณได้ทำรายการโอนเงิน(?:พร้อมเพย์)?ผ่าน Krungthai NEXT สำเร็จ/.test(text)) throw new Error('unsupported_template')
+      }
       const d = single(text, /วันที่ทำรายการ\s*:\s*(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})/)
       occurredAt = thaiDate(d[1], d[2], d[3], d[4], d[5], d[6])
-      sum = amount(single(text, /จำนวนเงิน\s*:\s*([\d,.]+) บาท/)[1])
+      sum = amount(single(text, isBill ? /จำนวนเงินที่ชำระ\s*:\s*([\d,.]+) บาท/ : /จำนวนเงิน\s*:\s*([\d,.]+) บาท/)[1])
       fee = amount(single(text, /ค่าธรรมเนียม\s*:\s*([\d,.]+) บาท/)[1])
       referenceHash = digest('ktb:' + single(text, /หมายเลขอ้างอิง\s*:\s*([A-Za-z0-9]{8,80})(?:\n|$)/)[1])
       const origin = single(text, /จากบัญชี\s*:\s*([^\n]+)\nเลขบัญชี\s*:\s*กรุงไทย ([Xx\d -]+)/)
       accountSuffix = suffix(origin[2])
-      const destination = single(text, /ไปยังบัญชี(?:พร้อมเพย์)?\s*:\s*([^\n]+)\n(?:เลขบัญชี|หมายเลขพร้อมเพย์)\s*:\s*([^\n]+)/)
-      const bankNames: [RegExp, string][] = [[/กรุงไทย/, 'ktb'], [/ไทยพาณิชย์/, 'scb']]
-      counterpartyBank = bankNames.find(([pattern]) => pattern.test(destination[2]))?.[1] ?? ''
-      counterpartySuffix = suffix(destination[2])
-      possibleOwnTransfer = person(origin[1]).length >= 4 && person(origin[1]) === person(destination[1])
+      if (!isBill) {
+        const destination = single(text, /ไปยังบัญชี(?:พร้อมเพย์)?\s*:\s*([^\n]+)\n(?:เลขบัญชี|หมายเลขพร้อมเพย์)\s*:\s*([^\n]+)/)
+        const bankNames: [RegExp, string][] = [[/กรุงไทย/, 'ktb'], [/ไทยพาณิชย์/, 'scb']]
+        counterpartyBank = bankNames.find(([pattern]) => pattern.test(destination[2]))?.[1] ?? ''
+        counterpartySuffix = suffix(destination[2])
+        possibleOwnTransfer = person(origin[1]).length >= 4 && person(origin[1]) === person(destination[1])
+      }
     } else if (/^SCB Easy App: คุณได้รับเงินผ่านรายการพร้อมเพย์$/.test(subject)) {
       type = 'income'
       sum = amount(single(text, /จำนวน \(บาท\)\s*:\s*([\d,.]+)(?:\n|$)/)[1])
@@ -150,8 +163,9 @@ export function parseBankMail(message: GmailMessage): { transaction?: BankMailTr
       fee = amount(single(text, /ค่าธรรมเนียม\s*:?\s*([\d,.]+) บาท/)[1])
     }
     if (!sum || !accountSuffix || Date.parse(occurredAt) > Date.parse(receivedAt) + 600_000) throw new Error('invalid_transaction')
-    const fingerprint = digest(JSON.stringify([bank, type, sum, occurredAt, accountSuffix, counterpartyBank, counterpartySuffix]))
-    return { transaction: { bank, type, amount: sum, fee, occurredAt, receivedAt, accountSuffix,
+    // Preserve the fingerprints of previously imported transfer templates.
+    const fingerprint = digest(JSON.stringify([bank, type, sum, occurredAt, accountSuffix, counterpartyBank, counterpartySuffix, ...(kind ? [kind] : [])]))
+    return { transaction: { bank, ...(kind ? { kind } : {}), type, amount: sum, fee, occurredAt, receivedAt, accountSuffix,
       counterpartyBank, counterpartySuffix, possibleOwnTransfer, referenceHash, fingerprint } }
   } catch (error) {
     const allowed = ['mail_too_large', 'ambiguous_template', 'invalid_amount', 'invalid_date', 'unsupported_template', 'invalid_transaction']

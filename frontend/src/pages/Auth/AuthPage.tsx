@@ -9,6 +9,7 @@ import { useAuthStore } from '../../store/auth.store'
 import { useT, useI18n } from '../../store/i18n.store'
 import { useThemeStore } from '../../store/theme.store'
 import InstallAppCard from '../../components/pwa/InstallAppCard'
+import { socialLoginErrorKey } from '../../utils/socialLoginError'
 
 type Tab = 'login' | 'register'
 
@@ -108,8 +109,8 @@ export default function AuthPage() {
       } else {
         onAuthSuccess(data)
       }
-    } catch {
-      setError(t('social_login_failed'))
+    } catch (err) {
+      setError(t(socialLoginErrorKey(err)))
     } finally { setSocialLoading(null) }
   }
 
@@ -125,8 +126,8 @@ export default function AuthPage() {
       } else {
         onAuthSuccess(data)
       }
-    } catch {
-      setError(t('social_login_failed'))
+    } catch (err) {
+      setError(t(socialLoginErrorKey(err)))
     } finally { setSocialLoading(null) }
   }
 
@@ -151,9 +152,8 @@ export default function AuthPage() {
         : await authApi.facebookVerify(pendingSocial.token, modalEmail, lang)
       setShowEmailModal(false)
       onAuthSuccess(data)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message
-      setError(Array.isArray(msg) ? msg[0] : (msg ?? t('social_login_failed')))
+    } catch (err) {
+      setError(t(socialLoginErrorKey(err)))
     } finally { setSocialLoading(null) }
   }
 
@@ -277,7 +277,7 @@ export default function AuthPage() {
             </div>
           </div>
           {error && (
-            <div className="flex items-center gap-2 bg-rose-50 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800
+            <div role="alert" className="flex items-center gap-2 bg-rose-50 dark:bg-rose-900/30 border border-rose-100 dark:border-rose-800
                             text-rose-600 rounded-xl px-4 py-3 text-sm animate-fade-in">
               <Icon path={mdiAlertCircle} size={0.7} className="flex-shrink-0" />
               <span>{error}</span>
@@ -317,7 +317,7 @@ export default function AuthPage() {
                            font-medium text-sm outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all placeholder:text-slate-300"
               />
               {error && (
-                <div className="flex items-center gap-2 bg-rose-50 dark:bg-rose-900/30 border border-rose-100
+                <div role="alert" className="flex items-center gap-2 bg-rose-50 dark:bg-rose-900/30 border border-rose-100
                                 text-rose-600 rounded-xl px-4 py-3 text-sm">
                   <Icon path={mdiAlertCircle} size={0.7} className="flex-shrink-0" />
                   <span>{error}</span>

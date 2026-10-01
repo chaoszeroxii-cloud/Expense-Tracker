@@ -82,6 +82,10 @@ users must use their original method or recover through email. Password recovery
 its token once, revokes sessions, disconnects social credentials and enables email/password
 sign-in. Previously linked accounts can use this recovery flow to remove old credentials.
 
+When deploying the frontend to Vercel and the backend to Render, configure each
+service separately: Vercel's `VITE_*` variables are not copied to Render. See
+[Google/Facebook sign-in setup and troubleshooting (Thai)](docs/social-login.md).
+
 Transaction exports use `GET /api/expenses/export` with `month` or `from` / `to` filters.
 They return one consistent snapshot, up to 50,000 rows. Larger exports fail explicitly
 and require a shorter date range instead of silently downloading a partial file.

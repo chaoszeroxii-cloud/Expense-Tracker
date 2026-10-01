@@ -19,6 +19,7 @@
     "test:planning": "node .e2e/planning.mjs",
     "test:allowance": "npm run build && node --test test/daily-allowance.test.js",
     "test:bank-mail": "npm run build && node --test test/bank-mail.test.js",
+    "test:social-login:e2e": "npm run build && node .e2e/social-login.cjs",
     "test:bank-mail:e2e": "npm run build && node .e2e/bank-mail.cjs --browser"
   },
   "dependencies": {

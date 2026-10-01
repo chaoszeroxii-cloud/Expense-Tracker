@@ -27,11 +27,20 @@ http.interceptors.request.use((config) => {
   return config
 })
 
-// ── Response interceptor: auto-logout on 401 ───────────────
+// A rejected sign-in is not an expired session. Preserve the response and form
+// state so public auth screens can explain the failure instead of reloading.
+const publicAuthPosts = new Set([
+  '/auth/login', '/auth/register', '/auth/google/verify', '/auth/facebook/verify',
+  '/auth/forgot-password', '/auth/reset-password',
+])
+
+// ── Response interceptor: auto-logout on protected-route 401 ─
 http.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
-    if (err.response?.status === 401) {
+    const isPublicAuth = err.config?.method?.toLowerCase() === 'post'
+      && publicAuthPosts.has(err.config?.url ?? '')
+    if (err.response?.status === 401 && !isPublicAuth) {
       useAuthStore.getState().clearAuth()
       window.location.href = '/login'
     }

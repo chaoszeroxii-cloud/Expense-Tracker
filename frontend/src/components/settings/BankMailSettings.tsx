@@ -5,7 +5,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { bankMailApi } from '../../api'
 import { useT, useI18n, type TKey } from '../../store/i18n.store'
 import type { Category } from '../../types'
-import type { BankMailEntry, BankMailSettings as Settings, BankMailStatus } from '../../types/bankMail'
+import type { BankMailEntry, BankMailSettings as Settings, BankMailStatus, BankMailSyncSummary } from '../../types/bankMail'
 import { fmt } from '../../utils/money'
 
 const field = 'w-full rounded-xl border border-theme bg-input px-3 py-2.5 text-sm text-base-theme'
@@ -16,6 +16,21 @@ const reasons: Record<string, TKey> = {
 }
 const defaults = (): Settings => ({ autoImport: false, expenseCategoryId: null, incomeCategoryId: null, ownAccounts: [] })
 const banks = ['ktb', 'scb', 'promptpay', 'other'] as const
+function syncErrorKey(code?: string): TKey {
+  if (code === 'reconnect_required') return 'mail_reconnect_required'
+  if (code === 'rate_limited') return 'mail_rate_limited'
+  if (code === 'page_expired') return 'mail_page_expired'
+  if (code === 'mail_not_configured') return 'mail_unconfigured'
+  if (code === 'mail_duplicate') return 'mail_duplicate'
+  return 'mail_sync_error'
+}
+function skipReasonKey(code: string): TKey {
+  if (code === 'unverified_sender' || code === 'unsupported_sender') return 'mail_skip_sender'
+  if (code === 'mail_too_large') return 'mail_skip_large'
+  if (code === 'message_gone') return 'mail_skip_gone'
+  if (['ambiguous_template', 'invalid_amount', 'invalid_date', 'invalid_transaction'].includes(code)) return 'mail_skip_fields'
+  return 'mail_skip_template'
+}
 
 export default function BankMailSettings({ categories }: { categories: Category[] }) {
   const t = useT(), { lang } = useI18n()
@@ -27,6 +42,7 @@ export default function BankMailSettings({ categories }: { categories: Category[
   const [offset, setOffset] = useState(0)
   const [busy, setBusy] = useState(false), [loading, setLoading] = useState(true)
   const [error, setError] = useState<TKey | null>(null), [notice, setNotice] = useState<TKey | null>(null)
+  const [syncSummary, setSyncSummary] = useState<BankMailSyncSummary | null>(null)
   const [bank, setBank] = useState<string>('ktb'), [tail, setTail] = useState('')
   const alive = useRef(true), initialized = useRef(false), completing = useRef<Promise<void> | null>(null)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
@@ -63,13 +79,29 @@ export default function BankMailSettings({ categories }: { categories: Category[
   }
   const run = async (action: () => Promise<void>) => {
     if (busy) return
-    setBusy(true); setError(null); setNotice(null)
+    setBusy(true); setError(null); setNotice(null); setSyncSummary(null)
     try { await action() }
     catch (err) {
-      if (alive.current) setError((err as { response?: { data?: { message?: string } } }).response?.data?.message === 'mail_duplicate' ? 'mail_duplicate' : 'mail_sync_error')
+      const response = (err as { response?: { status?: number; data?: { message?: string } } }).response
+      if (alive.current) setError(syncErrorKey(response?.status === 429 ? 'rate_limited' : response?.data?.message))
     } finally { if (alive.current) setBusy(false) }
   }
   const connect = () => run(async () => { const result = await bankMailApi.connect(); if (alive.current) window.location.assign(result.url) })
+  const checkMail = () => run(async () => {
+    let result
+    try { result = await bankMailApi.sync() }
+    catch (err) {
+      // A revoked grant is persisted by the API. Refresh even after failure so the
+      // reconnect action appears immediately; preserve the original sync error.
+      await refresh().catch(() => {})
+      throw err
+    }
+    await refresh()
+    if (!alive.current) return
+    setSyncSummary(result.summary ?? null)
+    setNotice(result.busy ? 'mail_busy' : result.continued ? 'mail_more' : result.summary ? null : 'mail_checked')
+    window.dispatchEvent(new CustomEvent('moneyflow:refresh', { detail: { types: ['dashboard', 'transactions', 'budget'] } }))
+  })
   const bankName = (value: string) => value === 'other' ? t('mail_other') : value === 'promptpay' ? 'PromptPay' : value.toUpperCase()
   const addAccount = () => {
     if (!/^\d{4}$/.test(tail)) { setError('mail_account_invalid'); return }
@@ -88,19 +120,25 @@ export default function BankMailSettings({ categories }: { categories: Category[
       <p className="mt-2">{t('mail_coverage')}</p></details>
     {error && <p role="alert" className="text-sm text-rose-600 dark:text-rose-300">{t(error)}</p>}
     {notice && <p role="status" className="text-sm text-base-theme">{t(notice)}</p>}
+    {syncSummary && <div role="status" aria-label={t('mail_check_result')} className="rounded-xl bg-input p-3 space-y-2 text-xs text-muted-theme">
+      <p className="font-semibold text-base-theme">{t('mail_check_result')}</p>
+      <dl className="grid grid-cols-2 gap-2">
+        {([['mail_matched', syncSummary.matched], ['mail_parsed', syncSummary.parsed], ['mail_existing', syncSummary.existing], ['mail_skipped_count', syncSummary.skipped]] as const).map(([key, value]) =>
+          <div key={key}><dt>{t(key)}</dt><dd className="font-semibold text-base-theme">{value}</dd></div>)}
+      </dl>
+      {syncSummary.matched === 0 && <p>{t('mail_no_matches')}</p>}
+      {(syncSummary.parsed > 0 || syncSummary.existing > 0) && <p>{t('mail_result_hint')}</p>}
+      {Object.entries(syncSummary.skipReasons).map(([reason, count]) => <p key={reason}>{t(skipReasonKey(reason))}: {count}</p>)}
+    </div>}
     {!status ? <button className="secondary-action" disabled={loading || busy} onClick={() => run(refresh)}>{t(loading ? 'mail_working' : 'mail_refresh')}</button>
       : !status.configured ? <p className="text-sm text-muted-theme">{t('mail_unconfigured')}</p>
       : <>
         {status.connected ? <div className="space-y-3">
           <p className="font-semibold text-sm text-base-theme break-all">{status.gmailAddress}</p>
           <p className="text-xs text-muted-theme">{t('mail_last_sync')}: {status.lastSyncedAt ? new Date(status.lastSyncedAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB') : t('mail_never')}</p>
-          {status.lastError && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{t(status.lastError === 'reconnect_required' ? 'mail_reconnect_required' : 'mail_sync_error')}</p>}
+          {status.lastError && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{t(syncErrorKey(status.lastError))}</p>}
           <div className="flex flex-wrap gap-2">
-            <button className="primary-action" disabled={busy} onClick={() => run(async () => {
-              const result = await bankMailApi.sync(); await refresh()
-              setNotice(result.busy ? 'mail_busy' : result.continued ? 'mail_more' : null)
-              window.dispatchEvent(new CustomEvent('moneyflow:refresh', { detail: { types: ['dashboard', 'transactions', 'budget'] } }))
-            })}>{t(busy ? 'mail_working' : 'mail_check')}</button>
+            <button className="primary-action" disabled={busy} onClick={checkMail}>{t(busy ? 'mail_working' : 'mail_check')}</button>
             {status.lastError === 'reconnect_required' && <button className="secondary-action" disabled={busy} onClick={connect}>{t('mail_reconnect')}</button>}
             <button className="secondary-action" disabled={busy} onClick={() => run(async () => {
               const result = await bankMailApi.disconnect(); setSettings(defaults()); await refresh()
@@ -141,7 +179,7 @@ export default function BankMailSettings({ categories }: { categories: Category[
         {(['pending', 'saved', 'ignored'] as const).map(value => <button key={value} className={filter === value ? 'primary-action !text-xs' : 'secondary-action !text-xs'} disabled={busy || loading} aria-pressed={filter === value} onClick={() => { setFilter(value); setOffset(0) }}>{t(`mail_${value}`)}{value === 'pending' ? ` (${status.pending})` : ''}</button>)}
         <button className="secondary-action !text-xs" disabled={busy || loading} onClick={() => run(refresh)}>{t('mail_refresh')}</button>
       </div>
-      {status.skipped > 0 && <p className="text-xs text-muted-theme">{t('mail_skipped_hint')} {status.skipped}</p>}
+      {!syncSummary && status.skipped > 0 && <p className="text-xs text-muted-theme">{t('mail_skipped_hint')} {status.skipped}</p>}
       {loading ? <p className="text-sm text-muted-theme">{t('mail_working')}</p> : list.rows.length === 0 ? <p className="text-sm text-muted-theme py-3">{t('mail_empty')}</p> : list.rows.map(entry => <Entry key={entry.id} entry={entry} categories={categories} settings={settings} busy={busy} onSave={(category, type, allowDuplicate) => run(async () => {
         await bankMailApi.save(entry.id, category, type, allowDuplicate); await refresh(); setNotice('mail_recorded')
         window.dispatchEvent(new CustomEvent('moneyflow:refresh', { detail: { types: ['dashboard', 'transactions', 'budget'] } }))
@@ -168,6 +206,7 @@ function Entry({ entry, categories, settings, busy, onSave, onSkip }: {
       <div><p className="font-semibold">{data.bank.toUpperCase()} • {data.accountSuffix}</p><p className="text-xs text-muted-theme">{new Date(data.occurredAt).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB')}</p></div>
       <p className="font-bold">{data.type === 'expense' ? '−' : '+'}฿{fmt(data.amount + data.fee)}</p>
     </div>
+    {data.kind === 'bill_payment' && <p className="text-xs text-muted-theme">{t('mail_bill_payment')}</p>}
     {data.counterpartySuffix && <p className="text-xs text-muted-theme">{t('mail_counterparty')}: {data.counterpartyBank.toUpperCase()} • {data.counterpartySuffix}</p>}
     {data.fee > 0 && <p className="text-xs text-muted-theme">{t('mail_fee')}: ฿{fmt(data.fee)}</p>}
     {entry.status === 'saved' && !entry.expenseId && <p className="text-xs text-muted-theme">{t('mail_deleted_entry')}</p>}

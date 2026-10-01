@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { parseBankMail, mailText } = require('../dist/modules/bank-mail/bank-mail.parser')
+const { parseBankMail, mailText, BANK_MAIL_QUERY } = require('../dist/modules/bank-mail/bank-mail.parser')
 const { sealMailSecret, openMailSecret } = require('../dist/modules/bank-mail/bank-mail.crypto')
 
 // Entirely synthetic templates: never copy private mail into the repository.
@@ -10,6 +10,12 @@ const ktb = `<p>คุณได้ทำรายการโอนเงิน�
 <p>ไปยังบัญชี : นางผู้รับ ข</p><p>เลขบัญชี : ไทยพาณิชย์ XXX-X-XX222-2</p>
 <p>จำนวนเงิน : 1,234.50 บาท</p><p>ค่าธรรมเนียม : 0.00 บาท</p>`
 const incoming = 'จาก: KTB / xxxxxx1111<BR>จำนวน (บาท): 80.25<BR>เข้าบัญชี: xxxxxx2222<BR>วัน/เวลา: 30 ก.ย. 2569 - 12:34'
+// Same field structure as the observed bill-payment template; all values are synthetic.
+const bill = '<p>เรียน คุณ ผู้ทดสอบ</p><p>คุณได้จ่ายบิลผ่าน Krungthai NEXT สำเร็จ</p>'
+  + '<dl><dd>วันที่ทำรายการ : 30/09/2569 12:34:56</dd><dd>หมายเลขอ้างอิง : SYNTHETICBILL0001</dd>'
+  + '<dd>จากบัญชี : นายผู้ทดสอบ ก</dd><dd>เลขบัญชี : กรุงไทย XXX-X-XX111-1</dd>'
+  + '<dd>ไปยังผู้ให้บริการ : EXAMPLE BILLER CO., LTD.</dd>'
+  + '<dd>จำนวนเงินที่ชำระ : 123.45 บาท</dd><dd>ค่าธรรมเนียม : 0.00 บาท</dd></dl>'
 const outgoing = '<table><tr><td>ประเภทของรายการ:</td><td>โอนเงินพร้อมเพย์</td></tr>'
   + '<tr><td>รายละเอียด:</td><td>จาก ธนาคารไทยพาณิชย์ เบอร์บัญชี</td><td>xxxxxx2222</td></tr>'
   + '<tr><td></td><td>ไปยัง หมายเลขพร้อมเพย์ผู้รับเงิน</td><td>0000000003333</td></tr>'
@@ -36,6 +42,34 @@ test('KTB amounts, separate fees, Buddhist date and masked suffixes', () => {
   assert.equal(t.possibleOwnTransfer, false)
   assert.ok(!JSON.stringify(t).includes('ผู้ทดสอบ'))
   assert.ok(!JSON.stringify(t).includes('SYNTHETICREF'))
+})
+test('KTB bill payments are searched and parsed without inventing a recipient account', () => {
+  assert.ok(BANK_MAIL_QUERY.includes('subject:"แจ้งผลการจ่ายบิลสำเร็จ"'))
+  const t = parseBankMail(message('ktb', bill, 'แจ้งผลการจ่ายบิลสำเร็จ')).transaction
+  assert.ok(t)
+  assert.equal(t.kind, 'bill_payment')
+  assert.equal(t.type, 'expense')
+  assert.equal(t.amount, 123.45)
+  assert.equal(t.fee, 0)
+  assert.equal(t.accountSuffix, '1111')
+  assert.equal(t.counterpartySuffix, '')
+  assert.equal(t.possibleOwnTransfer, false)
+  assert.equal(t.occurredAt, '2026-09-30T05:34:56.000Z')
+  assert.ok(t.referenceHash)
+  for (const privateValue of ['ผู้ทดสอบ', 'EXAMPLE BILLER', 'SYNTHETICBILL']) assert.ok(!JSON.stringify(t).includes(privateValue))
+  assert.equal(parseBankMail(message('ktb', bill.replace('ค่าธรรมเนียม : 0.00', 'ค่าธรรมเนียม : 2.50'), 'แจ้งผลการจ่ายบิลสำเร็จ')).transaction.fee, 2.50)
+})
+test('bill payment status, payer, biller, amount and sender must be verifiable', () => {
+  for (const content of [bill.replace('จ่ายบิลผ่าน', 'โอนเงินผ่าน'), bill.replace('สำเร็จ', 'ไม่สำเร็จ'),
+    bill.replace('<dd>ไปยังผู้ให้บริการ : EXAMPLE BILLER CO., LTD.</dd>', ''),
+    bill.replace('XXX-X-XX111-1', ''), bill.replace('123.45', '123,45'),
+    bill + '<dd>จำนวนเงินที่ชำระ : 10.00 บาท</dd>']) {
+    assert.equal(parseBankMail(message('ktb', content, 'แจ้งผลการจ่ายบิลสำเร็จ')).transaction, undefined)
+  }
+  assert.equal(parseBankMail(message('ktb', bill, 'แจ้งผลการจ่ายบิลไม่สำเร็จ')).transaction, undefined)
+  const spoofed = message('ktb', bill, 'แจ้งผลการจ่ายบิลสำเร็จ')
+  spoofed.payload.headers[2].value = 'mx.google.com; dkim=fail; dmarc=fail'
+  assert.equal(parseBankMail(spoofed).reason, 'unverified_sender')
 })
 test('SCB incoming uses transaction time even when email is two hours late', () => {
   const m = message('scb', incoming, ' SCB Easy App:  คุณได้รับเงินผ่านรายการพร้อมเพย์')

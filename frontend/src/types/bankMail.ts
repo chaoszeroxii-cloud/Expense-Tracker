@@ -15,6 +15,18 @@ export interface BankMailStatus {
   pending: number
   syncing: boolean
 }
+export interface BankMailSyncSummary {
+  matched: number
+  existing: number
+  parsed: number
+  skipped: number
+  skipReasons: Record<string, number>
+}
+export interface BankMailSyncResult {
+  busy: boolean
+  continued?: boolean
+  summary?: BankMailSyncSummary
+}
 export interface BankMailEntry {
   id: string
   status: 'pending' | 'saved' | 'ignored'
@@ -22,6 +34,7 @@ export interface BankMailEntry {
   expenseId: string | null
   transaction: {
     bank: 'ktb' | 'scb'
+    kind?: 'bill_payment'
     type: 'expense' | 'income'
     amount: number
     fee: number

@@ -175,7 +175,7 @@ export class BankMailService {
       })
       const categoryId = connection.settings[t.type + 'CategoryId']
       let reason = own ? 'possible_transfer' : t.fee ? 'fee_review'
-        : !t.counterpartySuffix || !connection.settings.ownAccounts.includes(`${t.bank}:${t.accountSuffix}`) ? 'account_required'
+        : (!t.counterpartySuffix && t.kind !== 'bill_payment') || !connection.settings.ownAccounts.includes(`${t.bank}:${t.accountSuffix}`) ? 'account_required'
         : await this.duplicate(em, userId, t) ? 'possible_duplicate'
         : !connection.autoImportSince || Date.parse(t.receivedAt) < connection.autoImportSince.getTime() ? 'review_required' : null
       const categoryValid = categoryId && await em.exists(Category, { where: { id: categoryId, userId, type: t.type } })
@@ -203,17 +203,19 @@ export class BankMailService {
       const token = await this.gmail.refresh(openMailSecret(row.refreshCipher, userId + ':refresh'))
       const page = await this.gmail.list(token, after, before, row.pageToken)
       const messages = page.messages ?? []
-      let handled = 0, skipped = 0
+      let handled = 0, skipped = 0, existing = 0, parsedCount = 0
+      const skipReasons: Record<string, number> = {}
+      const skip = (reason: string) => { skipped++; skipReasons[reason] = (skipReasons[reason] ?? 0) + 1 }
       for (const item of messages) {
         const sourceKey = digest(row.gmailAddress + ':' + item.id)
         if (!await this.db.getRepository(BankMailEntry).existsBy({ userId, sourceKey })) {
           let message
           try { message = await this.gmail.message(token, item.id) }
-          catch (error) { if (error instanceof GmailFailure && error.message === 'message_gone') { handled++; skipped++; continue }; throw error }
+          catch (error) { if (error instanceof GmailFailure && error.message === 'message_gone') { handled++; skip('message_gone'); continue }; throw error }
           const parsed = parseBankMail(message)
-          if (parsed.transaction) await this.ingest(userId, leaseId, sourceKey, parsed.transaction)
-          else skipped++
-        }
+          if (parsed.transaction) { await this.ingest(userId, leaseId, sourceKey, parsed.transaction); parsedCount++ }
+          else skip(parsed.reason ?? 'unsupported_template')
+        } else existing++
         handled++
       }
       const completedPage = handled === messages.length, complete = completedPage && !page.nextPageToken
@@ -222,7 +224,9 @@ export class BankMailService {
         ...(completedPage ? { pageToken: page.nextPageToken ?? null } : {}),
         ...(complete ? { lastSyncedAt: before, scanAfter: null, scanBefore: null } : {}),
       })
-      return { busy: false, continued: !complete, processed: handled, skipped }
+      // Counts and bounded parser codes only; never expose mail bodies, subjects or identities.
+      return { busy: false, continued: !complete, processed: handled, skipped,
+        summary: { matched: messages.length, existing, parsed: parsedCount, skipped, skipReasons } }
     } catch (error) {
       const code = error instanceof GmailFailure ? error.message : 'sync_failed'
       await this.repo().update({ userId, leaseId }, { lastError: code, ...(code === 'page_expired' ? { pageToken: null } : {}) })

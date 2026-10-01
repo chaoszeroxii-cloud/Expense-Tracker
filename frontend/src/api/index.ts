@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store/auth.store'
 import type { BillInput, GoalInput, PlanningOverview } from '../types/planning'
-import type { BankMailEntry, BankMailSettings, BankMailStatus } from '../types/bankMail'
+import type { BankMailEntry, BankMailSettings, BankMailStatus, BankMailSyncResult } from '../types/bankMail'
 import type { PinnedEntry, CaptureRow, BatchPreview, ExpensePage, PayCycle, BillReminders } from '../types/companion'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
@@ -55,7 +55,7 @@ export const bankMailApi = {
   complete: (state: string, code: string) => http.post<{ connected: boolean }>('/bank-mail/complete', { state, code }).then(r => r.data),
   disconnect: () => http.delete<{ ok: boolean; revoked: boolean }>('/bank-mail/connection').then(r => r.data),
   settings: (value: BankMailSettings) => http.put('/bank-mail/settings', value).then(r => r.data),
-  sync: () => http.post<{ busy: boolean; continued?: boolean }>('/bank-mail/sync').then(r => r.data),
+  sync: () => http.post<BankMailSyncResult>('/bank-mail/sync').then(r => r.data),
   entries: (status: BankMailEntry['status'], offset = 0) =>
     http.get<{ rows: BankMailEntry[]; total: number }>('/bank-mail/entries', { params: { status, offset } }).then(r => r.data),
   save: (id: string, categoryId: string, type: 'expense' | 'income', allowDuplicate = false) =>

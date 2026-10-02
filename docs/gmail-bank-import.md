@@ -12,6 +12,7 @@ connecting Gmail to a coding assistant, does not grant this application mail acc
 | --- | --- |
 | Krungthai NEXT successful outgoing transfer / PromptPay transfer | Expense |
 | Krungthai NEXT successful bill payment (`แจ้งผลการจ่ายบิลสำเร็จ`) | Expense |
+| Krungthai NEXT successful goods/services payment (`แจ้งผลการชำระค่าสินค้าและบริการสำเร็จ`) | Expense; G-Wallet funding stays in review |
 | SCB Easy outgoing PromptPay transfer notification | Expense |
 | SCB Easy incoming PromptPay notification | Income |
 
@@ -28,7 +29,11 @@ only when its format and sender authentication pass, the source account is in th
 user's account list, both account suffixes are present for transfers, and a valid category is
 configured. A verified KTB bill payment names a biller instead of a recipient bank
 account, so it needs the known payer account but not a recipient suffix. The biller
-name is checked for presence, then discarded; no merchant category is guessed.
+name is checked for presence and for the observed `เติมเงิน G-Wallet` label, then
+discarded; no merchant category is guessed. G-Wallet funding is flagged as a
+possible own-account transfer and stays in review even with automatic recording
+enabled. Skip it if it only moves your money into a wallet; counting both the
+funding and later spending as expenses would double-count the outflow.
 Store all owned account and PromptPay suffixes to help detect transfers.
 Only the last four digits are requested; collisions or hidden numbers need review.
 
@@ -161,6 +166,16 @@ existing transaction JSON. Previously stored transfer records remain compatible.
 The normal two-day overlap can find recently missed bills after deployment; normal
 auto-import opt-in and review rules still apply.
 
+On 2 October 2026, the goods/services subject above was also confirmed in KTB
+mail. It uses the same successful bill-payment body and `จำนวนเงินที่ชำระ`, but
+labels the payer account `เลขที่บัญชี`. Both exact subjects now share the query
+allow-list and parser branch, which accepts `เลขบัญชี` and `เลขที่บัญชี`.
+The same transaction retains its reference hash and fingerprint across these
+subject/label variants. This change also needs no new environment variables or
+migration. Deploy the backend for parsing and the frontend for updated coverage
+text, then check mail again; verified G-Wallet funding appears in **To review**.
+As with the previous fix, the two-day overlap only recovers recently received mail.
+
 ## Endpoints
 
 `/api/bank-mail`: `GET status`, `POST connect`, `POST complete`,
@@ -185,9 +200,11 @@ replay and cross-account completion, ledger effects, duplicate handling, concurr
 sync/disconnect, dispatch order, account reset and Settings placeholders. Browser
 screenshots go under ignored `frontend/.smoke/ux-artifacts/bank-mail/`.
 
-Local validation: 10 parser/crypto tests, 13 real DB/API/browser scenarios, both
-workspace builds, backend API typechecking, and existing schema/CORS regressions
-passed. Browser checks used Thai on a 390 px dark screen and a 1440 px light screen.
+Local validation on 2 October 2026: 14 parser/crypto tests, 17 real DB/API/browser
+scenarios, both workspace builds and backend API typechecking passed. Browser
+checks used Thai on a 390 px dark screen and a 1440 px light screen. Gmail calls
+were stubbed with synthetic messages, including goods/services payments and
+G-Wallet funding; private mail was not copied into fixtures.
 
 Deployment acceptance still needs a real grant to the deployed OAuth client and
 a real bank email, followed by a scheduler invocation with the browser closed.

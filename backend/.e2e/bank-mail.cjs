@@ -183,11 +183,13 @@ async function run() {
   await c.call('PUT', '/bank-mail/settings', { ...c.settings, autoImport: false })
   function billMessage(id, amount, options = {}) {
     const m = message(id, amount, options)
-    m.payload.headers.find(h => h.name === 'Subject').value = 'แจ้งผลการจ่ายบิลสำเร็จ'
+    m.payload.headers.find(h => h.name === 'Subject').value = options.goods ? 'แจ้งผลการชำระค่าสินค้าและบริการสำเร็จ' : 'แจ้งผลการจ่ายบิลสำเร็จ'
     const html = Buffer.from(m.payload.body.data, 'base64url').toString()
       .replace('คุณได้ทำรายการโอนเงินผ่าน', 'คุณได้จ่ายบิลผ่าน')
       .replace(/<p>ไปยังบัญชี :.*?<\/p><p>เลขบัญชี :.*?<\/p>/, '<p>ไปยังผู้ให้บริการ : EXAMPLE BILLER CO., LTD.</p>')
       .replace('จำนวนเงิน :', 'จำนวนเงินที่ชำระ :')
+      .replace('เลขบัญชี :', options.goods ? 'เลขที่บัญชี :' : 'เลขบัญชี :')
+      .replace('EXAMPLE BILLER CO., LTD.', options.wallet ? 'เติมเงิน G-Wallet' : 'EXAMPLE BILLER CO., LTD.')
     m.payload.body.data = Buffer.from(html).toString('base64url')
     return m
   }
@@ -198,7 +200,7 @@ async function run() {
   assert.equal((await c.call('GET', '/bank-mail/entries')).rows[0].transaction.kind, 'bill_payment')
   await c.call('PUT', '/bank-mail/settings', c.settings)
   await db.query("UPDATE bank_mail_connections SET auto_import_since=now()-interval '10 seconds' WHERE user_id=$1", [c.user.id])
-  const newBill = billMessage('c2', 45), feeBill = billMessage('c3', 20, { fee: '2.00' }), unknownBill = billMessage('c4', 30)
+  const newBill = billMessage('c2', 45, { goods: true }), feeBill = billMessage('c3', 20, { fee: '2.00' }), unknownBill = billMessage('c4', 30)
   unknownBill.payload.body.data = Buffer.from(Buffer.from(unknownBill.payload.body.data, 'base64url').toString().replace('XXX-X-XX111-1', 'XXX-X-XX555-5')).toString('base64url')
   mailboxes.set('charlie', [historicalBill, newBill, feeBill, unknownBill])
   const billResult = await c.call('POST', '/bank-mail/sync')
@@ -211,6 +213,22 @@ async function run() {
   assert.equal((await c.call('POST', '/bank-mail/sync')).summary.existing, 4)
   assert.equal(Number((await db.query('SELECT total_balance FROM users WHERE id=$1', [c.user.id]))[0].total_balance), -45)
   pass('KTB bills record once without a recipient account; historical mail, fees and unknown payers require review')
+
+  const walletFunding = billMessage('c8', 75, { goods: true, wallet: true })
+  // Same bank transaction, delivered again with the other supported subject.
+  const aliasBill = structuredClone(newBill); aliasBill.id = 'c2-copy'
+  aliasBill.payload.headers.find(h => h.name === 'Subject').value = 'แจ้งผลการจ่ายบิลสำเร็จ'
+  mailboxes.set('charlie', [walletFunding, aliasBill]); clearThrottle()
+  await c.call('POST', '/bank-mail/sync'); await c.call('POST', '/bank-mail/sync')
+  const walletRows = (await c.call('GET', '/bank-mail/entries')).rows
+  assert.equal(walletRows.length, 4)
+  const walletRow = walletRows.find(row => row.transaction.amount === 75)
+  assert.equal(walletRow.reason, 'possible_transfer'); assert.equal(walletRow.expenseId, null)
+  assert.equal(walletRow.transaction.possibleOwnTransfer, true)
+  assert.ok(!JSON.stringify(walletRow).includes('G-Wallet'))
+  assert.equal((await c.call('GET', '/bank-mail/entries?status=saved')).total, 1)
+  assert.equal(Number((await db.query('SELECT total_balance FROM users WHERE id=$1', [c.user.id]))[0].total_balance), -45)
+  pass('goods/services payments deduplicate across subjects; G-Wallet funding stays in review with no ledger debit')
 
   const malformed = billMessage('c6', 60), unverified = billMessage('c7', 70)
   malformed.payload.body.data = Buffer.from(Buffer.from(malformed.payload.body.data, 'base64url').toString().replace('60.00 บาท', 'ไม่ทราบ')).toString('base64url')
@@ -280,6 +298,12 @@ async function run() {
     await billCard.getByRole('button', { name: 'ตรวจเมลตอนนี้', exact: true }).click()
     const summary = billCard.getByRole('status', { name: 'ผลตรวจรอบนี้', exact: true })
     await expect(summary).toContainText('ไม่พบเมลที่ตรงกับผู้ส่ง')
+    const walletArticle = billCard.locator('article').filter({ hasText: 'อาจเป็นการโอนระหว่างบัญชีของคุณ' })
+    await expect(walletArticle).toHaveCount(1)
+    await expect(walletArticle).toContainText('75.00')
+    clearThrottle(); await walletArticle.getByRole('button', { name: 'ข้าม / โอนเงินตัวเอง', exact: true }).click()
+    await expect(walletArticle).toHaveCount(0)
+    assert.equal(Number((await db.query('SELECT total_balance FROM users WHERE id=$1', [c.user.id]))[0].total_balance), -45)
     mailboxes.set('charlie', [malformed]); clearThrottle()
     await billCard.getByRole('button', { name: 'ตรวจเมลตอนนี้', exact: true }).click()
     await expect(summary).toContainText('ข้อมูลธุรกรรมไม่ครบหรือไม่ชัดเจน: 1')
@@ -298,7 +322,7 @@ async function run() {
     gmail.refresh = normalRefresh
     assert.deepEqual(billErrors, [])
     await billContext.close()
-    pass('browser explains empty/rejected checks, displays recorded bills and immediately offers reconnect on expired access')
+    pass('browser explains empty/rejected checks, allows skipping wallet funding, displays recorded bills and offers reconnect on expired access')
   }
   clearThrottle()
   const previousSaved = (await a.call('GET', '/bank-mail/entries?status=saved')).total

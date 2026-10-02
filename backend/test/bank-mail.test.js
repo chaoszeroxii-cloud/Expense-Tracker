@@ -71,6 +71,40 @@ test('bill payment status, payer, biller, amount and sender must be verifiable',
   spoofed.payload.headers[2].value = 'mx.google.com; dkim=fail; dmarc=fail'
   assert.equal(parseBankMail(spoofed).reason, 'unverified_sender')
 })
+
+test('KTB goods/services subject and account label variants preserve bill identity', () => {
+  const subject = 'แจ้งผลการชำระค่าสินค้าและบริการสำเร็จ'
+  assert.ok(BANK_MAIL_QUERY.includes(`subject:"${subject}"`))
+  const original = parseBankMail(message('ktb', bill, 'แจ้งผลการจ่ายบิลสำเร็จ')).transaction
+  const html = bill.replace('เลขบัญชี :', 'เลขที่บัญชี :')
+  for (const mimeType of ['text/html', 'text/plain']) {
+    const m = message('ktb', html, subject)
+    if (mimeType === 'text/plain') m.payload.body.data = Buffer.from(mailText(m.payload)).toString('base64url')
+    m.payload.mimeType = mimeType
+    assert.deepEqual(parseBankMail(m).transaction, original)
+  }
+  for (const content of [html.replace('สำเร็จ', 'ไม่สำเร็จ'), html.replace('XXX-X-XX111-1', ''),
+    html.replace('123.45', '123,45'), html.replace('EXAMPLE BILLER CO., LTD.', ''),
+    html + '<dd>จำนวนเงินที่ชำระ : 10.00 บาท</dd>']) {
+    assert.equal(parseBankMail(message('ktb', content, subject)).transaction, undefined)
+  }
+  assert.equal(parseBankMail(message('ktb', html, subject.replace('สำเร็จ', 'ไม่สำเร็จ'))).reason, 'unsupported_template')
+  const spoofed = message('ktb', html, subject)
+  spoofed.payload.headers[2].value = 'mx.google.com; dkim=fail; dmarc=fail'
+  assert.equal(parseBankMail(spoofed).reason, 'unverified_sender')
+})
+
+test('G-Wallet funding requires transfer review without storing the biller name', () => {
+  const html = bill.replace('เลขบัญชี :', 'เลขที่บัญชี :').replace('EXAMPLE BILLER CO., LTD.', 'เติมเงิน G-Wallet')
+  for (const subject of ['แจ้งผลการจ่ายบิลสำเร็จ', 'แจ้งผลการชำระค่าสินค้าและบริการสำเร็จ']) {
+    const t = parseBankMail(message('ktb', html, subject)).transaction
+    assert.ok(t)
+    assert.equal(t.kind, 'bill_payment')
+    assert.equal(t.amount, 123.45)
+    assert.equal(t.possibleOwnTransfer, true)
+    for (const privateValue of ['ผู้ทดสอบ', 'G-Wallet', 'SYNTHETICBILL']) assert.ok(!JSON.stringify(t).includes(privateValue))
+  }
+})
 test('SCB incoming uses transaction time even when email is two hours late', () => {
   const m = message('scb', incoming, ' SCB Easy App:  คุณได้รับเงินผ่านรายการพร้อมเพย์')
   const content = { mimeType: 'text/html', body: m.payload.body }

@@ -24,9 +24,11 @@ export interface BankMailTransaction {
   referenceHash: string | null
   fingerprint: string
 }
+// Keep searched bill subjects and accepted parser templates in one allow-list.
+const KTB_BILL_SUBJECTS = ['แจ้งผลการจ่ายบิลสำเร็จ', 'แจ้งผลการชำระค่าสินค้าและบริการสำเร็จ']
 export const BANK_MAIL_QUERY = '{from:noreply@krungthai.com from:scbeasynet@scb.co.th} '
   + '{subject:"แจ้งผลการโอนเงินสำเร็จ" subject:"แจ้งผลการโอนเงินพร้อมเพย์สำเร็จ" '
-  + 'subject:"แจ้งผลการจ่ายบิลสำเร็จ" '
+  + KTB_BILL_SUBJECTS.map(subject => `subject:"${subject}" `).join('')
   + 'subject:"บริการอัตโนมัติแจ้งเตือนการทำธุรกรรม" subject:"คุณได้รับเงินผ่านรายการพร้อมเพย์"} '
   + '-in:spam -in:trash -in:sent -in:drafts -subject:OTP'
 
@@ -119,10 +121,13 @@ export function parseBankMail(message: GmailMessage): { transaction?: BankMailTr
     let kind: BankMailTransaction['kind']
     let accountSuffix = '', counterpartyBank = '', counterpartySuffix = '', possibleOwnTransfer = false, referenceHash: string = null
     if (bank === 'ktb') {
-      const isBill = subject === 'แจ้งผลการจ่ายบิลสำเร็จ'
+      const isBill = KTB_BILL_SUBJECTS.includes(subject)
       if (isBill) {
         single(text, /คุณได้จ่ายบิลผ่าน Krungthai NEXT สำเร็จ/)
-        single(text, /ไปยังผู้ให้บริการ[^\S\r\n]*:[^\S\r\n]*([^\s][^\n]*)/)
+        const biller = single(text, /ไปยังผู้ให้บริการ[^\S\r\n]*:[^\S\r\n]*([^\s][^\n]*)/)[1]
+        // Funding a wallet may only move owned money, so do not auto-record an expense.
+        // Keep only the review flag; never persist the biller name.
+        possibleOwnTransfer = /^เติมเงิน G-Wallet$/i.test(biller)
         kind = 'bill_payment'
       } else {
         if (!/^แจ้งผลการโอนเงิน(?:พร้อมเพย์)?สำเร็จ$/.test(subject)) return { reason: 'unsupported_template' }
@@ -133,7 +138,7 @@ export function parseBankMail(message: GmailMessage): { transaction?: BankMailTr
       sum = amount(single(text, isBill ? /จำนวนเงินที่ชำระ\s*:\s*([\d,.]+) บาท/ : /จำนวนเงิน\s*:\s*([\d,.]+) บาท/)[1])
       fee = amount(single(text, /ค่าธรรมเนียม\s*:\s*([\d,.]+) บาท/)[1])
       referenceHash = digest('ktb:' + single(text, /หมายเลขอ้างอิง\s*:\s*([A-Za-z0-9]{8,80})(?:\n|$)/)[1])
-      const origin = single(text, /จากบัญชี\s*:\s*([^\n]+)\nเลขบัญชี\s*:\s*กรุงไทย ([Xx\d -]+)/)
+      const origin = single(text, /จากบัญชี\s*:\s*([^\n]+)\nเลข(?:ที่)?บัญชี\s*:\s*กรุงไทย ([Xx\d -]+)/)
       accountSuffix = suffix(origin[2])
       if (!isBill) {
         const destination = single(text, /ไปยังบัญชี(?:พร้อมเพย์)?\s*:\s*([^\n]+)\n(?:เลขบัญชี|หมายเลขพร้อมเพย์)\s*:\s*([^\n]+)/)

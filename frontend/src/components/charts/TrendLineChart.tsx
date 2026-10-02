@@ -16,7 +16,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
       {payload.map((p: any) => (
         <p key={p.dataKey} style={{ color: p.color }} className="font-bold flex items-center gap-1.5">
           <Icon path={p.dataKey === 'expense' ? mdiCashMultiple : mdiCash} size={0.5} />
-          ฿{Number(p.value).toLocaleString()}
+          ฿{Number(p.value).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </p>
       ))}
     </div>

@@ -1,45 +1,59 @@
 import {
-  Injectable, ConflictException, UnauthorizedException,
+  Injectable, ConflictException, UnauthorizedException, BadRequestException,
 } from '@nestjs/common'
+import { randomBytes, createHash } from 'crypto'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { JwtService } from '@nestjs/jwt'
 import * as bcrypt from 'bcrypt'
+import axios from 'axios'
 import { User } from '../users/user.entity'
 import { Category } from '../categories/category.entity'
 import { Allocation } from '../allocations/allocation.entity'
-import { RegisterDto, LoginDto, UpdateProfileDto } from './auth.dto'
+import { SpendingPlanService } from '../budgets/spending-plan.service'
+import { localToday, safeTimezone } from '../../common/local-date.util'
+import { lockLedger } from '../../common/ledger-lock.util'
+import {
+  RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto,
+  ChangePasswordDto, UpdatePreferencesDto, CompleteOnboardingDto,
+} from './auth.dto'
 
 const SALT_ROUNDS = 12
 
 export const DEFAULT_WALLETS = [
-  { key: 'emergency',  name: 'เงินสำรองฉุกเฉิน', icon: '🏦', color: '#f59e0b', pct: 10 },
-  { key: 'fixed',      name: 'ค่าใช้จ่ายคงที่',   icon: '🏠', color: '#3b82f6', pct: 30 },
-  { key: 'daily',      name: 'ค่าใช้จ่ายประจำวัน', icon: '🍚', color: '#10b981', pct: 20 },
-  { key: 'savings',    name: 'เป้าหมายการออม',     icon: '🎯', color: '#6366f1', pct: 10 },
-  { key: 'investment', name: 'การลงทุน',           icon: '📈', color: '#06b6d4', pct: 15 },
-  { key: 'personal',   name: 'ส่วนตัว/บันเทิง',   icon: '🎉', color: '#ec4899', pct: 10 },
-  { key: 'health',     name: 'สุขภาพ/ประกัน',     icon: '🏥', color: '#ef4444', pct: 5  },
-] as const
+  { key: 'emergency',  name: 'เงินสำรองฉุกเฉิน', nameEn: 'Emergency Fund',    icon: 'bank',       color: '#f59e0b', pct: 10 },
+  { key: 'fixed',      name: 'ค่าใช้จ่ายคงที่',   nameEn: 'Fixed Expenses',    icon: 'housing',    color: '#3b82f6', pct: 30 },
+  { key: 'daily',      name: 'ค่าใช้จ่ายประจำวัน', nameEn: 'Daily Expenses',   icon: 'food',       color: '#10b981', pct: 20 },
+  { key: 'savings',    name: 'เป้าหมายการออม',     nameEn: 'Savings Goal',     icon: 'target',     color: '#6366f1', pct: 10 },
+  { key: 'investment', name: 'การลงทุน',           nameEn: 'Investment',        icon: 'investment', color: '#06b6d4', pct: 15 },
+  { key: 'personal',   name: 'ส่วนตัว/บันเทิง',   nameEn: 'Personal / Fun',   icon: 'party',      color: '#ec4899', pct: 10 },
+  { key: 'health',     name: 'สุขภาพ/ประกัน',     nameEn: 'Health / Insurance', icon: 'medical',  color: '#ef4444', pct: 5  },
+]
 
+// Seeded once per account. Category names are user data — they are stored in the
+// language the account was created in and are renameable afterwards, so a Thai
+// account must not start life with an English category list.
+// The first four expense entries double as the Quick Add starter set for users
+// with no history yet, so keep the everyday ones at the top.
 const DEFAULT_CATEGORIES = [
-  { name: 'Food & Drink',   icon: '🍜', color: '#f97316', type: 'expense' },
-  { name: 'Transport',      icon: '🚗', color: '#3b82f6', type: 'expense' },
-  { name: 'Shopping',       icon: '🛍️', color: '#a855f7', type: 'expense' },
-  { name: 'Health',         icon: '💊', color: '#ef4444', type: 'expense' },
-  { name: 'Entertainment',  icon: '🎮', color: '#ec4899', type: 'expense' },
-  { name: 'Utilities',      icon: '💡', color: '#eab308', type: 'expense' },
-  { name: 'Housing',        icon: '🏠', color: '#14b8a6', type: 'expense' },
-  { name: 'Education',      icon: '📚', color: '#6366f1', type: 'expense' },
-  { name: 'Other',          icon: '📦', color: '#94a3b8', type: 'expense' },
-  { name: 'Salary',         icon: '💼', color: '#22c55e', type: 'income' },
-  { name: 'Freelance',      icon: '💻', color: '#10b981', type: 'income' },
-  { name: 'Investment',     icon: '📈', color: '#06b6d4', type: 'income' },
-  { name: 'Other Income',   icon: '💰', color: '#84cc16', type: 'income' },
+  { nameEn: 'Food & Drink',  nameTh: 'อาหารและเครื่องดื่ม', icon: 'food',          color: '#f97316', type: 'expense' },
+  { nameEn: 'Transport',     nameTh: 'เดินทาง',              icon: 'transport',     color: '#3b82f6', type: 'expense' },
+  { nameEn: 'Shopping',      nameTh: 'ช้อปปิ้ง',             icon: 'shopping',      color: '#a855f7', type: 'expense' },
+  { nameEn: 'Utilities',     nameTh: 'บิล/ค่าน้ำค่าไฟ',      icon: 'utilities',     color: '#eab308', type: 'expense' },
+  { nameEn: 'Health',        nameTh: 'สุขภาพ',               icon: 'health',        color: '#ef4444', type: 'expense' },
+  { nameEn: 'Entertainment', nameTh: 'บันเทิง',              icon: 'entertainment', color: '#ec4899', type: 'expense' },
+  { nameEn: 'Housing',       nameTh: 'ที่อยู่อาศัย',          icon: 'housing',       color: '#14b8a6', type: 'expense' },
+  { nameEn: 'Education',     nameTh: 'การศึกษา',             icon: 'education',     color: '#6366f1', type: 'expense' },
+  { nameEn: 'Other',         nameTh: 'อื่นๆ',                icon: 'other',         color: '#94a3b8', type: 'expense' },
+  { nameEn: 'Salary',        nameTh: 'เงินเดือน',            icon: 'salary',        color: '#22c55e', type: 'income'  },
+  { nameEn: 'Freelance',     nameTh: 'งานฟรีแลนซ์',          icon: 'freelance',     color: '#10b981', type: 'income'  },
+  { nameEn: 'Investment',    nameTh: 'ผลตอบแทนการลงทุน',     icon: 'investment',    color: '#06b6d4', type: 'income'  },
+  { nameEn: 'Other Income',  nameTh: 'รายรับอื่นๆ',          icon: 'otherincome',   color: '#84cc16', type: 'income'  },
 ] as const
 
 @Injectable()
 export class AuthService {
+
   constructor(
     @InjectRepository(User)
     private readonly users: Repository<User>,
@@ -51,6 +65,8 @@ export class AuthService {
     private readonly allocations: Repository<Allocation>,
 
     private readonly jwt: JwtService,
+
+    private readonly spendingPlans: SpendingPlanService,
   ) {}
 
   // ── Register ────────────────────────────────────────────────
@@ -63,14 +79,25 @@ export class AuthService {
       this.users.create({ email: dto.email, name: dto.name, passwordHash: hash }),
     )
 
-    // Seed default categories for new user
-    await this.categories.save(
-      DEFAULT_CATEGORIES.map(c =>
-        this.categories.create({ ...c, userId: user.id, isDefault: true }),
-      ),
-    )
+    await this.seedCategories(user.id, dto.lang ?? 'th')
 
     return this.signToken(user)
+  }
+
+  /** Seeds the starter category list in the account's language. */
+  private async seedCategories(userId: string, lang: 'th' | 'en') {
+    await this.categories.save(
+      DEFAULT_CATEGORIES.map(c =>
+        this.categories.create({
+          name:  lang === 'en' ? c.nameEn : c.nameTh,
+          icon:  c.icon,
+          color: c.color,
+          type:  c.type,
+          userId,
+          isDefault: true,
+        }),
+      ),
+    )
   }
 
   // ── Login ───────────────────────────────────────────────────
@@ -78,48 +105,408 @@ export class AuthService {
     const user = await this.users.findOne({ where: { email: dto.email } })
     if (!user) throw new UnauthorizedException('Invalid credentials')
 
+    if (!user.passwordHash) throw new UnauthorizedException('Please sign in with Google or Facebook')
+
     const valid = await bcrypt.compare(dto.password, user.passwordHash)
     if (!valid) throw new UnauthorizedException('Invalid credentials')
 
     return this.signToken(user)
   }
 
+  // ── Google verify ────────────────────────────────────────────
+  async googleVerify(dto: GoogleVerifyDto) {
+    await this.assertGoogleAudience(dto.token)
+    let googleProfile: { sub: string; email?: string; email_verified?: boolean; name: string }
+    try {
+      const { data } = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${dto.token}` },
+      })
+      googleProfile = data
+    } catch {
+      throw new UnauthorizedException('Invalid Google token')
+    }
+
+
+    // Only a Google-verified email may be used to link/create an account.
+    const providerEmail =
+      googleProfile.email && googleProfile.email_verified === true ? googleProfile.email : undefined
+
+    return this.resolveSocialLogin({
+      providerKey: 'googleId',
+      providerId: googleProfile.sub,
+      providerEmail,
+      clientEmail: dto.email,
+      name: googleProfile.name,
+      authProvider: 'google',
+      lang: dto.lang,
+    })
+  }
+
+  // ── Facebook verify ──────────────────────────────────────────
+  async facebookVerify(dto: FacebookVerifyDto) {
+    // Verify the token belongs to our Facebook app before trusting it.
+    await this.assertFacebookAppToken(dto.accessToken)
+
+    let fbProfile: { id: string; email?: string; name: string }
+    try {
+      const { data } = await axios.get('https://graph.facebook.com/me', {
+        params: { fields: 'id,name,email', access_token: dto.accessToken },
+      })
+      fbProfile = data
+    } catch {
+      throw new UnauthorizedException('Invalid Facebook token')
+    }
+
+    // Facebook only returns the email when the user granted the permission,
+    // and it is the account's verified email — safe to link on.
+    return this.resolveSocialLogin({
+      providerKey: 'facebookId',
+      providerId: fbProfile.id,
+      providerEmail: fbProfile.email,
+      clientEmail: dto.email,
+      name: fbProfile.name,
+      authProvider: 'facebook',
+      lang: dto.lang,
+    })
+  }
+
+  // ── Social login shared logic ────────────────────────────────
+  // Public login never merges credentials based only on matching email addresses.
+  private async resolveSocialLogin(params: {
+    providerKey: 'googleId' | 'facebookId'
+    providerId: string
+    providerEmail?: string
+    clientEmail?: string
+    name: string
+    authProvider: 'google' | 'facebook'
+    lang?: 'th' | 'en'
+  }) {
+    const { providerKey, providerId, providerEmail, name, authProvider } = params
+    if (typeof providerId !== 'string' || !providerId.trim()) {
+      throw new UnauthorizedException('Invalid provider identity')
+    }
+    if (typeof providerEmail !== 'string' || !providerEmail.includes('@')) {
+      throw new BadRequestException('The provider must supply a verified email. Use email and password sign-in instead.')
+    }
+    const existing = await this.users.findOne({ where: { [providerKey]: providerId } as any })
+    if (existing) {
+      // Legacy client-supplied email is not proof of ownership either.
+      if (existing.email.toLowerCase() !== providerEmail.toLowerCase()) {
+        throw new UnauthorizedException('Email ownership could not be verified. Recover this account by email.')
+      }
+      return this.signToken(existing)
+    }
+    const collision = await this.users.createQueryBuilder('u')
+      .where('LOWER(u.email) = LOWER(:email)', { email: providerEmail }).getOne()
+    if (collision) {
+      throw new ConflictException('Use the original sign-in method for this email, or reset your password. Accounts are not linked automatically.')
+    }
+    return this.createSocialUser(providerEmail, name, authProvider, providerKey, providerId, params.lang ?? 'th')
+  }
+
+  private async createSocialUser(
+    email: string,
+    name: string,
+    authProvider: 'google' | 'facebook',
+    providerKey: 'googleId' | 'facebookId',
+    providerId: string,
+    lang: 'th' | 'en' = 'th',
+  ) {
+    const partial: Partial<User> = { email, name, authProvider }
+    if (providerKey === 'googleId') partial.googleId = providerId
+    else partial.facebookId = providerId
+    const newUser = await this.users.save(this.users.create(partial as User))
+    await this.seedCategories(newUser.id, lang)
+    return this.signToken(newUser)
+  }
+
+  /** Confirm a Google access token's audience matches our OAuth client id. */
+  private async assertGoogleAudience(accessToken: string) {
+    const expectedAud = process.env.GOOGLE_CLIENT_ID
+    if (!expectedAud) throw new UnauthorizedException('Google sign-in is not configured')
+    try {
+      const { data } = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+        params: { access_token: accessToken }, timeout: 10000,
+      })
+      const aud = data.aud || data.azp
+      if (aud !== expectedAud) throw new UnauthorizedException('Google token audience mismatch')
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err
+      throw new UnauthorizedException('Invalid Google token')
+    }
+  }
+
+  /** Confirm a Facebook token was issued for our app (debug_token). */
+  private async assertFacebookAppToken(accessToken: string) {
+    const appId = process.env.FACEBOOK_APP_ID
+    const appSecret = process.env.FACEBOOK_APP_SECRET
+    if (!appId || !appSecret) throw new UnauthorizedException('Facebook sign-in is not configured')
+    try {
+      const { data } = await axios.get('https://graph.facebook.com/debug_token', {
+        params: { input_token: accessToken, access_token: `${appId}|${appSecret}` }, timeout: 10000,
+      })
+      const info = data?.data
+      if (!info?.is_valid || String(info.app_id) !== String(appId)) {
+        throw new UnauthorizedException('Facebook token was not issued for this app')
+      }
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err
+      throw new UnauthorizedException('Invalid Facebook token')
+    }
+  }
+
   // ── Update profile ──────────────────────────────────────────
   async updateProfile(userId: string, dto: UpdateProfileDto) {
-    await this.users.update(userId, { name: dto.name })
-    return this.users.findOne({ where: { id: userId } })
+    await this.users.update(userId, {
+      name: dto.name,
+      ...(dto.expectedMonthlyIncome !== undefined ? { expectedMonthlyIncome: dto.expectedMonthlyIncome } : {}),
+    })
+    const user = await this.users.findOne({ where: { id: userId } })
+    return user ? this.toProfile(user) : null
+  }
+
+  // ── Preferences ─────────────────────────────────────────────
+  // Only fields actually present in the request are written, so the client can
+  // change one setting without having to echo back the rest of the user's state.
+  async updatePreferences(userId: string, dto: UpdatePreferencesDto) {
+    const patch: Partial<User> = {}
+
+    if (dto.trackingMode !== undefined) patch.trackingMode = dto.trackingMode
+    if (dto.timezone !== undefined)     patch.timezone = this.assertTimezone(dto.timezone)
+    if (dto.workHoursPerDay !== undefined)  patch.workHoursPerDay = dto.workHoursPerDay
+    if (dto.workDaysPerMonth !== undefined) patch.workDaysPerMonth = dto.workDaysPerMonth
+    if (dto.showWorkTime !== undefined)     patch.showWorkTime = dto.showWorkTime
+    if (dto.advancedMode !== undefined)     patch.advancedMode = dto.advancedMode
+    if (dto.remindAt !== undefined)         patch.remindAt = dto.remindAt
+    if (dto.expectedMonthlyIncome !== undefined) patch.expectedMonthlyIncome = dto.expectedMonthlyIncome
+
+    // An explicit null clears the plan. `undefined` (absent) leaves it alone —
+    // these must not collapse into the same thing.
+    if (dto.monthlySpendingLimit !== undefined) {
+      patch.monthlySpendingLimit = dto.monthlySpendingLimit
+    }
+
+    // Switching to track-only drops the limit rather than keeping a stale number
+    // that would reappear if the user switched back weeks later.
+    if (dto.trackingMode === 'track_only' && dto.monthlySpendingLimit === undefined) {
+      patch.monthlySpendingLimit = null
+    }
+
+    if (Object.keys(patch).length > 0) await this.users.manager.transaction(async em => {
+      const user = await lockLedger(em, userId)
+      await em.update(User, userId, patch)
+      if (dto.trackingMode === 'track_only') {
+        await em.query('UPDATE pay_cycle_plans SET enabled=false WHERE user_id=$1', [userId])
+      }
+      if (patch.monthlySpendingLimit !== undefined) {
+        const month = localToday(safeTimezone(patch.timezone ?? user.timezone)).slice(0, 7)
+        await this.spendingPlans.setTotal(userId, month, patch.monthlySpendingLimit, em)
+      }
+    })
+
+    const user = await this.users.findOne({ where: { id: userId } })
+    return user ? this.toProfile(user) : null
+  }
+
+  /** Reject a timezone Intl cannot resolve — otherwise the daily brief silently drifts. */
+  private assertTimezone(tz: string): string {
+    try {
+      new Intl.DateTimeFormat('en-CA', { timeZone: tz })
+      return tz
+    } catch {
+      throw new BadRequestException(`Unknown timezone: ${tz}`)
+    }
   }
 
   // ── Me ──────────────────────────────────────────────────────
   me(user: User) {
-    const { passwordHash: _, ...safe } = user as any
-    return safe
+    return this.toProfile(user)
+  }
+
+  // ── Change Password ──────────────────────────────────────────
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.users.findOne({ where: { id: userId } })
+    if (!user) throw new UnauthorizedException()
+
+    if (user.passwordHash) {
+      if (!dto.currentPassword) throw new BadRequestException('กรุณากรอกรหัสผ่านปัจจุบัน')
+      const valid = await bcrypt.compare(dto.currentPassword, user.passwordHash)
+      if (!valid) throw new BadRequestException('รหัสผ่านปัจจุบันไม่ถูกต้อง')
+    }
+
+    const hash = await bcrypt.hash(dto.newPassword, SALT_ROUNDS)
+    const nextVersion = (user.tokenVersion ?? 0) + 1
+    // Bump tokenVersion to revoke every other outstanding session, then hand
+    // back a fresh token so *this* session (the one that just re-authed) stays.
+    const changed = await this.users.createQueryBuilder().update(User)
+      .set({ passwordHash: hash, tokenVersion: nextVersion, resetToken: null, resetTokenExpiry: null })
+      .where('id = :id AND token_version = :version', { id: userId, version: user.tokenVersion ?? 0 })
+      .andWhere('password_hash IS NOT DISTINCT FROM :hash', { hash: user.passwordHash })
+      .execute()
+    // A reset or another password change may have won while bcrypt was running.
+    if (changed.affected !== 1) throw new UnauthorizedException('Credentials changed; sign in again')
+    const refreshed = { ...user, passwordHash: hash, tokenVersion: nextVersion } as User
+    return { message: 'เปลี่ยนรหัสผ่านสำเร็จ', ...this.signToken(refreshed) }
   }
 
   // ── Onboarding ──────────────────────────────────────────────
-  async completeOnboarding(userId: string, selectedWalletKeys: string[]) {
+  //
+  // Sets up the one thing the daily loop needs — a spending plan — and nothing else.
+  //
+  // It used to create up to seven envelope wallets, each at a zero balance and with no
+  // category links, while the UI advertised a "recommended %" this method never applied.
+  // That was pure setup cost at the moment motivation is weakest, and the envelope
+  // system still did nothing until the user went to Wallets and linked categories by
+  // hand. Wallets are now opt-in via advanced mode instead.
+  async completeOnboarding(userId: string, dto: CompleteOnboardingDto) {
     const user = await this.users.findOne({ where: { id: userId } })
-    if (!user) return
+    if (!user) throw new UnauthorizedException()
 
-    const wallets = DEFAULT_WALLETS.filter((w) => selectedWalletKeys.includes(w.key))
-    if (wallets.length === 0) {
-      // minimum 3 default wallets if nothing selected
-      wallets.push(DEFAULT_WALLETS[0], DEFAULT_WALLETS[2], DEFAULT_WALLETS[3])
+    const patch: Partial<User> = {
+      onboardingCompleted: true,
+      trackingMode: dto.trackingMode,
+      // Track-only means the user declined to commit to a number; storing one anyway
+      // would make the home screen claim a plan they never set.
+      monthlySpendingLimit: dto.trackingMode === 'plan' ? (dto.monthlySpendingLimit ?? null) : null,
     }
+    if (dto.timezone) patch.timezone = this.assertTimezone(dto.timezone)
 
-    await this.allocations.save(
-      wallets.map((w) => this.allocations.create({ userId, name: w.name, icon: w.icon, color: w.color })),
+    await this.users.manager.transaction(async em => {
+      const lockedUser = await lockLedger(em, userId)
+      await em.update(User, userId, patch)
+      const month = localToday(safeTimezone(patch.timezone ?? lockedUser.timezone)).slice(0, 7)
+      await this.spendingPlans.setTotal(userId, month, patch.monthlySpendingLimit, em)
+    })
+
+    const refreshed = await this.users.findOne({ where: { id: userId } })
+    return { success: true, user: refreshed ? this.toProfile(refreshed) : null }
+  }
+
+  /**
+   * Creates the starter envelope wallets — now an explicit opt-in from advanced mode
+   * rather than something onboarding does on the user's behalf.
+   */
+  async createStarterWallets(userId: string, walletKeys: string[], lang: 'th' | 'en' = 'th') {
+    // Defensive even with the DTO in place: this is also reachable from the assistant.
+    if (!Array.isArray(walletKeys)) throw new BadRequestException('wallets must be an array')
+    const wallets = DEFAULT_WALLETS.filter((w) => walletKeys.includes(w.key))
+    if (wallets.length === 0) throw new BadRequestException('Pick at least one wallet')
+
+    const existing = await this.allocations.count({ where: { userId } })
+    if (existing > 0) throw new ConflictException('Wallets already exist for this account')
+
+    const created = await this.allocations.save(
+      wallets.map((w) => this.allocations.create({
+        userId,
+        name: lang === 'en' ? w.nameEn : w.name,
+        icon: w.icon,
+        color: w.color,
+      })),
     )
-    await this.users.update(userId, { onboardingCompleted: true })
-    return { success: true, created: wallets.length }
+    await this.users.update(userId, { advancedMode: true })
+    return { success: true, created: created.length }
+  }
+
+  // ── Forgot Password ─────────────────────────────────────────
+  /**
+   * The reset token is stored hashed, never in the clear.
+   *
+   * It is a bearer credential: for thirty minutes, whoever holds it can take over the
+   * account. Storing the raw value meant any read of the users table — a leaked backup,
+   * an over-broad admin query, a log that captured a row — handed out working takeover
+   * links. Hashing it means the database only ever holds something useless on its own,
+   * exactly like `password_hash`. SHA-256 rather than bcrypt is right here: the token is
+   * 256 bits of CSPRNG output, so there is no guessing attack for a slow hash to defend
+   * against, and the lookup has to stay fast.
+   */
+  private hashResetToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex')
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.users.findOne({ where: { email } })
+    if (user) {
+      const token = randomBytes(32).toString('hex')
+      const expiry = new Date(Date.now() + 30 * 60 * 1000)
+      await this.users.update(user.id, { resetToken: this.hashResetToken(token), resetTokenExpiry: expiry })
+      const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173'
+      const resetUrl = `${frontendUrl}/reset-password?token=${token}`
+      this.sendResetEmail(email, resetUrl).catch((err: unknown) => console.error('[mailer] failed to send reset email:', err))
+    }
+    return { message: 'เราได้ส่งลิงก์ไปยังบัญชีอีเมลของคุณแล้ว' }
+  }
+
+  // ── Reset Password ───────────────────────────────────────────
+  async resetPassword(token: string, newPassword: string) {
+    // Look the row up by the hash of the presented token — the raw value is never stored.
+    // Accounts issued a token before this change hold a raw value in the column; those
+    // links stop working and the user simply requests a new one, which is the right
+    // trade for not keeping live takeover credentials in the clear.
+    const user = await this.users.findOne({ where: { resetToken: this.hashResetToken(token) } })
+    if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+      throw new BadRequestException('ลิงก์หมดอายุหรือไม่ถูกต้อง')
+    }
+    const hash = await bcrypt.hash(newPassword, SALT_ROUNDS)
+    // Consume once, and remove old social credentials as part of email recovery.
+    const consumed = await this.users.createQueryBuilder().update(User).set({
+      passwordHash: hash, resetToken: null, resetTokenExpiry: null,
+      googleId: null, facebookId: null, authProvider: 'local',
+      tokenVersion: () => 'token_version + 1',
+    }).where('id = :id AND reset_token = :token AND reset_token_expiry > CURRENT_TIMESTAMP', {
+      id: user.id, token: this.hashResetToken(token),
+    }).execute()
+    if (consumed.affected !== 1) throw new BadRequestException('Reset link expired or already used')
+    return { message: 'ตั้งรหัสผ่านใหม่สำเร็จแล้ว' }
   }
 
   // ── Helpers ─────────────────────────────────────────────────
-  private signToken(user: User) {
-    const { passwordHash: _, ...profile } = user as any
+  private async sendResetEmail(to: string, resetUrl: string) {
+    await axios.post(
+      'https://api.brevo.com/v3/smtp/email',
+      {
+        sender: { name: 'MoneyFlow', email: process.env.BREVO_SENDER_EMAIL },
+        to: [{ email: to }],
+        subject: 'ตั้งรหัสผ่านใหม่ - MoneyFlow',
+        htmlContent: `<!DOCTYPE html><html lang="th"><body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;"><div style="max-width:480px;margin:40px auto;background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.1);"><div style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:32px 40px;text-align:center;"><h1 style="color:#fff;margin:0;font-size:24px;font-weight:800;">MoneyFlow</h1></div><div style="padding:40px;"><h2 style="color:#1e293b;font-size:20px;font-weight:700;margin:0 0 16px;">ตั้งรหัสผ่านใหม่</h2><p style="color:#64748b;margin:0 0 8px;line-height:1.6;">เราได้รับคำขอรีเซ็ตรหัสผ่านสำหรับบัญชี <strong style="color:#1e293b;">${to}</strong></p><p style="color:#64748b;margin:0 0 28px;line-height:1.6;">คลิกปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ ลิงก์จะหมดอายุใน <strong style="color:#1e293b;">30 นาที</strong></p><div style="text-align:center;margin-bottom:32px;"><a href="${resetUrl}" style="display:inline-block;background:#4f46e5;color:#fff;padding:16px 40px;border-radius:12px;text-decoration:none;font-weight:700;font-size:15px;">ตั้งรหัสผ่านใหม่ →</a></div><div style="border-top:1px solid #e2e8f0;padding-top:24px;"><p style="color:#94a3b8;font-size:13px;margin:0;line-height:1.6;">ถ้าคุณไม่ได้ขอเปลี่ยนรหัสผ่าน ไม่ต้องทำอะไร รหัสผ่านเดิมของคุณจะไม่มีการเปลี่ยนแปลง</p></div></div></div></body></html>`,
+      },
+      { headers: { 'api-key': process.env.BREVO_API_KEY } },
+    )
+  }
+
+  // Explicit allow-list — never spread the raw entity, which would leak
+  // passwordHash, resetToken, googleId/facebookId and tokenVersion.
+  private toProfile(user: User) {
     return {
-      accessToken: this.jwt.sign({ sub: user.id, email: user.email }),
-      user: profile,
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      currency: user.currency,
+      role: user.role,
+      authProvider: user.authProvider,
+      onboardingCompleted: user.onboardingCompleted,
+      expectedMonthlyIncome: user.expectedMonthlyIncome,
+      createdAt: user.createdAt,
+      hasPassword: user.passwordHash != null,
+      // Spending plan. `monthlySpendingLimit: null` means no plan — not a limit of 0.
+      trackingMode: user.trackingMode,
+      monthlySpendingLimit: user.monthlySpendingLimit,
+      timezone: user.timezone,
+      // Work-time lens
+      workHoursPerDay: Number(user.workHoursPerDay),
+      workDaysPerMonth: user.workDaysPerMonth,
+      showWorkTime: user.showWorkTime,
+      // Reveals wallets, loans, investments and tax
+      advancedMode: user.advancedMode,
+      // Daily reminder
+      pushEnabled: user.pushEnabled,
+      remindAt: user.remindAt,
+    }
+  }
+
+  private signToken(user: User) {
+    return {
+      accessToken: this.jwt.sign({ sub: user.id, email: user.email, tv: user.tokenVersion ?? 0 }),
+      user: this.toProfile(user),
     }
   }
 }

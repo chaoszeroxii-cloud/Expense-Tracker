@@ -1,0 +1,139 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { parseBankMail, mailText, BANK_MAIL_QUERY } = require('../dist/modules/bank-mail/bank-mail.parser')
+const { sealMailSecret, openMailSecret } = require('../dist/modules/bank-mail/bank-mail.crypto')
+
+// Entirely synthetic templates: never copy private mail into the repository.
+const ktb = `<p>คุณได้ทำรายการโอนเงินผ่าน Krungthai NEXT สำเร็จ</p>
+<p>วันที่ทำรายการ : 30/09/2569 12:34:56</p><p>หมายเลขอ้างอิง : SYNTHETICREF0001</p>
+<p>จากบัญชี : นายผู้ทดสอบ ก</p><p>เลขบัญชี : กรุงไทย XXX-X-XX111-1</p>
+<p>ไปยังบัญชี : นางผู้รับ ข</p><p>เลขบัญชี : ไทยพาณิชย์ XXX-X-XX222-2</p>
+<p>จำนวนเงิน : 1,234.50 บาท</p><p>ค่าธรรมเนียม : 0.00 บาท</p>`
+const incoming = 'จาก: KTB / xxxxxx1111<BR>จำนวน (บาท): 80.25<BR>เข้าบัญชี: xxxxxx2222<BR>วัน/เวลา: 30 ก.ย. 2569 - 12:34'
+// Same field structure as the observed bill-payment template; all values are synthetic.
+const bill = '<p>เรียน คุณ ผู้ทดสอบ</p><p>คุณได้จ่ายบิลผ่าน Krungthai NEXT สำเร็จ</p>'
+  + '<dl><dd>วันที่ทำรายการ : 30/09/2569 12:34:56</dd><dd>หมายเลขอ้างอิง : SYNTHETICBILL0001</dd>'
+  + '<dd>จากบัญชี : นายผู้ทดสอบ ก</dd><dd>เลขบัญชี : กรุงไทย XXX-X-XX111-1</dd>'
+  + '<dd>ไปยังผู้ให้บริการ : EXAMPLE BILLER CO., LTD.</dd>'
+  + '<dd>จำนวนเงินที่ชำระ : 123.45 บาท</dd><dd>ค่าธรรมเนียม : 0.00 บาท</dd></dl>'
+const outgoing = '<table><tr><td>ประเภทของรายการ:</td><td>โอนเงินพร้อมเพย์</td></tr>'
+  + '<tr><td>รายละเอียด:</td><td>จาก ธนาคารไทยพาณิชย์ เบอร์บัญชี</td><td>xxxxxx2222</td></tr>'
+  + '<tr><td></td><td>ไปยัง หมายเลขพร้อมเพย์ผู้รับเงิน</td><td>0000000003333</td></tr>'
+  + '<tr><td></td><td>จำนวนเงิน</td><td>80.25 บาท</td></tr>'
+  + '<tr><td>วันและเวลาการทำรายการ:</td><td>30 ก.ย. 2569 ณ 12:34:56</td></tr></table>'
+function message(bank, html, subject) {
+  const domain = bank === 'ktb' ? 'krungthai.com' : 'scb.co.th'
+  return { id: 'synthetic-message', internalDate: String(Date.parse('2026-09-30T14:40:00+07:00')),
+    payload: { mimeType: 'text/html', headers: [
+      { name: 'From', value: bank === 'ktb' ? 'Bank <noreply@krungthai.com>' : 'Bank <scbeasynet@scb.co.th>' },
+      { name: 'Subject', value: subject ?? 'แจ้งผลการโอนเงินสำเร็จ' },
+      { name: 'Authentication-Results', value: `mx.google.com; dkim=pass header.i=@${domain}; dmarc=pass header.from=${domain}` },
+    ], body: { data: Buffer.from(html).toString('base64url') } } }
+}
+test('KTB amounts, separate fees, Buddhist date and masked suffixes', () => {
+  const t = parseBankMail(message('ktb', ktb)).transaction
+  assert.equal(t.amount, 1234.50)
+  assert.equal(t.fee, 0)
+  assert.equal(t.type, 'expense')
+  assert.equal(t.occurredAt, '2026-09-30T05:34:56.000Z')
+  assert.equal(t.accountSuffix, '1111')
+  assert.equal(t.counterpartyBank, 'scb')
+  assert.equal(t.counterpartySuffix, '2222')
+  assert.equal(t.possibleOwnTransfer, false)
+  assert.ok(!JSON.stringify(t).includes('ผู้ทดสอบ'))
+  assert.ok(!JSON.stringify(t).includes('SYNTHETICREF'))
+})
+test('KTB bill payments are searched and parsed without inventing a recipient account', () => {
+  assert.ok(BANK_MAIL_QUERY.includes('subject:"แจ้งผลการจ่ายบิลสำเร็จ"'))
+  const t = parseBankMail(message('ktb', bill, 'แจ้งผลการจ่ายบิลสำเร็จ')).transaction
+  assert.ok(t)
+  assert.equal(t.kind, 'bill_payment')
+  assert.equal(t.type, 'expense')
+  assert.equal(t.amount, 123.45)
+  assert.equal(t.fee, 0)
+  assert.equal(t.accountSuffix, '1111')
+  assert.equal(t.counterpartySuffix, '')
+  assert.equal(t.possibleOwnTransfer, false)
+  assert.equal(t.occurredAt, '2026-09-30T05:34:56.000Z')
+  assert.ok(t.referenceHash)
+  for (const privateValue of ['ผู้ทดสอบ', 'EXAMPLE BILLER', 'SYNTHETICBILL']) assert.ok(!JSON.stringify(t).includes(privateValue))
+  assert.equal(parseBankMail(message('ktb', bill.replace('ค่าธรรมเนียม : 0.00', 'ค่าธรรมเนียม : 2.50'), 'แจ้งผลการจ่ายบิลสำเร็จ')).transaction.fee, 2.50)
+})
+test('bill payment status, payer, biller, amount and sender must be verifiable', () => {
+  for (const content of [bill.replace('จ่ายบิลผ่าน', 'โอนเงินผ่าน'), bill.replace('สำเร็จ', 'ไม่สำเร็จ'),
+    bill.replace('<dd>ไปยังผู้ให้บริการ : EXAMPLE BILLER CO., LTD.</dd>', ''),
+    bill.replace('XXX-X-XX111-1', ''), bill.replace('123.45', '123,45'),
+    bill + '<dd>จำนวนเงินที่ชำระ : 10.00 บาท</dd>']) {
+    assert.equal(parseBankMail(message('ktb', content, 'แจ้งผลการจ่ายบิลสำเร็จ')).transaction, undefined)
+  }
+  assert.equal(parseBankMail(message('ktb', bill, 'แจ้งผลการจ่ายบิลไม่สำเร็จ')).transaction, undefined)
+  const spoofed = message('ktb', bill, 'แจ้งผลการจ่ายบิลสำเร็จ')
+  spoofed.payload.headers[2].value = 'mx.google.com; dkim=fail; dmarc=fail'
+  assert.equal(parseBankMail(spoofed).reason, 'unverified_sender')
+})
+test('SCB incoming uses transaction time even when email is two hours late', () => {
+  const m = message('scb', incoming, ' SCB Easy App:  คุณได้รับเงินผ่านรายการพร้อมเพย์')
+  const content = { mimeType: 'text/html', body: m.payload.body }
+  m.payload = { ...m.payload, mimeType: 'multipart/mixed', body: {}, parts: [
+    { mimeType: 'multipart/related', parts: [content] },
+    { filename: 'never-read.html', mimeType: 'text/html', body: { data: Buffer.from('fake').toString('base64url') } },
+  ] }
+  const t = parseBankMail(m).transaction
+  assert.equal(t.type, 'income')
+  assert.equal(t.amount, 80.25)
+  assert.equal(t.occurredAt, '2026-09-30T05:34:00.000Z')
+  assert.notEqual(t.occurredAt, t.receivedAt)
+})
+test('SCB outgoing table preserves field boundaries', () => {
+  const t = parseBankMail(message('scb', outgoing, 'แจ้งเตือนจากแอป SCB Easy: บริการอัตโนมัติแจ้งเตือนการทำธุรกรรม')).transaction
+  assert.equal(t.type, 'expense')
+  assert.equal(t.amount, 80.25)
+  assert.equal(t.counterpartySuffix, '3333')
+})
+test('SCB fees are explicit and unverified transfer templates are rejected', () => {
+  const subject = 'แจ้งเตือนจากแอป SCB Easy: บริการอัตโนมัติแจ้งเตือนการทำธุรกรรม'
+  const withFee = outgoing.replace('</table>', '<tr><td>ค่าธรรมเนียม</td><td>5.00 บาท</td></tr></table>')
+  assert.equal(parseBankMail(message('scb', withFee, subject)).transaction.fee, 5)
+  assert.equal(parseBankMail(message('scb', withFee.replace('5.00 บาท', 'ไม่ทราบ'), subject)).transaction, undefined)
+  assert.equal(parseBankMail(message('scb', outgoing.replace('โอนเงินพร้อมเพย์', 'โอนเงิน'), subject)).transaction, undefined)
+})
+test('matched sender/receiver names flag possible own-account transfer', () => {
+  assert.equal(parseBankMail(message('ktb', ktb.replace('นางผู้รับ ข', 'นายผู้ทดสอบ ก'))).transaction.possibleOwnTransfer, true)
+})
+test('bank display name does not authenticate sender; failed/spoofed auth rejected', () => {
+  const m = message('ktb', ktb)
+  m.payload.headers[0].value = 'Krungthai <attacker@example.org>'
+  assert.equal(parseBankMail(m).reason, 'unsupported_sender')
+  m.payload.headers[0].value = 'noreply@krungthai.com'
+  for (const auth of ['mx.google.com; dkim=fail; dmarc=pass header.from=krungthai.com',
+    'mx.google.com; dkim=pass header.i=@krungthai.com.evil; dmarc=pass header.from=krungthai.com',
+    'evil; dkim=pass header.i=@krungthai.com; dmarc=pass header.from=krungthai.com']) {
+    m.payload.headers[2].value = auth
+    assert.equal(parseBankMail(m).reason, 'unverified_sender')
+  }
+})
+test('statements, OTP and failed transfers are not inferred as money movements', () => {
+  for (const subject of ['รหัส OTP', 'e-Statement', 'แจ้งผลการโอนเงินไม่สำเร็จ'])
+    assert.equal(parseBankMail(message('ktb', ktb, subject)).reason, 'unsupported_template')
+})
+test('invalid dates, malformed money and multiple amounts fail closed', () => {
+  for (const html of [ktb.replace('30/09', '31/09'), ktb.replace('1,234.50', '1,23.50'), ktb + '<p>จำนวนเงิน : 5.00 บาท</p>'])
+    assert.equal(parseBankMail(message('ktb', html)).transaction, undefined)
+})
+test('oversized MIME is bounded; alternative bodies do not double-count', () => {
+  assert.equal(parseBankMail(message('ktb', 'x'.repeat(300_000))).reason, 'mail_too_large')
+  const part = { mimeType: 'text/plain', body: { data: Buffer.from('one').toString('base64url') } }
+  assert.equal(mailText({ mimeType: 'multipart/alternative', parts: [part, part] }), 'one')
+})
+test('token encryption binds ciphertext to owner and detects tampering', () => {
+  const before = process.env.BANK_MAIL_ENCRYPTION_KEY
+  process.env.BANK_MAIL_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64')
+  try {
+    const sealed = sealMailSecret('synthetic-refresh-token', 'user-a:refresh')
+    assert.equal(openMailSecret(sealed, 'user-a:refresh'), 'synthetic-refresh-token')
+    assert.throws(() => openMailSecret(sealed, 'user-b:refresh'))
+    const parts = sealed.split('.'); parts[2] = Buffer.alloc(16).toString('base64url')
+    assert.throws(() => openMailSecret(parts.join('.'), 'user-a:refresh'))
+    assert.ok(!sealed.includes('synthetic-refresh-token'))
+  } finally { if (before === undefined) delete process.env.BANK_MAIL_ENCRYPTION_KEY; else process.env.BANK_MAIL_ENCRYPTION_KEY = before }
+})

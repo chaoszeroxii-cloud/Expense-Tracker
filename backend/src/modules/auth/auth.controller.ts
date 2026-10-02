@@ -1,6 +1,11 @@
 import { Controller, Post, Get, Patch, Body, UseGuards, HttpCode, HttpStatus } from '@nestjs/common'
+import { Throttle } from '@nestjs/throttler'
 import { AuthService, DEFAULT_WALLETS } from './auth.service'
-import { RegisterDto, LoginDto, UpdateProfileDto } from './auth.dto'
+import {
+  RegisterDto, LoginDto, UpdateProfileDto, GoogleVerifyDto, FacebookVerifyDto,
+  ForgotPasswordDto, ResetPasswordDto, ChangePasswordDto,
+  UpdatePreferencesDto, CompleteOnboardingDto, CreateStarterWalletsDto,
+} from './auth.dto'
 import { JwtAuthGuard } from './jwt-auth.guard'
 import { Public } from './jwt-auth.guard'
 import { CurrentUser } from './current-user.decorator'
@@ -25,6 +30,22 @@ export class AuthController {
     return this.service.login(dto)
   }
 
+  // POST /api/auth/google/verify  (public)
+  @Public()
+  @Post('google/verify')
+  @HttpCode(HttpStatus.OK)
+  googleVerify(@Body() dto: GoogleVerifyDto) {
+    return this.service.googleVerify(dto)
+  }
+
+  // POST /api/auth/facebook/verify  (public)
+  @Public()
+  @Post('facebook/verify')
+  @HttpCode(HttpStatus.OK)
+  facebookVerify(@Body() dto: FacebookVerifyDto) {
+    return this.service.facebookVerify(dto)
+  }
+
   // GET /api/auth/me  (protected)
   @Get('me')
   me(@CurrentUser() user: User) {
@@ -37,14 +58,59 @@ export class AuthController {
     return this.service.updateProfile(user.id, dto)
   }
 
+  // PATCH /api/auth/preferences  (protected)
+  // Spending plan, timezone, work-time lens and advanced mode. Separate from
+  // /profile so a single setting can be changed without resending identity fields.
+  @Patch('preferences')
+  updatePreferences(@CurrentUser() user: User, @Body() dto: UpdatePreferencesDto) {
+    return this.service.updatePreferences(user.id, dto)
+  }
+
   // POST /api/auth/onboarding  (protected)
   @Post('onboarding')
   @HttpCode(HttpStatus.OK)
-  completeOnboarding(@CurrentUser() user: User, @Body() body: { wallets: string[] }) {
-    return this.service.completeOnboarding(user.id, body.wallets ?? [])
+  completeOnboarding(@CurrentUser() user: User, @Body() dto: CompleteOnboardingDto) {
+    return this.service.completeOnboarding(user.id, dto)
   }
 
-  // GET /api/auth/onboarding/wallets  (public reference)
+  // POST /api/auth/starter-wallets  (protected)
+  // Opting in to envelope budgeting. No longer part of onboarding.
+  // A real DTO class, not an inline body type — ValidationPipe only validates when the
+  // parameter's metatype is a class, so the previous signature was validated by nothing.
+  @Post('starter-wallets')
+  @HttpCode(HttpStatus.OK)
+  createStarterWallets(@CurrentUser() user: User, @Body() dto: CreateStarterWalletsDto) {
+    return this.service.createStarterWallets(user.id, dto.wallets, dto.lang ?? 'th')
+  }
+
+  // PATCH /api/auth/change-password  (protected)
+  @Patch('change-password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(@CurrentUser() user: User, @Body() dto: ChangePasswordDto) {
+    return this.service.changePassword(user.id, dto)
+  }
+
+  // POST /api/auth/forgot-password  (public, rate-limited)
+  // The global ThrottlerGuard already covers this route; declaring it again ran the
+  // guard twice, so the "3 per 15 minutes" here was really about one attempt — enough
+  // for a single typo to lock someone out of their own password reset.
+  @Public()
+  @Throttle({ default: { limit: 3, ttl: 900000 } })
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.service.forgotPassword(dto.email)
+  }
+
+  // POST /api/auth/reset-password  (public)
+  @Public()
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.service.resetPassword(dto.token, dto.password)
+  }
+
+  // GET /api/auth/onboarding/wallets
+  // The class-level JwtAuthGuard applies — the old "(public reference)" comment described
+  // behaviour this route never had. It is only ever called from inside the app.
   @Get('onboarding/wallets')
   getDefaultWallets() {
     return DEFAULT_WALLETS

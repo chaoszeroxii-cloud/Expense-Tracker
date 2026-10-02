@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <title>MoneyFlow</title>
+  <rect id="app-tile" width="64" height="64" rx="15" fill="#142e36"/>
+  <g id="brand-mark">
+    <path d="M33 22H18a5 5 0 0 0-5 5v18a5 5 0 0 0 5 5h29a5 5 0 0 0 5-5v-4h-6v3H19V28h14v-6Z" fill="#f0fffb"/>
+    <path d="m25 35 16-16h-6v-6h17v17h-6v-7L29 40l-4-5Z" fill="#82dfcf"/>
+    <path fill-rule="evenodd" d="M43 31h11v8H43a4 4 0 0 1 0-8Zm2 2.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z" fill="#f0fffb"/>
+  </g>
+</svg>

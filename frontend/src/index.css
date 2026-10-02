@@ -8,38 +8,116 @@
 
   /* ── Light theme (default) ───────────────────────────── */
   :root {
-    --bg-app:      #f8fafc;
+    --bottom-nav-height: 4.75rem;
+    --bg-app:      #f5f6f8;
     --bg-card:     #ffffff;
-    --bg-input:    #ffffff;
-    --border:      #f1f5f9;
-    --text-base:   #1e293b;
-    --text-muted:  #94a3b8;
-    --text-sub:    #64748b;
+    --bg-input:    #f0f3f5;
+    --input:       #f0f3f5;
+    --border:      #e0e6ea;
+    --text-base:   #1d2c34;
+    --text-muted:  #61717d;
+    --text-sub:    #485d69;
+    --accent:      #087f75;
+    --accent-soft: #e7f4f1;
+    --hero:        #174f4b;
+    --sidebar:     #ffffff;
+    --skeleton:    #e3e9ed;
+    --expense:     #c34e5a;
+    --income:      #087f75;
+    --scrollbar:   #c4cdd3;
+    --card-shadow: 0 2px 6px #1d2c3403, 0 10px 28px #1d2c3403;
     --nav-bg:      rgba(255,255,255,0.92);
   }
 
   /* ── Dark theme ──────────────────────────────────────── */
   .dark {
-    --bg-app:      #0f172a;
-    --bg-card:     #1e293b;
-    --bg-input:    #1e293b;
-    --border:      #334155;
-    --text-base:   #f1f5f9;
-    --text-muted:  #64748b;
-    --text-sub:    #94a3b8;
-    --nav-bg:      rgba(15,23,42,0.92);
+    --bg-app:      #11161c;
+    --bg-card:     #1b222b;
+    --bg-input:    #252f3a;
+    --input:       #252f3a;
+    --border:      #303d49;
+    --text-base:   #edf2f6;
+    --text-muted:  #a0b0bf;
+    --text-sub:    #bfccd6;
+    --accent:      #71d8cb;
+    --accent-soft: #203a3b;
+    --hero:        #16433f;
+    --sidebar:     #171d25;
+    --skeleton:    #2a3642;
+    --expense:     #f2949b;
+    --income:      #71d8cb;
+    --scrollbar:   #43515f;
+    --card-shadow: none;
+    --nav-bg:      rgba(23,29,37,0.96);
+    color-scheme: dark;
   }
 
   body {
+    font-family: 'Manrope', 'Noto Sans Thai', sans-serif;
     background-color: var(--bg-app);
     color: var(--text-base);
     transition: background-color 0.2s, color 0.2s;
   }
 
+  button, a, input, select, textarea { touch-action: manipulation; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+  }
+  button:disabled { cursor: not-allowed; }
+  input, select, textarea { accent-color: var(--accent); }
+
   .scroll-area {
     -webkit-overflow-scrolling: touch;
     overflow-y: auto;
   }
+}
+
+@layer components {
+  .field-label { @apply block text-xs font-semibold text-muted-theme; }
+  .field-input { @apply mt-1.5 block w-full min-w-0 rounded-xl border border-theme bg-card px-3 py-2.5 text-sm text-base-theme; min-height: 44px; }
+  .page-heading { @apply text-2xl sm:text-3xl font-extrabold text-base-theme tracking-tight; line-height: 1.45; }
+  .page-description { @apply text-sm text-muted-theme mt-1; line-height: 1.8; }
+  .section-kicker { @apply text-xs font-bold text-muted-theme; letter-spacing: .03em; }
+  .section-title { @apply text-base font-bold text-base-theme; }
+  .surface { @apply bg-card border border-theme rounded-3xl; box-shadow: var(--card-shadow); }
+  .app-sidebar { background: var(--sidebar); }
+  .app-scroll { scrollbar-width: thin; scrollbar-color: var(--scrollbar) transparent; }
+  .app-scroll::-webkit-scrollbar { width: 6px; }
+  .app-scroll::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 8px; }
+  .app-scroll::-webkit-scrollbar-track { background: transparent; }
+  .skeleton { background: var(--skeleton); animation: skeleton-reveal .16s ease-out .18s both; }
+  @keyframes skeleton-reveal { from { opacity: 0; } to { opacity: 1; } }
+  .primary-action { @apply inline-flex items-center justify-center gap-2 rounded-2xl bg-brand-600 px-5 py-3 text-sm font-bold text-white transition-colors hover:bg-brand-700 disabled:opacity-50; min-height: 48px; }
+  .secondary-action { @apply inline-flex items-center justify-center gap-2 rounded-2xl border border-theme bg-card px-4 py-3 text-sm font-semibold text-base-theme transition-colors hover:bg-[var(--input)]; min-height: 48px; }
+  .text-action { @apply inline-flex items-center justify-center gap-1 text-sm font-bold; color: var(--accent); min-height: 44px; }
+  .nav-item { @apply flex items-center gap-3 rounded-2xl px-4 py-3 text-sm font-semibold text-muted-theme transition-colors; }
+  .nav-item:hover { background: var(--input); color: var(--text-base); }
+  .nav-item.active { color: var(--accent); background: var(--accent-soft); }
+  .daily-hero { position: relative; isolation: isolate; overflow: hidden; background: var(--hero); color: #fff; border-radius: 24px; padding: 28px; }
+  .daily-hero::after { content: ''; z-index: -1; position: absolute; width: 260px; height: 260px; border: 1px solid #ffffff14; border-radius: 50%; right: -100px; top: -95px; box-shadow: 0 0 0 28px #ffffff05, 0 0 0 56px #ffffff04, 0 0 0 84px #ffffff03; pointer-events: none; }
+  .daily-hero[data-status='over'] { --hero: #743d3b; }
+  .daily-hero[data-status='close'] { --hero: #65532d; }
+  .daily-amount { font-size: clamp(2.5rem, 4.5vw, 3.8rem); line-height: 1.25; font-weight: 800; letter-spacing: -.04em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .capture-amount { font-size: clamp(2.5rem, 8vw, 3.5rem); line-height: 1.3; font-weight: 800; letter-spacing: -.04em; }
+  .capture-amount { appearance: textfield; -moz-appearance: textfield; }
+  .capture-amount::-webkit-inner-spin-button, .capture-amount::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .habit-day { @apply flex flex-col items-center justify-center gap-2 rounded-2xl py-3 text-xs; min-width: 0; }
+  .habit-day[data-covered='true'] { background: var(--accent-soft); color: var(--accent); }
+  .habit-day[data-covered='false'] { background: var(--input); color: var(--text-muted); }
+  .skip-link { @apply fixed left-4 top-4 z-[100] rounded-xl bg-brand-600 p-3 font-bold text-white; transform: translateY(-180%); }
+  .skip-link:focus { transform: translateY(0); }
+  .dark .text-brand-600, .dark .text-brand-700 { color: var(--accent); }
+  .dark .text-brand-600.text-white, .dark .text-brand-700.text-white { color: #fff; }
+}
+
+@media (max-height: 800px) and (min-width: 1024px) {
+  .sidebar-note { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  .skeleton { animation: none; }
 }
 
 @layer utilities {
@@ -48,6 +126,24 @@
   .delay-225 { animation-delay: 225ms; }
   .pb-safe   { padding-bottom: env(safe-area-inset-bottom); }
   .pt-safe   { padding-top: env(safe-area-inset-top); }
+
+  /* ── Bottom-sheet clearance ──────────────────────────────────
+     Two separate hazards sit at the bottom of a phone screen, and a sheet has to clear
+     both or its action row becomes untappable:
+
+     1. The fixed mobile nav (`z-50`, --bottom-nav-height + `pb-safe`). A sheet must be **above z-50**
+        to be reachable — at exactly z-50 the winner is decided by DOM order, so a sheet
+        rendered inside page content loses to the nav while one rendered after it in
+        Layout happens to win. Use `z-[60]`, never `z-50`.
+     2. The home-indicator / gesture inset. `env(safe-area-inset-bottom)` is ~34px on
+        iPhones, so plain `p-4` (16px) leaves the buttons inside the system swipe zone.
+
+     `pb-safe` alone only supplies the inset; these add the sheet's own padding on top. */
+  /* Sheets flush to the bottom edge — pad their own action row. */
+  .pb-sheet     { padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
+  .pb-sheet-gap { padding-bottom: calc(1rem    + env(safe-area-inset-bottom)); }
+  /* Share the mobile nav height so overlays also clear its labels and safe area. */
+  .pb-nav-sheet { padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 0.75rem); }
 
   /* Hide scrollbar but keep scrolling functionality */
   .scrollbar-hide {
@@ -64,7 +160,14 @@
   .bg-input  { background-color: var(--bg-input); }
   .text-base-theme  { color: var(--text-base); }
   .text-muted-theme { color: var(--text-muted); }
+  .text-sub { color: var(--text-sub); }
+  .text-expense { color: var(--expense); }
+  .text-income { color: var(--income); }
   .border-theme     { border-color: var(--border); }
+  .goal-progress { appearance: none; border: 0; border-radius: 9999px; overflow: hidden; background: var(--input); }
+  .goal-progress::-webkit-progress-bar { background: var(--input); }
+  .goal-progress::-webkit-progress-value { background: var(--accent); border-radius: 9999px; }
+  .goal-progress::-moz-progress-bar { background: var(--accent); border-radius: 9999px; }
 
   @keyframes slide-in-right {
     from { transform: translateX(100%); }

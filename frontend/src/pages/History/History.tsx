@@ -1,46 +1,187 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import Icon from '@mdi/react'
-import { mdiTrashCan, mdiTune, mdiCash, mdiWallet } from '@mdi/js'
+import {
+  mdiTrashCan, mdiPencilOutline, mdiChevronLeft, mdiChevronRight, mdiCash, mdiWallet, mdiClose,
+  mdiTrayArrowDown, mdiFileDelimited, mdiFileDocumentOutline, mdiFilePdfBox, mdiLoading,
+  mdiCalendar, mdiMagnify, mdiInboxOutline,
+} from '@mdi/js'
 import clsx from 'clsx'
-import { useExpenses, currentMonth } from '../../hooks'
+import { useFetch, useCategories, useSummary, currentMonth } from '../../hooks'
 import { expensesApi } from '../../api'
-import { Amount, Empty, Skeleton, ConfirmModal } from '../../components/ui'
+import { Amount, Empty, ErrorState, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { useT, useI18n } from '../../store/i18n.store'
+import { exportHistory, type ExportFormat } from '../../utils/exportHistory'
+import { monthOffset, timestampToDateInput, dateInputToTimestamp } from '../../utils/localDate'
+import { fmt, round2 } from '../../utils/money'
+import { toast } from '../../store/toast.store'
+import { apiErrorMessage } from '../../utils/apiError'
+import type { Expense } from '../../types'
 
-function monthOffset(base: string, offset: number): string {
-  const [y, m] = base.split('-').map(Number)
-  const d = new Date(y, m - 1 + offset, 1)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+const QUICK = [5, 10, 20, 50, 100, 200, 500, 1000]
+
+/**
+ * What a single day added up to, shown on the right of its group header.
+ *
+ * Summed from the rows already passed through the type filter, so the figures always
+ * describe what is actually on screen — with Income selected a day reports only its
+ * income, and the spent figure disappears rather than quoting a total for rows the user
+ * cannot see. round2 because repeated float addition drifts (see utils/money).
+ *
+ * Each side is hidden at zero: most days are expense-only, and a permanent `฿0.00`
+ * beside every one of them is noise that makes the real numbers harder to scan.
+ */
+function DayTotals({ items }: { items: Expense[] }) {
+  const t = useT()
+  let spent = 0
+  let earned = 0
+  for (const e of items) {
+    if (e.type === 'expense') spent += e.amount
+    else earned += e.amount
+  }
+  spent = round2(spent)
+  earned = round2(earned)
+
+  return (
+    <div className="flex items-baseline gap-2 shrink-0 tabular-nums">
+      {spent > 0 && (
+        <span className="text-sm font-bold text-expense" aria-label={`${t('spent')} ${fmt(spent)}`}>
+          −฿{fmt(spent)}
+        </span>
+      )}
+      {earned > 0 && (
+        <span className="text-sm font-bold text-income" aria-label={`${t('income')} ${fmt(earned)}`}>
+          ฿{fmt(earned)}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function parseMonth(m: string) {
+  const [y, mo] = m.split('-').map(Number)
+  return { year: y, month: mo }
 }
 
 export default function History() {
   const t          = useT()
   const { lang }   = useI18n()
+  const [params] = useSearchParams()
   const [month, setMonth]   = useState(currentMonth())
   const [filter, setFilter] = useState<'all' | 'expense' | 'income'>('all')
-  const { data, loading, refetch } = useExpenses(month)
-  const monthRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({})
+  const [search, setSearch] = useState(params.get('search') ?? '')
+  const [debouncedSearch,setDebouncedSearch] = useState(search)
+  useEffect(() => { const timer=setTimeout(()=>setDebouncedSearch(search),250); return()=>clearTimeout(timer) },[search])
+  const [allMonths,setAllMonths] = useState(!!params.get('startDate'))
+  const [startDate,setStartDate] = useState(params.get('startDate') ?? '')
+  const [endDate,setEndDate] = useState(params.get('endDate') ?? '')
+  const [categoryFilter,setCategoryFilter] = useState(params.get('categoryId') ?? '')
+  const scope=JSON.stringify([month,allMonths,filter,debouncedSearch,startDate,endDate,categoryFilter])
+  const [page,setPage] = useState({scope:'',offset:0})
+  const offset=page.scope===scope?page.offset:0
+  const [showPicker, setShowPicker] = useState(false)
+  const [pickerYear, setPickerYear] = useState(() => parseMonth(currentMonth()).year)
+  const navigate   = useNavigate()
+  const { data: result, loading, error, refetch } = useFetch(()=>expensesApi.page({ month:allMonths?undefined:month,
+    type:filter==='all'?undefined:filter,search:debouncedSearch,categoryId:categoryFilter||undefined,
+    startDate:startDate||undefined,endDate:endDate||undefined,offset }),[scope,offset])
+  const data=result?.items
+  useEffect(() => {
+    if (!loading && !error && result && result.offset === offset && offset > 0 && offset >= result.total) {
+      setPage({ scope, offset: Math.max(0, Math.ceil(result.total / result.limit) - 1) * result.limit })
+    }
+  }, [result, loading, error, offset, scope])
+  const { data: summary, loading: loadingSummary, error: summaryError, refetch: refetchSummary } = useSummary(month)
+  const { data: categories } = useCategories()
   const [confirmState, setConfirmState] = useState<{
     open: boolean; message: string; onConfirm: () => void
   }>({ open: false, message: '', onConfirm: () => {} })
+
+  // ── Edit ─────────────────────────────────────────────────────
+  const [editExpense,    setEditExpense]    = useState<Expense | null>(null)
+  const [editAmount,     setEditAmount]     = useState('')
+  const [editCatId,      setEditCatId]      = useState('')
+  const [editNote,       setEditNote]       = useState('')
+  const [editDate,       setEditDate]       = useState('')
+  const [editSubmitting, setEditSubmitting] = useState(false)
+
+  const openEdit = (e: Expense) => {
+    setEditExpense(e)
+    setEditAmount(String(e.amount))
+    setEditCatId(e.categoryId)
+    setEditNote(e.note ?? '')
+    setEditDate(timestampToDateInput(e.occurredAt))
+  }
+  const closeEdit = () => { setEditExpense(null); setEditSubmitting(false) }
+
+  // Mirrors the `CHECK (amount > 0)` constraint on the expenses table.
+  const editAmountNum   = Number(editAmount)
+  const editAmountValid = editAmount !== '' && Number.isFinite(editAmountNum) && editAmountNum >= 0.01
+
+  const handleEditSave = async () => {
+    if (!editExpense || !editCatId) return
+    if (!editAmountValid) { toast.error(t('err_amount_positive')); return }
+    setEditSubmitting(true)
+    try {
+      await expensesApi.update(editExpense.id, {
+        amount: editAmountNum,
+        categoryId: editCatId,
+        note: editNote || undefined,
+        occurredAt: dateInputToTimestamp(editDate),
+      })
+      closeEdit()
+      refetch()
+      refetchSummary()
+    } catch (err) {
+      setEditSubmitting(false)
+      toast.error(apiErrorMessage(err, t('err_save_failed'), t('err_offline')))
+    }
+  }
+
+  const editFilteredCats = categories?.filter(c => c.type === editExpense?.type) ?? []
 
   const askConfirm = (message: string, onConfirm: () => void) =>
     setConfirmState({ open: true, message, onConfirm })
   const closeConfirm = () => setConfirmState(s => ({ ...s, open: false }))
 
-  // Scroll to current month on mount
-  useEffect(() => {
-    const button = monthRefs.current[month]
-    if (button) {
-      button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' })
-    }
-  }, [month])
+  // ── Export ───────────────────────────────────────────────────
+  const [showExport, setShowExport]   = useState(false)
+  const [exportFrom, setExportFrom]   = useState(currentMonth())
+  const [exportTo, setExportTo]       = useState(currentMonth())
+  const [exportFmt, setExportFmt]     = useState<ExportFormat>('csv')
+  const [exporting, setExporting]     = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
 
-  const filtered = data?.filter(e => filter === 'all' || e.type === filter) ?? []
+  const handleExport = async () => {
+    setExporting(true)
+    setExportError(null)
+    try {
+      const [from, to] = exportFrom <= exportTo ? [exportFrom, exportTo] : [exportTo, exportFrom]
+      const rows = await expensesApi.exportAll({ from, to })
+      if (!rows.length) { setExportError(t('export_empty')); return }
+      await exportHistory(exportFmt, rows, { from, to, lang })
+      setShowExport(false)
+    } catch (err) {
+      setExportError(apiErrorMessage(err, t('err_load_failed'), t('err_offline')))
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('transactions') || types.includes('dashboard')) { refetch(); refetchSummary() }
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [refetch, refetchSummary])
+
+  const filtered = data ?? []
 
   const grouped = filtered.reduce<Record<string, typeof filtered>>((acc, e) => {
-    const day = e.occurredAt.slice(0, 10)
+    const day = timestampToDateInput(e.occurredAt)
     ;(acc[day] ??= []).push(e)
     return acc
   }, {})
@@ -48,51 +189,111 @@ export default function History() {
   const handleDelete = async (id: string) => {
     askConfirm(t('delete_confirm'), async () => {
       closeConfirm()
-      await expensesApi.remove(id)
-      refetch()
+      try {
+        await expensesApi.remove(id)
+        refetch()
+        refetchSummary()
+      } catch (err) {
+        toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline')))
+      }
     })
   }
 
+  const handlePickerSelect = (year: number, mo: number) => {
+    const m = `${year}-${String(mo).padStart(2, '0')}`
+    setMonth(m)
+    setShowPicker(false)
+  }
+
+  const { year: curYear, month: curMo } = parseMonth(month)
+  const { year: nowYear, month: nowMo } = parseMonth(currentMonth())
+
+  const MONTH_NAMES_TH = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
+  const MONTH_NAMES_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const monthNames = lang === 'th' ? MONTH_NAMES_TH : MONTH_NAMES_EN
+
+  const displayLabel = new Date(month + '-01').toLocaleDateString(
+    lang === 'th' ? 'th-TH' : 'en-US',
+    { month: 'long', year: 'numeric' },
+  )
+
+  const isFutureMonth = (y: number, mo: number) =>
+    y > nowYear || (y === nowYear && mo > nowMo)
+
   return (
-    <div className="px-4 pt-6 pb-4">
+    <div className="px-4 pt-6 pb-4 sm:px-6 lg:px-2">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-extrabold text-base-theme tracking-tight">{t('history')}</h1>
-        <Icon path={mdiTune} size={0.8} className="text-muted-theme" />
+        <div><h1 className="page-heading">{t('nav_transactions')}</h1><p className="page-description">{t('ux_history_sub')}</p></div>
+        <button
+          onClick={() => { setExportError(null); setShowExport(true) }}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-900/20
+                     text-brand-600 text-xs font-semibold hover:bg-brand-100 dark:hover:bg-brand-900/30 transition-colors"
+        >
+          <Icon path={mdiTrayArrowDown} size={0.7} />
+          {t('export')}
+        </button>
       </div>
 
-      {/* Month pills */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 scrollbar-hide" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-        {Array.from({ length: 12 }, (_, i) => monthOffset(currentMonth(), -i)).reverse().map(m => (
-          <button
-            ref={el => { if (el) monthRefs.current[m] = el }}
-            key={m}
-            onClick={() => setMonth(m)}
-            className={clsx(
-              'flex-shrink-0 px-8 py-2 rounded-full text-xs font-semibold transition-colors',
-              month === m
-                ? 'bg-brand-600 text-white'
-                : 'bg-card text-muted-theme border border-theme',
-            )}
-          >
-            {new Date(m + '-01').toLocaleDateString(
-              lang === 'th' ? 'th-TH' : 'en-US',
-              { month: 'short', year: '2-digit' },
-            )}
-          </button>
-        ))}
+      {/* Month navigator */}
+      <button className="text-action mt-2" onClick={()=>navigate('/capture')}>{t('dc_batch')} →</button>
+      <div className="flex items-center justify-between bg-card border border-theme rounded-2xl px-3 py-2 mb-4 mt-6">
+        <button
+          onClick={() => setMonth(m => monthOffset(m, -1))}
+          aria-label={t('ux_previous_month')}
+          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-[var(--input)] text-muted-theme transition-colors"
+        >
+          <Icon path={mdiChevronLeft} size={1} />
+        </button>
+
+        <button
+          onClick={() => {
+            setPickerYear(curYear)
+            setShowPicker(true)
+          }}
+          className="flex-1 text-center font-bold text-sm text-base-theme hover:text-brand-600 transition-colors py-1"
+        >
+          {displayLabel}
+        </button>
+
+        <button
+          onClick={() => setMonth(m => monthOffset(m, 1))}
+          aria-label={t('ux_next_month')}
+          disabled={curYear === nowYear && curMo >= nowMo}
+          className="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-[var(--input)] text-muted-theme disabled:opacity-30 transition-colors"
+        >
+          <Icon path={mdiChevronRight} size={1} />
+        </button>
       </div>
 
+      {loadingSummary ? <div className="grid grid-cols-2 gap-3 mb-5"><Skeleton className="h-[84px]" /><Skeleton className="h-[84px]" /></div> : summaryError ? <ErrorState compact message={t('err_load_failed')} onRetry={refetchSummary} retryLabel={t('action_retry')} /> : summary && <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="surface px-4 py-4"><p className="text-xs text-muted-theme mb-2">{t('expense')}</p><Amount value={summary.totalExpense} type="expense" size="lg" /></div>
+        <div className="surface px-4 py-4"><p className="text-xs text-muted-theme mb-2">{t('income')}</p><Amount value={summary.totalIncome} type="income" size="lg" /></div>
+      </div>}
+      <div className="flex items-center gap-2 bg-card border border-theme rounded-2xl px-4 mb-4">
+        <Icon path={mdiMagnify} size={0.85} className="text-muted-theme shrink-0" />
+        <input type="search" aria-label={t('ux_search')} placeholder={t('ux_search')} value={search} onChange={e => setSearch(e.target.value)} className="min-w-0 w-full py-3.5 bg-transparent text-sm text-base-theme rounded-lg" />
+        {search && <button onClick={() => setSearch('')} aria-label={t('ux_search_clear')} className="text-action shrink-0 !text-xs">{t('ux_clear')}</button>}
+      </div>
+      <details className="surface p-4 mb-4" open={allMonths||!!startDate||!!endDate||!!categoryFilter||undefined}>
+        <summary className="text-sm font-semibold cursor-pointer">{t('dc_all_months')}</summary>
+        <label className="flex gap-2 text-sm mt-3"><input type="checkbox" checked={allMonths} onChange={e=>setAllMonths(e.target.checked)}/>{t('dc_all_months')}</label>
+        <div className="grid sm:grid-cols-3 gap-3 mt-3"><label className="field-label">{t('dc_date_from')}<input type="date" className="field-input" max={endDate||undefined} value={startDate} onChange={e=>{setStartDate(e.target.value);setAllMonths(true)}}/></label>
+          <label className="field-label">{t('dc_date_to')}<input type="date" className="field-input" min={startDate||undefined} value={endDate} onChange={e=>{setEndDate(e.target.value);setAllMonths(true)}}/></label>
+          <label className="field-label">{t('category')}<select className="field-input" value={categoryFilter} onChange={e=>setCategoryFilter(e.target.value)}><option value="">{t('all')}</option>{categories?.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label></div>
+      </details>
+      {(allMonths || search || startDate || endDate || categoryFilter) && <p className="text-xs text-muted-theme mb-4">{t('dc_month_totals')} · {displayLabel}</p>}
       {/* Type filter */}
-      <div className="flex bg-slate-100 dark:bg-slate-800 rounded-2xl p-1 gap-1 mb-4">
+      <div className="flex bg-[var(--input)] rounded-2xl p-1 gap-1 mb-5">
         {(['all', 'expense', 'income'] as const).map(f => (
           <button
             key={f}
             onClick={() => setFilter(f)}
+            aria-pressed={filter === f}
             className={clsx(
               'flex-1 py-2 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5',
               filter === f
-                ? 'bg-white dark:bg-slate-700 text-base-theme shadow-sm'
+                ? 'bg-card text-brand-600 shadow-sm'
                 : 'text-muted-theme',
             )}
           >
@@ -108,34 +309,56 @@ export default function History() {
       </div>
 
       {/* List */}
+      {result && <div className="flex items-center justify-between gap-2 mb-4 text-xs text-muted-theme"><span>{t('dc_results')}: {result.total} · {offset+ (result.total?1:0)}–{offset+result.items.length}</span>
+        <div className="flex gap-2"><button className="secondary-action !text-xs !px-3" disabled={!offset} onClick={()=>setPage({scope,offset:Math.max(0,offset-50)})}>{t('dc_prev')}</button><button className="secondary-action !text-xs !px-3" disabled={!result.hasMore} onClick={()=>setPage({scope,offset:offset+50})}>{t('dc_next')}</button></div></div>}
+      {result && (result.hasMore || offset > 0) && <p className="text-xs text-muted-theme mb-4">{t('dc_page_totals')}</p>}
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-16 w-full" />
           ))}
         </div>
+      ) : error ? (
+        /* A failed request must not render as "no transactions" — that reads as a
+           truthful zero and makes the user distrust every other figure. */
+        <ErrorState message={t('err_load_failed')} onRetry={refetch} retryLabel={t('action_retry')} />
       ) : filtered.length === 0 ? (
-        <Empty icon="�" title={t('no_transactions')} sub={t('try_filter')} />
+        (search || filter!=='all' || categoryFilter || startDate || endDate) ? (
+          <Empty
+            icon={mdiMagnify}
+            title={t('empty_filtered_title')}
+            sub={t('empty_filtered_sub')}
+            action={{ label: t('action_clear_filter'), onPress: () => { setFilter('all'); setSearch(''); setStartDate(''); setEndDate(''); setCategoryFilter(''); setAllMonths(false) } }}
+          />
+        ) : (
+          <Empty
+            icon={mdiInboxOutline}
+            title={t('empty_no_tx_title')}
+            sub={t('empty_no_tx_sub')}
+            action={{ label: t('action_add_first'), onPress: () => navigate('/add') }}
+          />
+        )
       ) : (
-        <div className="space-y-5 animate-fade-in">
+        <div className="space-y-5">
           {Object.entries(grouped)
             .sort(([a], [b]) => b.localeCompare(a))
             .map(([date, items]) => (
               <div key={date}>
-                {/* Date header */}
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-muted-theme uppercase tracking-wide">
+                <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <p className="text-xs font-bold text-muted-theme uppercase tracking-wide truncate">
                     {new Date(date + 'T00:00:00').toLocaleDateString(
                       lang === 'th' ? 'th-TH' : 'en-US',
                       { weekday: 'short', day: 'numeric', month: 'short' },
                     )}
+                    {/* The count moves in beside the date so the right edge belongs to the
+                        money, which is what the eye scans a day list for. */}
+                    <span className="ml-1.5 font-semibold normal-case tracking-normal opacity-70">
+                      · {items.length} {items.length > 1 ? t('items') : t('item')}
+                    </span>
                   </p>
-                  <p className="text-xs font-semibold text-muted-theme">
-                    {items.length} {items.length > 1 ? t('items') : t('item')}
-                  </p>
+                  <DayTotals items={items} />
                 </div>
 
-                {/* Items */}
                 <div className="bg-card rounded-2xl border border-theme shadow-sm overflow-hidden">
                   {items.map((e, idx) => (
                     <div
@@ -171,14 +394,29 @@ export default function History() {
 
                       <Amount value={e.amount} type={e.type} size="md" />
 
-                      <button
-                        onClick={() => handleDelete(e.id)}
-                        className="ml-1 p-1.5 rounded-lg text-slate-300 dark:text-slate-600
-                                   hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20
-                                   transition-colors opacity-0 group-hover:opacity-100"
-                      >
-                        <Icon path={mdiTrashCan} size={0.65} />
-                      </button>
+                      {/* Always visible on touch — there is no hover to reveal them there,
+                          so `opacity-0` alone made edit/delete unreachable on mobile.
+                          Desktop keeps the reveal-on-hover behaviour. */}
+                      <div className="flex gap-0.5 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                        <button
+                          onClick={() => openEdit(e)}
+                          aria-label={`${t('action_edit')} ${e.category?.name ?? ''}`.trim()}
+                          className="p-2 rounded-lg text-muted-theme
+                                     hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20
+                                     transition-colors"
+                        >
+                          <Icon path={mdiPencilOutline} size={0.7} />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(e.id)}
+                          aria-label={`${t('action_delete')} ${e.category?.name ?? ''}`.trim()}
+                          className="p-2 rounded-lg text-muted-theme
+                                     hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20
+                                     transition-colors"
+                        >
+                          <Icon path={mdiTrashCan} size={0.7} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -186,6 +424,293 @@ export default function History() {
             ))}
         </div>
       )}
+
+      {/* Month/Year Picker Modal */}
+      {showPicker && (
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center px-4 pt-4 pb-sheet-gap lg:pb-4 bg-black/40"
+          onClick={() => setShowPicker(false)}>
+          <div className="w-full max-w-sm bg-card rounded-3xl p-5 animate-fade-up"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Picker header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-base-theme">{t('select_month') ?? 'เลือกเดือน'}</h3>
+              <button onClick={() => setShowPicker(false)} className="p-1 text-muted-theme">
+                <Icon path={mdiClose} size={0.9} />
+              </button>
+            </div>
+
+            {/* Year navigation */}
+            <div className="flex items-center justify-between mb-4 bg-[var(--input)] rounded-xl px-3 py-2">
+              <button
+                onClick={() => setPickerYear(y => y - 1)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-card text-muted-theme transition-colors"
+              >
+                <Icon path={mdiChevronLeft} size={0.9} />
+              </button>
+              <span className="font-bold text-base-theme text-sm">
+                {lang === 'th' ? pickerYear + 543 : pickerYear}
+              </span>
+              <button
+                onClick={() => setPickerYear(y => y + 1)}
+                disabled={pickerYear >= nowYear}
+                className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-card text-muted-theme disabled:opacity-30 transition-colors"
+              >
+                <Icon path={mdiChevronRight} size={0.9} />
+              </button>
+            </div>
+
+            {/* Month grid */}
+            <div className="grid grid-cols-3 gap-2">
+              {monthNames.map((name, idx) => {
+                const mo = idx + 1
+                const isSelected = pickerYear === curYear && mo === curMo
+                const isFuture = isFutureMonth(pickerYear, mo)
+                return (
+                  <button
+                    key={mo}
+                    onClick={() => !isFuture && handlePickerSelect(pickerYear, mo)}
+                    disabled={isFuture}
+                    className={clsx(
+                      'py-2.5 rounded-xl text-xs font-semibold transition-all',
+                      isSelected
+                        ? 'bg-brand-600 text-white shadow-sm'
+                        : isFuture
+                          ? 'text-muted-theme opacity-30 cursor-not-allowed'
+                          : 'bg-[var(--input)] text-base-theme hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-900/20',
+                    )}
+                  >
+                    {name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExport && (
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center px-4 pt-4 pb-sheet-gap lg:pb-4 bg-black/40"
+          onClick={() => !exporting && setShowExport(false)}>
+          <div className="w-full max-w-sm bg-card rounded-3xl p-5 animate-fade-up"
+            onClick={e => e.stopPropagation()}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-base-theme flex items-center gap-2">
+                <Icon path={mdiTrayArrowDown} size={0.8} /> {t('export_history')}
+              </h3>
+              <button onClick={() => !exporting && setShowExport(false)} className="p-1 text-muted-theme">
+                <Icon path={mdiClose} size={0.9} />
+              </button>
+            </div>
+
+            {/* Month range */}
+            <div className="flex gap-3 mb-4">
+              <label className="flex-1">
+                <span className="block text-xs font-semibold text-muted-theme mb-1">{t('export_from')}</span>
+                <input
+                  type="month"
+                  value={exportFrom}
+                  max={currentMonth()}
+                  onChange={e => setExportFrom(e.target.value)}
+                  className="w-full bg-[var(--input)] border border-theme rounded-xl px-3 py-2 text-sm text-base-theme"
+                />
+              </label>
+              <label className="flex-1">
+                <span className="block text-xs font-semibold text-muted-theme mb-1">{t('export_to')}</span>
+                <input
+                  type="month"
+                  value={exportTo}
+                  max={currentMonth()}
+                  onChange={e => setExportTo(e.target.value)}
+                  className="w-full bg-[var(--input)] border border-theme rounded-xl px-3 py-2 text-sm text-base-theme"
+                />
+              </label>
+            </div>
+
+            {/* Format picker */}
+            <p className="text-xs font-semibold text-muted-theme mb-2">{t('export_format')}</p>
+            <div className="space-y-2 mb-5">
+              {([
+                { id: 'csv', icon: mdiFileDelimited, label: 'CSV', desc: t('export_csv_desc') },
+                { id: 'txt', icon: mdiFileDocumentOutline, label: 'TXT', desc: t('export_txt_desc') },
+                { id: 'pdf', icon: mdiFilePdfBox, label: 'PDF', desc: t('export_pdf_desc') },
+              ] as const).map(f => (
+                <button
+                  key={f.id}
+                  onClick={() => setExportFmt(f.id)}
+                  className={clsx(
+                    'w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left',
+                    exportFmt === f.id
+                      ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20'
+                      : 'border-theme hover:bg-[var(--input)]',
+                  )}
+                >
+                  <Icon path={f.icon} size={0.9} className={exportFmt === f.id ? 'text-brand-600' : 'text-muted-theme'} />
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold text-base-theme">{f.label}</p>
+                    <p className="text-xs text-muted-theme">{f.desc}</p>
+                  </div>
+                  <span className={clsx(
+                    'w-4 h-4 rounded-full border-2',
+                    exportFmt === f.id ? 'border-brand-500 bg-brand-500' : 'border-slate-300 dark:border-slate-600',
+                  )} />
+                </button>
+              ))}
+            </div>
+
+            {exportError && (
+              <p className="text-xs text-rose-500 font-medium mb-3 text-center">{exportError}</p>
+            )}
+
+            <button
+              onClick={handleExport}
+              disabled={exporting}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-brand-600 text-white
+                         font-semibold text-sm hover:bg-brand-700 disabled:opacity-60 transition-colors"
+            >
+              {exporting ? (
+                <><Icon path={mdiLoading} size={0.8} className="animate-spin" /> {t('exporting')}</>
+              ) : (
+                <><Icon path={mdiTrayArrowDown} size={0.8} /> {t('export_download')}</>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {editExpense && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center px-4 pt-4 pb-sheet-gap lg:pb-4 bg-black/40"
+          onClick={() => !editSubmitting && closeEdit()}
+        >
+          <div
+            className="w-full max-w-sm bg-card rounded-3xl animate-fade-up overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-theme">
+              <h3 className="font-bold text-base-theme flex items-center gap-2">
+                <Icon path={mdiPencilOutline} size={0.75} className="text-brand-500" />
+                {t('edit_transaction')}
+              </h3>
+              <button onClick={closeEdit} className="p-1 text-muted-theme">
+                <Icon path={mdiClose} size={0.9} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto max-h-[72vh] px-5 py-4 space-y-4">
+              {/* Type badge (read-only) */}
+              <span className={clsx(
+                'inline-flex px-3 py-1 rounded-full text-xs font-semibold',
+                editExpense.type === 'expense'
+                  ? 'bg-rose-50 text-rose-500 dark:bg-rose-900/20'
+                  : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20',
+              )}>
+                {editExpense.type === 'expense' ? t('expense') : t('income_tab')}
+              </span>
+
+              {/* Amount */}
+              <div className="bg-[var(--input)] rounded-2xl px-4 py-3">
+                <label className="text-xs font-semibold text-muted-theme block mb-1 uppercase tracking-wide">
+                  {t('amount')}
+                </label>
+                <input
+                  type="number" inputMode="decimal" step="0.01" value={editAmount}
+                  onChange={e => setEditAmount(e.target.value)} min={0}
+                  className="w-full text-3xl font-extrabold text-base-theme bg-transparent outline-none
+                             placeholder:text-slate-300 dark:placeholder:text-slate-600 tracking-tight"
+                />
+                <div className="flex gap-1.5 mt-2 flex-wrap">
+                  {QUICK.map(v => (
+                    <button key={v} type="button"
+                      onClick={() => setEditAmount(p => p ? String(Number(p) + v) : String(v))}
+                      className="px-2.5 py-1 rounded-full bg-brand-50 dark:bg-brand-900/30
+                                 text-brand-600 text-xs font-semibold active:bg-brand-100 transition-colors">
+                      +{v}
+                    </button>
+                  ))}
+                  <button type="button" onClick={() => setEditAmount('')}
+                    className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-700
+                               text-muted-theme text-xs font-semibold transition-colors">
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="text-xs font-semibold text-muted-theme block mb-2 uppercase tracking-wide px-1">
+                  {t('category')}
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {editFilteredCats.map(cat => (
+                    <button key={cat.id} type="button" onClick={() => setEditCatId(cat.id)}
+                      className={clsx(
+                        'flex flex-col items-center justify-center gap-1 py-3 rounded-2xl border-2 transition-all bg-card',
+                        editCatId === cat.id
+                          ? 'border-brand-500 bg-brand-50 dark:bg-brand-900/20 shadow-sm'
+                          : 'border-transparent',
+                      )}>
+                      <div className="w-8 h-8 flex items-center justify-center rounded-xl">
+                        <IconDisplay icon={cat.icon} color={cat.color} size="lg" />
+                      </div>
+                      <span className="text-[10px] font-semibold text-muted-theme leading-tight text-center px-1 truncate w-full">
+                        {cat.name}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Date */}
+              <div className="bg-[var(--input)] rounded-2xl px-4 py-3">
+                <label className="text-xs font-semibold text-muted-theme block mb-1 uppercase tracking-wide">
+                  {t('date')}
+                </label>
+                <div className="flex items-center gap-3">
+                  <Icon path={mdiCalendar} size={0.8} color="#818cf8" />
+                  <input type="date" value={editDate}
+                    onChange={e => setEditDate(e.target.value)}
+                    max={new Date().toISOString().slice(0, 10)}
+                    className="flex-1 text-base-theme font-semibold bg-transparent outline-none" />
+                </div>
+              </div>
+
+              {/* Note */}
+              <div className="bg-[var(--input)] rounded-2xl px-4 py-3">
+                <label className="text-xs font-semibold text-muted-theme block mb-1 uppercase tracking-wide">
+                  {t('note_optional')}
+                </label>
+                <input type="text" placeholder={t('note_placeholder')} value={editNote}
+                  onChange={e => setEditNote(e.target.value)} maxLength={200}
+                  className="w-full text-base-theme font-medium bg-transparent outline-none placeholder:text-muted-theme" />
+              </div>
+
+              {/* Save */}
+              <button
+                onClick={handleEditSave}
+                disabled={editSubmitting || !editAmount || !editCatId}
+                className={clsx(
+                  'w-full py-3.5 rounded-2xl font-bold text-white text-sm transition-all active:scale-[0.98]',
+                  editSubmitting || !editAmount || !editCatId
+                    ? 'bg-slate-300 dark:bg-slate-700 cursor-not-allowed'
+                    : editExpense.type === 'expense'
+                      ? 'bg-brand-600 hover:bg-brand-700'
+                      : 'bg-emerald-500 hover:bg-emerald-600',
+                )}>
+                {editSubmitting
+                  ? t('updating')
+                  : editExpense.type === 'expense' ? t('update_expense') : t('update_income')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConfirmModal
         open={confirmState.open}
         message={confirmState.message}

@@ -2,73 +2,87 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Stamped into the bundle so telemetry can attribute an event to a release without
+// the client having to guess or the server having to infer it.
+const appVersion = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7)
+  ?? process.env.APP_VERSION
+  ?? 'dev'
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(appVersion),
+  },
+
   plugins: [
     react(),
     VitePWA({
+      // injectManifest, not generateSW: a generated worker cannot carry a `push`
+      // listener, and push is the whole point of the daily reminder. src/sw.ts also
+      // keeps online navigation fresh while preserving an offline app shell.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'icons/*.svg'],
 
       // ── Web App Manifest ────────────────────────────────────
       manifest: {
+        // Matches the previous inferred ID (start_url) so existing installs stay the same app.
+        id: '/',
         name: 'MoneyFlow — Expense Tracker',
         short_name: 'MoneyFlow',
         description: 'Track every baht, effortlessly.',
-        theme_color: '#4f46e5',
-        background_color: '#f8fafc',
+        theme_color: '#087f75',
+        background_color: '#f5f6f8',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
         scope: '/',
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
+          { src: '/icons/icon-192.png',          sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-512.png',          sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icons/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
 
-      // ── Workbox Service Worker strategy ────────────────────
-      workbox: {
-        // Cache app shell (HTML, JS, CSS) — network-first, fallback to cache
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/],
-
-        runtimeCaching: [
-          {
-            // API calls: network-first, 5s timeout, fallback to cache
-            urlPattern: /^https?:\/\/.*\/api\//,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'api-cache',
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-          {
-            // Google Fonts: cache-first
-            urlPattern: /^https:\/\/fonts\.(googleapis|gstatic)\.com/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
+      // Caching rules live in src/sw.ts. This controls only what is *precached* —
+      // downloaded in full the moment the service worker installs.
+      //
+      // It used to be `**/*.{js,css,...}`, i.e. every chunk: 41 files, 2.18 MB, fetched
+      // on the first visit whether or not the user ever opened the screen that needed
+      // them. That silently cancelled out the route-level code splitting — recharts,
+      // jspdf and html2canvas were all pulled down up front regardless. Precache the
+      // shell; let the lazy routes arrive over the network when they are first opened,
+      // and stay in the runtime cache after that.
+      injectManifest: {
+        globPatterns: [
+          'index.html',
+          'theme-init.js',
+          'assets/index-*.js',
+          'assets/index-*.css',
+          'icons/*.png',
+          '*.svg',
+          'manifest.webmanifest',
         ],
       },
     }),
   ],
 
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          // Split recharts (~1.2MB) into its own chunk — loaded only with charts
-          recharts: ['recharts'],
-        },
-      },
-    },
+    // No `manualChunks` for recharts.
+    //
+    // The old config named it as a manual chunk with the comment "loaded only with
+    // charts". It did the opposite: naming a manual chunk hoists it, and because the
+    // entry is the common parent of every lazy route that needs recharts, Rollup emitted
+    // it as a *static* import of the entry chunk. Verified in the built output —
+    // `dist/assets/index-*.js` contained `from"./recharts-*.js"` — so 564 kB of charting
+    // library was fetched before the login screen could paint.
+    //
+    // Letting Rollup decide puts recharts inside the Reports chunk graph, reachable only
+    // through the lazy `/reports` route. Measured on this codebase:
+    //   before  entry 398 kB + recharts 564 kB = 962 kB (288 kB gzip) on first paint
+    //   after   entry 541 kB                             (175 kB gzip)
+    rollupOptions: {},
   },
 
   server: {
@@ -81,7 +95,10 @@ export default defineConfig({
         },
       },
     watch: {
-      usePolling: true, // เพิ่มตัวนี้เพื่อให้ Docker ตรวจจับการเซฟไฟล์ได้แน่นอนขึ้น
+      // Polling is what makes bind-mounted files visible inside a container, but it costs
+      // a constant CPU spin — pure waste when running `npm run dev` directly on the host.
+      // docker-compose sets VITE_USE_POLLING=true for the containerised path.
+      usePolling: process.env.VITE_USE_POLLING === 'true',
     },
   },
 })

@@ -26,7 +26,8 @@ export class Expense {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   amount: number
 
-  @Column({ type: 'enum', enum: ['expense', 'income'] })
+  // See Category.type — varchar + CHECK, matching the deployed schema.
+  @Column({ type: 'varchar', length: 10 })
   type: EntryType
 
   @Column({ type: 'text', nullable: true })
@@ -37,6 +38,16 @@ export class Expense {
 
   @Column({ name: 'occurred_at', type: 'timestamptz' })
   occurredAt: Date
+
+  /**
+   * Client-generated id for de-duplicating a replayed create.
+   *
+   * The offline queue retries whenever a response goes missing, which includes the case
+   * where the write actually succeeded. Unique per user (partial index), so a replay
+   * returns the original row instead of writing a second one.
+   */
+  @Column({ name: 'client_key', type: 'varchar', length: 64, nullable: true })
+  clientKey: string | null
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
@@ -50,9 +61,9 @@ export class Expense {
   @JoinColumn({ name: 'allocation_id' })
   allocation: Allocation
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date
 }

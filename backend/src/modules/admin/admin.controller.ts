@@ -37,4 +37,9 @@ export class AdminController {
   deleteUser(@Param('id') id: string) {
     return this.svc.deleteUser(id)
   }
+
+  @Get('ai-usage')
+  getAiUsage() {
+    return this.svc.getAiUsage()
+  }
 }

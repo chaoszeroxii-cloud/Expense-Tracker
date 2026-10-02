@@ -1,0 +1,80 @@
+﻿[
+    {
+        "service":  "backend",
+        "command":  [
+                        "sh",
+                        "-c",
+                        "npm run build \u0026\u0026 npm run migration:run \u0026\u0026 npm run start:dev"
+                    ],
+        "target":  "production",
+        "volumes":  [
+                        {
+                            "type":  "bind",
+                            "target":  "/app"
+                        },
+                        {
+                            "type":  "volume",
+                            "target":  "/app/node_modules"
+                        }
+                    ],
+        "ports":  [
+                      {
+                          "mode":  "ingress",
+                          "target":  3001,
+                          "published":  "3001",
+                          "protocol":  "tcp"
+                      }
+                  ]
+    },
+    {
+        "service":  "frontend",
+        "command":  [
+
+                    ],
+        "target":  "production",
+        "volumes":  [
+                        {
+                            "type":  "bind",
+                            "target":  "/app"
+                        },
+                        {
+                            "type":  "volume",
+                            "target":  "/app/node_modules"
+                        }
+                    ],
+        "ports":  [
+                      {
+                          "mode":  "ingress",
+                          "target":  5173,
+                          "published":  "3000",
+                          "protocol":  "tcp"
+                      },
+                      {
+                          "mode":  "ingress",
+                          "target":  80,
+                          "published":  "3000",
+                          "protocol":  "tcp"
+                      }
+                  ]
+    },
+    {
+        "service":  "db",
+        "command":  null,
+        "target":  null,
+        "volumes":  [
+                        {
+                            "type":  "volume",
+                            "target":  "/var/lib/postgresql/data"
+                        }
+                    ],
+        "ports":  [
+                      {
+                          "mode":  "ingress",
+                          "host_ip":  "127.0.0.1",
+                          "target":  5432,
+                          "published":  "5432",
+                          "protocol":  "tcp"
+                      }
+                  ]
+    }
+]

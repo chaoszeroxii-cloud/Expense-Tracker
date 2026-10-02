@@ -1,11 +1,17 @@
 import axios, { AxiosError } from 'axios'
 import { useAuthStore } from '../store/auth.store'
+import type { BillInput, GoalInput, PlanningOverview } from '../types/planning'
+import type { BankMailEntry, BankMailSettings, BankMailStatus, BankMailSyncResult } from '../types/bankMail'
+import type { PinnedEntry, CaptureRow, BatchPreview, ExpensePage, PayCycle, BillReminders } from '../types/companion'
 import type {
   PeriodSummary, CategoryBreakdown, MonthlyTrend,
   Expense, Category, CreateExpensePayload, BalanceSummary,
   BudgetItem, Loan, LoanSummary, Investment, InvestmentTransaction,
   TaxDeduction, TaxCalculationResult, TaxDeductionType,
-  EmergencyFundSummary, AdminUser, AdminStats,
+  EmergencyFundSummary, AdminUser, AdminStats, AiRecommendation,
+  AllocationPlanPreview, DailyBrief, DailySummary, UpdatePreferencesPayload,
+  CompleteOnboardingPayload, Coverage, WeeklyReview, BudgetSuggestion,
+  SpendingPlanView,
 } from '../types'
 
 const http = axios.create({
@@ -21,11 +27,20 @@ http.interceptors.request.use((config) => {
   return config
 })
 
-// ── Response interceptor: auto-logout on 401 ───────────────
+// A rejected sign-in is not an expired session. Preserve the response and form
+// state so public auth screens can explain the failure instead of reloading.
+const publicAuthPosts = new Set([
+  '/auth/login', '/auth/register', '/auth/google/verify', '/auth/facebook/verify',
+  '/auth/forgot-password', '/auth/reset-password',
+])
+
+// ── Response interceptor: auto-logout on protected-route 401 ─
 http.interceptors.response.use(
   (res) => res,
   (err: AxiosError) => {
-    if (err.response?.status === 401) {
+    const isPublicAuth = err.config?.method?.toLowerCase() === 'post'
+      && publicAuthPosts.has(err.config?.url ?? '')
+    if (err.response?.status === 401 && !isPublicAuth) {
       useAuthStore.getState().clearAuth()
       window.location.href = '/login'
     }
@@ -34,8 +49,24 @@ http.interceptors.response.use(
 )
 
 // ── Auth ─────────────────────────────────────────────────────
+export const bankMailApi = {
+  status: () => http.get<BankMailStatus>('/bank-mail/status').then(r => r.data),
+  connect: () => http.post<{ url: string }>('/bank-mail/connect').then(r => r.data),
+  complete: (state: string, code: string) => http.post<{ connected: boolean }>('/bank-mail/complete', { state, code }).then(r => r.data),
+  disconnect: () => http.delete<{ ok: boolean; revoked: boolean }>('/bank-mail/connection').then(r => r.data),
+  settings: (value: BankMailSettings) => http.put('/bank-mail/settings', value).then(r => r.data),
+  sync: () => http.post<BankMailSyncResult>('/bank-mail/sync').then(r => r.data),
+  entries: (status: BankMailEntry['status'], offset = 0) =>
+    http.get<{ rows: BankMailEntry[]; total: number }>('/bank-mail/entries', { params: { status, offset } }).then(r => r.data),
+  save: (id: string, categoryId: string, type: 'expense' | 'income', allowDuplicate = false) =>
+    http.post('/bank-mail/entries/' + id + '/save', { categoryId, type, allowDuplicate }).then(r => r.data),
+  ignore: (id: string) => http.post('/bank-mail/entries/' + id + '/ignore').then(r => r.data),
+}
+
 export const authApi = {
-  register: (payload: { email: string; name: string; password: string }) =>
+  // `lang` decides which language the starter categories are seeded in — they are
+  // user data from then on, so it cannot be corrected by switching the UI later.
+  register: (payload: { email: string; name: string; password: string; lang?: 'th' | 'en' }) =>
     http.post('/auth/register', payload).then(r => r.data),
 
   login: (payload: { email: string; password: string }) =>
@@ -43,18 +74,44 @@ export const authApi = {
 
   me: () => http.get('/auth/me').then(r => r.data),
 
-  updateProfile: (payload: { name: string }) =>
+  updateProfile: (payload: { name: string; expectedMonthlyIncome?: number }) =>
     http.patch('/auth/profile', payload).then(r => r.data),
+
+  updatePreferences: (payload: UpdatePreferencesPayload) =>
+    http.patch('/auth/preferences', payload).then(r => r.data),
 
   getOnboardingWallets: () =>
     http.get('/auth/onboarding/wallets').then(r => r.data),
 
-  completeOnboarding: (wallets: string[]) =>
-    http.post('/auth/onboarding', { wallets }).then(r => r.data),
+  // Sets the spending plan only. Envelope wallets are no longer created here —
+  // see createStarterWallets, which is an explicit opt-in from advanced mode.
+  completeOnboarding: (payload: CompleteOnboardingPayload) =>
+    http.post('/auth/onboarding', payload).then(r => r.data),
+
+  createStarterWallets: (wallets: string[], lang: 'th' | 'en' = 'th') =>
+    http.post('/auth/starter-wallets', { wallets, lang }).then(r => r.data),
+
+  googleVerify: (token: string, email?: string, lang?: 'th' | 'en') =>
+    http.post('/auth/google/verify', { token, ...(email ? { email } : {}), ...(lang ? { lang } : {}) }).then(r => r.data),
+
+  facebookVerify: (accessToken: string, email?: string, lang?: 'th' | 'en') =>
+    http.post('/auth/facebook/verify', { accessToken, ...(email ? { email } : {}), ...(lang ? { lang } : {}) }).then(r => r.data),
+  changePassword: (payload: { currentPassword?: string; newPassword: string }) =>
+    http.patch('/auth/change-password', payload).then(r => r.data),
+
+  forgotPassword: (email: string) =>
+    http.post('/auth/forgot-password', { email }).then(r => r.data),
+
+  resetPassword: (token: string, password: string) =>
+    http.post('/auth/reset-password', { token, password }).then(r => r.data),
 }
 
 // ── Analytics ────────────────────────────────────────────────
 export const analyticsApi = {
+  // Everything the home screen needs above the fold, in one request.
+  getDailyBrief: () =>
+    http.get<DailyBrief>('/analytics/daily-brief').then(r => r.data),
+
   getSummary: (month?: string, year?: string) =>
     http.get<PeriodSummary>('/analytics/summary', { params: { month, year } }).then(r => r.data),
 
@@ -65,19 +122,48 @@ export const analyticsApi = {
     http.get<MonthlyTrend[]>('/analytics/monthly-trend').then(r => r.data),
 
   getDaily: (month: string) =>
-    http.get('/analytics/daily', { params: { month } }).then(r => r.data),
+    http.get<DailySummary[]>('/analytics/daily', { params: { month } }).then(r => r.data),
   // GET /api/analytics/balance — totalBalance, allocatedBalance, unallocatedBalance
   getBalanceSummary: () =>
     http.get<BalanceSummary>('/analytics/balance').then(r => r.data),
 
   getEmergencyFund: (months = 6) =>
     http.get<EmergencyFundSummary>('/analytics/emergency-fund', { params: { months } }).then(r => r.data),
+
+  getRecommendations: () =>
+    http.get<AiRecommendation[]>('/analytics/recommendations').then(r => r.data),
+
+  // Deterministic SQL, no model call — fast, free and explainable.
+  getWeeklyReview: () =>
+    http.get<WeeklyReview>('/analytics/weekly-review').then(r => r.data),
+}
+
+// ── Check-ins ────────────────────────────────────────────────
+export const checkInsApi = {
+  reviews: () => http.get<Coverage>('/check-ins/reviews').then(r => r.data),
+  review: (date: string, reviewed: boolean) => (reviewed ? http.put<Coverage>(`/check-ins/${date}/review`) : http.delete<Coverage>(`/check-ins/${date}/review`)).then(r => r.data),
+  /** Declares a day as no-spend. Idempotent; only today or yesterday are accepted. */
+  markNoSpend: (date: string) =>
+    http.put<Coverage>(`/check-ins/${date}`).then(r => r.data),
+
+  undo: (date: string) =>
+    http.delete<Coverage>(`/check-ins/${date}`).then(r => r.data),
 }
 
 // ── Expenses ─────────────────────────────────────────────────
 export const expensesApi = {
-  list: (params?: { month?: string; type?: string; categoryId?: string }) =>
-    http.get<Expense[]>('/expenses', { params }).then(r => r.data),
+  page: (params: { month?: string; type?: string; categoryId?: string; search?: string; startDate?: string; endDate?: string; offset?: number }) =>
+    http.get<ExpensePage>('/expenses/page', { params }).then(r => ({ ...r.data, items: r.data.items.map(e => ({ ...e, amount: Number(e.amount) })) })),
+  exportAll: (params: { from?: string; to?: string; month?: string; type?: string }) =>
+    http.get<Expense[]>('/expenses/export', { params }).then(r => r.data.map(entry => ({
+      ...entry, amount: Number(entry.amount),
+    }))),
+  list: (params?: { month?: string; from?: string; to?: string; type?: string; categoryId?: string }) =>
+    // PostgreSQL numeric columns arrive as decimal strings. UI totals and formatters
+    // require numbers; normalize once at the boundary, including the export path.
+    http.get<Expense[]>('/expenses', { params }).then(r => r.data.map(entry => ({
+      ...entry, amount: Number(entry.amount),
+    }))),
 
   create: (payload: CreateExpensePayload) =>
     http.post<Expense>('/expenses', payload).then(r => r.data),
@@ -131,6 +217,25 @@ export const allocationsApi = {
   // POST /api/allocations/:id/unallocate — return wallet funds to unallocated pool
   unallocate: (id: string, amount: number) =>
     http.post(`/allocations/${id}/unallocate`, { amount }).then(r => r.data),
+
+  // GET — this month's targets, inherited from the last month that had them,
+  // alongside what has already been funded.
+  previewPlan: () =>
+    http.get<AllocationPlanPreview>('/allocations/plans/preview').then(r => r.data),
+
+  /**
+   * PUT — record intent only.
+   *
+   * Moves no money and is never blocked by an empty pool, which is the whole point:
+   * the previous flow could only persist a plan as a side effect of a successful
+   * transfer, so anyone sitting at ฿0 unallocated could never save one.
+   */
+  saveTargets: (month: string, items: { allocationId: string; targetAmount: number }[]) =>
+    http.put<{ saved: number }>('/allocations/plans', { month, items }).then(r => r.data),
+
+  // POST — move real money. Leaves the saved targets untouched.
+  applyPlan: (amounts: { allocationId: string; amount: number }[]) =>
+    http.post('/allocations/plans/apply', { amounts }).then(r => r.data),
 }
 
 // ── Budgets ───────────────────────────────────────────────────
@@ -143,6 +248,100 @@ export const budgetsApi = {
 
   remove: (id: string) =>
     http.delete(`/budgets/${id}`).then(r => r.data),
+
+  /**
+   * The whole Plan screen for one month: the total (inherited when this month has none
+   * of its own) plus the optional per-category breakdown.
+   */
+  getPlan: (month?: string) =>
+    http.get<SpendingPlanView>('/budgets/plan', { params: { month } }).then(r => r.data),
+
+  /** `totalAmount: null` clears the plan for that month. 0 is refused. */
+  setPlanTotal: (month: string, totalAmount: number | null) =>
+    http.put('/budgets/plan', { month, totalAmount }).then(r => r.data),
+
+  /** What to prefill a new month with: last month's figures, else actual spend. */
+  getSuggestions: (month?: string) =>
+    http.get<BudgetSuggestion[]>('/budgets/suggestions', { params: { month } }).then(r => r.data),
+
+  copyPrevious: (month: string) =>
+    http.post<{ copied: number; skipped: number }>('/budgets/copy-previous', { month }).then(r => r.data),
+
+  /** Saves a whole month at once. An amount of 0 removes that category's budget. */
+  saveBatch: (month: string, items: { categoryId: string; amount: number }[]) =>
+    http.put<{ saved: number; removed: number }>('/budgets/batch', { month, items }).then(r => r.data),
+}
+
+// Monthly commitments and self-reported savings; payments use the expense ledger.
+export const planningApi = {
+  cycle: () => http.get<PayCycle>('/planning/pay-cycle').then(r => r.data),
+  saveCycle: (payload: { enabled: boolean; payDay: number; budget: number }) => http.put<PayCycle>('/planning/pay-cycle', payload).then(r => r.data),
+  reminders: () => http.get<BillReminders>('/planning/reminders').then(r => r.data),
+  saveReminders: (payload: BillReminders['preferences']) => http.put('/planning/reminders', payload).then(r => r.data),
+  snoozeBill: (id: string, month: string, until: string) => http.put(`/planning/bills/${id}/snooze`, { month, until }).then(r => r.data),
+  overview: () => http.get<PlanningOverview>('/planning').then(r => r.data),
+  saveBill: (payload: BillInput, id?: string) => id
+    ? http.put(`/planning/bills/${id}`, payload).then(r => r.data)
+    : http.post('/planning/bills', payload).then(r => r.data),
+  archiveBill: (id: string) => http.delete(`/planning/bills/${id}`).then(r => r.data),
+  payBill: (id: string, expenseId?: string, month?: string) => http.post(`/planning/bills/${id}/pay`, { expenseId, month }).then(r => r.data),
+  updateOccurrence: (id: string, month: string, input: BillInput) => http.put(`/planning/bills/${id}/occurrences/${month}`, input).then(r => r.data),
+  waiveOccurrence: (id: string, month: string) => http.delete(`/planning/bills/${id}/occurrences/${month}`).then(r => r.data),
+  saveGoal: (payload: GoalInput, id?: string) => id
+    ? http.put(`/planning/goals/${id}`, payload).then(r => r.data)
+    : http.post('/planning/goals', payload).then(r => r.data),
+  removeGoal: (id: string) => http.delete(`/planning/goals/${id}`).then(r => r.data),
+}
+
+export const captureApi = {
+  templates: () => http.get<PinnedEntry[]>('/capture/templates').then(r => r.data),
+  saveTemplate: (payload: Omit<PinnedEntry, 'id'>, id?: string) => (id ? http.put(`/capture/templates/${id}`, payload) : http.post('/capture/templates', payload)).then(r => r.data),
+  removeTemplate: (id: string) => http.delete(`/capture/templates/${id}`),
+  preview: (rows: CaptureRow[]) => http.post<BatchPreview>('/capture/preview', { rows }).then(r => r.data),
+  commit: (rows: CaptureRow[]) => http.post<BatchPreview>('/capture/batch', { rows }).then(r => r.data),
+  receiptStatus: () => http.get<{ configured: boolean }>('/chat/receipt-status').then(r => r.data),
+  receipt: (imageBase64: string, mimeType: string) => http.post<{ amount: number; note: string; date: string | null }>('/chat/receipt-draft', { imageBase64, mimeType }).then(r => r.data),
+}
+
+// ── Account (destructive) ─────────────────────────────────────
+// Every call here is irreversible. The confirmation phrase is re-checked server-side —
+// a guard that only exists in the browser is not a guard.
+export const accountApi = {
+  resetPreview: (from?: string, to?: string) =>
+    http.get<{ count: number; expenseTotal: number; firstMonth: string | null; lastMonth: string | null }>(
+      '/account/reset-preview', { params: { from, to } },
+    ).then(r => r.data),
+
+  /** Omit the range to clear the whole ledger. Balances are rebuilt from what remains. */
+  resetTransactions: (confirm: string, range: { from?: string; to?: string }) =>
+    http.post<{ deletedTransactions: number; from: string | null; to: string | null }>(
+      '/account/reset-transactions', { confirm, ...range },
+    ).then(r => r.data),
+
+  /** Wipes everything the user created; the login survives. `confirm` is their email. */
+  factoryReset: (confirm: string, lang: 'th' | 'en' = 'th') =>
+    http.post<{ ok: true }>('/account/factory-reset', { confirm, lang }).then(r => r.data),
+}
+
+// ── Notifications ─────────────────────────────────────────────
+export const notificationsApi = {
+  status: () =>
+    http.get<{
+      configured: boolean; publicKey: string | null; enabled: boolean
+      remindAt: string; timezone: string; today: string; deviceCount: number
+    }>('/notifications/status').then(r => r.data),
+
+  subscribe: (subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) =>
+    http.post('/notifications/subscriptions', { subscription }).then(r => r.data),
+
+  unsubscribe: (endpoint?: string) =>
+    http.delete('/notifications/subscriptions', { data: endpoint ? { endpoint } : {} }).then(r => r.data),
+
+  /** Exercises the whole path — permission, subscription, delivery — in one tap. */
+  test: () =>
+    http.post<{ sent: number; failed: number; pruned: number; configured: boolean }>(
+      '/notifications/test',
+    ).then(r => r.data),
 }
 
 // ── Loans ─────────────────────────────────────────────────────
@@ -176,14 +375,17 @@ export const investmentsApi = {
   }) =>
     http.post<InvestmentTransaction>(`/investments/${id}/transactions`, payload).then(r => r.data),
 
+  removeTransaction: (txId: string) =>
+    http.delete(`/investments/transactions/${txId}`).then(r => r.data),
+
   remove: (id: string) =>
     http.delete(`/investments/${id}`).then(r => r.data),
 }
 
 // ── Tax ───────────────────────────────────────────────────────
 export const taxApi = {
-  getTypes: () =>
-    http.get<TaxDeductionType[]>('/tax/types').then(r => r.data),
+  getTypes: (lang = 'th') =>
+    http.get<TaxDeductionType[]>('/tax/types', { params: { lang } }).then(r => r.data),
 
   findByYear: (year: number) =>
     http.get<TaxDeduction[]>('/tax/deductions', { params: { year } }).then(r => r.data),
@@ -194,8 +396,8 @@ export const taxApi = {
   remove: (id: string) =>
     http.delete(`/tax/deductions/${id}`).then(r => r.data),
 
-  calculate: (income: number, year: number) =>
-    http.get<TaxCalculationResult>('/tax/calculate', { params: { income, year } }).then(r => r.data),
+  calculate: (income: number, year: number, lang = 'th') =>
+    http.get<TaxCalculationResult>('/tax/calculate', { params: { income, year, lang } }).then(r => r.data),
 }
 
 // ── Chat ─────────────────────────────────────────────────────
@@ -206,7 +408,13 @@ export const chatApi = {
   sendMessage: (message: string, context?: Record<string, any>) =>
     http.post<{ message: string }>('/chat', { message, context }).then(r => r.data),
 
-  sendMessageStream: (message: string, context?: Record<string, any>): Promise<Response> => {
+  sendMessageStream: (
+    message: string,
+    context?: Record<string, any>,
+    imageBase64?: string,
+    mimeType?: string,
+    imageThumbnail?: string,
+  ): Promise<Response> => {
     const token = useAuthStore.getState().token
     return fetch(`${chatBase()}/chat/stream`, {
       method: 'POST',
@@ -214,14 +422,8 @@ export const chatApi = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ message, context }),
+      body: JSON.stringify({ message, context, imageBase64, mimeType, imageThumbnail }),
     })
-  },
-
-  analyzeImage: (file: File) => {
-    const form = new FormData()
-    form.append('image', file)
-    return http.post('/chat/vision', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
   },
 
   getHistory: () =>
@@ -250,4 +452,7 @@ export const adminApi = {
 
   deleteUser: (id: string) =>
     http.delete(`/admin/users/${id}`).then(r => r.data),
+
+  getAiUsage: () =>
+    http.get('/admin/ai-usage').then(r => r.data),
 }

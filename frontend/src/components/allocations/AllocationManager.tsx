@@ -1,15 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Icon from '@mdi/react'
 import {
   mdiPlus, mdiTrashCan, mdiPencil, mdiCheck,
   mdiClose, mdiChevronDown, mdiChevronUp, mdiLockOutline,
 } from '@mdi/js'
 import clsx from 'clsx'
-import { allocationsApi } from '../../api'
+import { allocationsApi, authApi } from '../../api'
 import { useAllocations, useCategories } from '../../hooks'
 import { Card, Skeleton, IconDisplay, ConfirmModal } from '../ui'
 import { ALLOCATION_ICONS } from '../../utils/iconMap'
-import { useT } from '../../store/i18n.store'
+import { useT, useI18n } from '../../store/i18n.store'
+import { toast } from '../../store/toast.store'
+import { apiErrorMessage } from '../../utils/apiError'
 import type { Allocation, EntryType } from '../../types'
 
 const PRESET_COLORS = [
@@ -22,8 +24,34 @@ const EMPTY: FormState = { name:'', icon:'salary', color:'#6366f1', categoryIds:
 
 export default function AllocationManager() {
   const t = useT()
+  const { lang } = useI18n()
   const { data: allocations, loading: loadingA, refetch } = useAllocations()
   const { data: categories,  loading: loadingC }          = useCategories()
+  const [seeding, setSeeding] = useState(false)
+
+  // Onboarding no longer creates wallets, so an account that opts into envelopes
+  // starts empty. Offer the common three rather than making them build the set by hand.
+  const createStarterWallets = async () => {
+    setSeeding(true)
+    try {
+      await authApi.createStarterWallets(['emergency', 'daily', 'savings'], lang)
+      toast.success(t('wallets_starter_done'))
+      refetch()
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline')))
+    } finally {
+      setSeeding(false)
+    }
+  }
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const types: string[] = (e as CustomEvent).detail?.types ?? []
+      if (types.includes('wallets') || types.includes('dashboard')) refetch()
+    }
+    window.addEventListener('moneyflow:refresh', handler)
+    return () => window.removeEventListener('moneyflow:refresh', handler)
+  }, [refetch])
 
   const [editId,   setEditId]   = useState<string|null>(null)
   const [showAdd,  setShowAdd]  = useState(false)
@@ -62,7 +90,7 @@ export default function AllocationManager() {
   const startAdd = () => { setEditId(null); setForm(EMPTY); setShowAdd(true) }
   const startEdit = (a: Allocation) => {
     setShowAdd(false); setEditId(a.id)
-    setForm({ name: a.name, icon: a.icon??'💼', color: a.color??'#6366f1',
+    setForm({ name: a.name, icon: a.icon??'wallet', color: a.color??'#6366f1',
               categoryIds: a.categories.map(c => c.id),
               incomeCategoryIds: a.incomeCategories.map(c => c.id) })
   }
@@ -278,7 +306,18 @@ export default function AllocationManager() {
             {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}
           </div>
         ) : !allocations?.length ? (
-          <p className="text-center text-sm text-muted-theme py-8">{t('no_wallet_items')}</p>
+          <div className="flex flex-col items-center gap-2 py-8 px-5 text-center">
+            <p className="text-sm text-muted-theme">{t('no_wallet_items')}</p>
+            <p className="text-xs text-muted-theme">{t('wallets_starter_hint')}</p>
+            <button
+              onClick={createStarterWallets}
+              disabled={seeding}
+              className="mt-2 px-4 py-2 rounded-xl bg-brand-600 text-white text-sm font-semibold
+                         active:scale-95 transition-transform disabled:opacity-50"
+            >
+              {seeding ? t('saving') : t('wallets_starter_cta')}
+            </button>
+          </div>
         ) : (
           <ul className="divide-y divide-theme">
             {allocations.map(a => (
@@ -286,12 +325,12 @@ export default function AllocationManager() {
                 <div className="flex items-center gap-3 px-5 py-3">
                   <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"
                     style={{ backgroundColor: (a.color??'#6366f1')+'22' }}>
-                    <IconDisplay icon={a.icon??'💼'} color={a.color} size="md" />
+                    <IconDisplay icon={a.icon??'wallet'} color={a.color} size="md" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-base-theme truncate">{a.name}</p>
                     <p className="text-xs text-muted-theme">
-                      ฿{Number(a.balance).toLocaleString()} · {(a.categories.length + a.incomeCategories.length)} {(a.categories.length + a.incomeCategories.length)!==1?t('categorys_pl'):t('categorys')}
+                      ฿{Number(a.balance).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · {(a.categories.length + a.incomeCategories.length)} {(a.categories.length + a.incomeCategories.length)!==1?t('categorys_pl'):t('categorys')}
                     </p>
                   </div>
                   <button onClick={() => setExpanded(expanded===a.id?null:a.id)}

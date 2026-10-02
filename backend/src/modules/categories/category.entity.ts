@@ -24,7 +24,10 @@ export class Category {
   @Column({ length: 7, nullable: true })
   color: string;
 
-  @Column({ type: 'enum', enum: ['expense', 'income'] })
+  // varchar + a CHECK constraint rather than a native Postgres enum: the deployed
+  // schema has always been varchar, and altering an enum in place is a migration
+  // hazard for no benefit here. The constraint lives in the migrations.
+  @Column({ type: 'varchar', length: 10 })
   type: EntryType;
 
   @Column({ name: 'is_default', default: false })
@@ -37,6 +40,6 @@ export class Category {
   @OneToMany(() => Expense, (e) => e.category)
   expenses: Expense[];
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 }

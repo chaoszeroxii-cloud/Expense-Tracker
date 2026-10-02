@@ -6,18 +6,20 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+        sans: ['"Manrope"', '"Noto Sans Thai"', 'sans-serif'],
       },
       colors: {
         brand: {
-          50:  '#eef2ff',
-          100: '#e0e7ff',
-          200: '#c7d2fe',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-          900: '#312e81',
+          50:  '#edf9f6',
+          100: '#d3f0e9',
+          200: '#abe3d9',
+          300: '#71d8cb',
+          400: '#38b4a6',
+          500: '#15988b',
+          600: '#087f75',
+          700: '#09655f',
+          800: '#10514c',
+          900: '#123f3b',
         },
       },
       animation: {

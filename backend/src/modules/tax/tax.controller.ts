@@ -8,8 +8,8 @@ export class TaxController {
   constructor(private readonly svc: TaxService) {}
 
   @Get('types')
-  getTypes() {
-    return this.svc.getDeductionTypes()
+  getTypes(@Query('lang') lang?: string) {
+    return this.svc.getDeductionTypes(lang ?? 'th')
   }
 
   @Get('deductions')
@@ -32,7 +32,8 @@ export class TaxController {
     @CurrentUser() user,
     @Query('income') income: string,
     @Query('year') year: string,
+    @Query('lang') lang?: string,
   ) {
-    return this.svc.calculate(user.id, parseFloat(income) || 0, parseInt(year) || new Date().getFullYear())
+    return this.svc.calculate(user.id, parseFloat(income) || 0, parseInt(year) || new Date().getFullYear(), lang ?? 'th')
   }
 }

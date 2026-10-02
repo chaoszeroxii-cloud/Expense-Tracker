@@ -1,0 +1,17 @@
+{
+  "passed": true,
+  "backendCommand": [
+    "npm",
+    "run",
+    "start:prod"
+  ],
+  "frontendCommand": [
+    "nginx",
+    "-g",
+    "daemon off;"
+  ],
+  "backendHostPorts": 0,
+  "databaseHostPorts": 0,
+  "developmentMounts": 0,
+  "frontendTargetPort": 80
+}

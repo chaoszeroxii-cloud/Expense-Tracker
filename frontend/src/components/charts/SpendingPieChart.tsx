@@ -1,10 +1,9 @@
-import Icon from '@mdi/react'
-import { mdiPackage, mdiInboxMultiple } from '@mdi/js'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type { CategoryBreakdown } from '../../types'
-import { Skeleton } from '../ui'
+import { Skeleton, Empty, ErrorState } from '../ui'
 import IconDisplay from '../ui/IconDisplay'
 import { useT } from '../../store/i18n.store'
+import { mdiInboxOutline } from '@mdi/js'
 
 const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null
@@ -15,29 +14,41 @@ const CustomTooltip = ({ active, payload }: any) => {
         <IconDisplay icon={d.categoryIcon} color={d.categoryColor} size="sm" />
         {d.categoryName}
       </p>
-      <p className="text-brand-600 font-bold">฿{d.total.toLocaleString()}</p>
+      <p className="text-brand-600 font-bold">฿{d.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
       <p className="text-muted-theme">{d.percentage}%</p>
     </div>
   )
 }
 
-export default function SpendingPieChart({ data, loading }:
-  { data: CategoryBreakdown[] | null; loading: boolean }) {
+export default function SpendingPieChart({ data, loading, error, onRetry, onAdd }: {
+  data: CategoryBreakdown[] | null
+  loading: boolean
+  error?: string | null
+  onRetry?: () => void
+  onAdd?: () => void
+}) {
   const t = useT()
 
   if (loading) return <Skeleton className="h-52 w-full" />
+
+  // A failed load previously rendered as "no transactions", which reads as a real zero.
+  if (error) return <ErrorState compact message={t('err_load_failed')} onRetry={onRetry} retryLabel={t('action_retry')} />
+
   if (!data?.length) return (
-    <div className="flex flex-col items-center justify-center h-52 text-muted-theme">
-      <Icon path={mdiInboxMultiple} size={2} className="text-muted-theme" />
-      <p className="text-sm mt-2">{t('no_transactions')}</p>
-    </div>
+    <Empty
+      compact
+      icon={mdiInboxOutline}
+      title={t('empty_no_tx_title')}
+      sub={t('empty_no_tx_sub')}
+      action={onAdd ? { label: t('action_add_first'), onPress: onAdd } : undefined}
+    />
   )
 
   const top  = data.slice(0, 6)
   const rest = data.slice(6)
   const chartData = rest.length > 0
     ? [...top, {
-        categoryId: 'other', categoryName: 'Other', categoryIcon: '📦',
+        categoryId: 'other', categoryName: 'Other', categoryIcon: 'other',
         categoryColor: '#cbd5e1',
         total: rest.reduce((s, r) => s + r.total, 0),
         count: rest.length,

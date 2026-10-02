@@ -8,14 +8,18 @@ import { Allocation } from '../allocations/allocation.entity'
 import { AuthService } from './auth.service'
 import { AuthController } from './auth.controller'
 import { JwtStrategy } from './jwt.strategy'
+import { getJwtSecret } from '../../config/jwt.config'
+import { BudgetsModule } from '../budgets/budgets.module'
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Category, Allocation]),
+    // Onboarding writes the month-scoped spending plan, not just the legacy user column.
+    BudgetsModule,
     PassportModule,
     JwtModule.registerAsync({
       useFactory: () => ({
-        secret: process.env.JWT_SECRET || 'dev-secret-change-in-production',
+        secret: getJwtSecret(),
         signOptions: { expiresIn: '30d' },
       }),
     }),

@@ -1,0 +1,15 @@
+# See backend/.dockerignore — the host's node_modules must never overwrite the ones
+# installed inside the image, and shipping them as build context is pure waste.
+node_modules
+dist
+dist-ssr
+
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+Dockerfile
+.dockerignore
+npm-debug.log*

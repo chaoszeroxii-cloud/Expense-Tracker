@@ -1,0 +1,23 @@
+{
+  "checks": 18,
+  "results": [
+    "unconfigured OAuth fails closed before calling provider",
+    "wrong audience and unverified email rejected; local account cannot be auto-merged",
+    "verified new social account and returning social login work",
+    "reset token consumed once; old sessions and social credentials revoked",
+    "changing forwarded IP cannot bypass direct-server rate limit",
+    "SSRF endpoints and non-public IPs rejected; valid push registration accepted",
+    "null financial patch fields rejected with 400; ledger unchanged",
+    "authentication and cross-account/admin boundaries retained",
+    "unpaid cycles carry forward and previous amounts survive template edits",
+    "concurrent late payment happens once, preserves daily allowance, deletion reopens original cycle",
+    "archive retains debts; individual edit/waiver works and respects ownership",
+    "lost online response followed by actual browser queue replay produces one transaction",
+    "six temporary failures retain entry; review/edit/resend UI recovers it",
+    "browser pays the selected overdue cycle only and cancels the other cycle",
+    "concurrent password changes cannot overwrite the winning credential or reuse its version",
+    "actual History CSV download includes all 600 transactions",
+    "changed flow fits mobile viewport",
+    "untrusted chat navigation is restricted to known app routes; valid actions still work"
+  ]
+}

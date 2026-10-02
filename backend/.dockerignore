@@ -1,0 +1,18 @@
+# The build installs its own dependencies; copying the host's over them replaces
+# linux binaries with whatever the developer's machine produced. bcrypt is a native
+# addon, so a Windows build landing in an alpine image fails at the first hash —
+# at runtime, with no build-time warning. It is also hundreds of MB of build context
+# transferred on every `docker compose build`.
+node_modules
+dist
+tsconfig.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+Dockerfile
+.dockerignore
+npm-debug.log*

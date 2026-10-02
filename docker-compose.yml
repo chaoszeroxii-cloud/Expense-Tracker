@@ -12,7 +12,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init:/docker-entrypoint-initdb.d:ro
+      # No init scripts: the schema comes from TypeORM migrations, which the backend
+      # applies on start. Bootstrapping here as well would create a second source of
+      # truth for the schema and the two would drift.
     ports:
       - "127.0.0.1:5432:5432"      # bind to localhost only in production
     healthcheck:
@@ -31,7 +33,8 @@ services:
       target: development               # switch to `production` for prod
     container_name: expense_backend
     restart: unless-stopped
-    command: npm run start:dev
+    # Build once so the compiled migrations exist, apply them, then start in watch mode.
+    command: sh -c "npm run build && npm run migration:run && npm run start:dev"
     environment:
       NODE_ENV:     development
       DB_HOST:      db
@@ -40,17 +43,29 @@ services:
       DB_USER:      ${DB_USER:-expense_user}
       DB_PASSWORD:  ${DB_PASSWORD:?DB_PASSWORD is required}
       JWT_SECRET:             ${JWT_SECRET:?JWT_SECRET is required}
-      CORS_ORIGIN:            ${FRONTEND_URL:-http://localhost:3000}
+      GOOGLE_CLIENT_ID:       ${VITE_GOOGLE_CLIENT_ID-}
+      FACEBOOK_APP_ID:        ${VITE_FACEBOOK_APP_ID-}
+      FACEBOOK_APP_SECRET:    ${FACEBOOK_APP_SECRET-}
+      TRUST_PROXY_HOPS:       "0"
+      CORS_ORIGIN:            ${CORS_ORIGIN:-http://localhost:3000}
       OPENROUTER_API_KEY:     ${OPENROUTER_API_KEY}
       TAVILY_KEY_1:           ${TAVILY_KEY_1}
       TAVILY_KEY_2:           ${TAVILY_KEY_2}
       TAVILY_KEY_3:           ${TAVILY_KEY_3}
       TAVILY_KEY_4:           ${TAVILY_KEY_4}
+      BREVO_API_KEY:          ${BREVO_API_KEY}
+      BREVO_SENDER_EMAIL:     ${BREVO_SENDER_EMAIL}
+      FRONTEND_URL:           ${FRONTEND_URL:-http://localhost:3000}
+      GMAIL_CLIENT_ID:        ${GMAIL_CLIENT_ID-}
+      GMAIL_CLIENT_SECRET:    ${GMAIL_CLIENT_SECRET-}
+      GMAIL_REDIRECT_URI:     ${GMAIL_REDIRECT_URI:-http://localhost:3001/api/bank-mail/gmail/callback}
+      BANK_MAIL_ENCRYPTION_KEY: ${BANK_MAIL_ENCRYPTION_KEY-}
+      CRON_SECRET:           ${CRON_SECRET-}
     volumes:
       - ./backend:/app            # hot reload in dev
       - /app/node_modules         # hot reload in dev
     ports:
-      - "3001:3001"
+      - "127.0.0.1:3001:3001"
     depends_on:
       db:
         condition: service_healthy
@@ -67,7 +82,15 @@ services:
     restart: unless-stopped
     command: npm run dev
     environment:
-      VITE_API_URL: http://localhost:3001
+      VITE_API_URL:            http://localhost:3001
+      # Optional. Without them the app runs fine and simply hides those sign-in
+      # buttons — it used to white-screen instead, because the Google hook throws
+      # when initialised with an empty client id.
+      VITE_GOOGLE_CLIENT_ID:   ${VITE_GOOGLE_CLIENT_ID-}
+      VITE_FACEBOOK_APP_ID:    ${VITE_FACEBOOK_APP_ID-}
+      # Bind-mounted files are only seen by a polling watcher; on the host it is
+      # a constant CPU spin for nothing.
+      VITE_USE_POLLING:        "true"
     volumes:
       - ./frontend:/app          # hot reload in dev
       - /app/node_modules        # hot reload in dev
@@ -78,8 +101,12 @@ services:
     networks:
       - app-network
 
-  # ── pgAdmin (dev only — remove in production) ─────────────
+  # ── pgAdmin ────────────────────────────────────────────────
+  # Behind a profile: it is a ~500 MB image that used to start with every
+  # `docker compose up` and sit idle. Start it deliberately when needed:
+  #   docker compose --profile debug up
   pgadmin:
+    profiles: ["debug"]
     image: dpage/pgadmin4:latest
     container_name: expense_pgadmin
     environment:

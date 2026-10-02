@@ -1,9 +1,10 @@
-import { useState, FormEvent, useRef } from 'react'
+import { useState, FormEvent, useRef, useEffect } from 'react'
 import Icon from '@mdi/react'
 import {
   mdiAccount, mdiLogout, mdiPlus, mdiTrashCan,
   mdiPencil, mdiCheck, mdiClose, mdiWeatherNight,
   mdiWeatherSunny, mdiTranslate, mdiWallet, mdiCash,
+  mdiLock, mdiEye, mdiEyeOff,
 } from '@mdi/js'
 import clsx from 'clsx'
 import { authApi, categoriesApi } from '../../api'
@@ -15,6 +16,10 @@ import { Card, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
 import { MDI_ICON_CATEGORIES } from '../../utils/iconMap'
 import type { Category, EntryType } from '../../types'
+import DangerZone from '../../components/settings/DangerZone'
+import ReminderSettings from '../../components/settings/ReminderSettings'
+import InstallAppCard from '../../components/pwa/InstallAppCard'
+import BankMailSettings from '../../components/settings/BankMailSettings'
 
 const PRESET_COLORS = [
   '#6366f1','#f97316','#3b82f6','#a855f7','#ef4444',
@@ -26,13 +31,22 @@ const PRESET_ICONS_INCOME  = MDI_ICON_CATEGORIES.income
 
 export default function Settings() {
   const t = useT()
-  const { user, clearAuth, setAuth } = useAuthStore()
+  const { user, token, clearAuth, setAuth } = useAuthStore()
   const { theme, toggle: toggleTheme } = useThemeStore()
   const { lang, setLang } = useI18n()
   const formRef = useRef<HTMLDivElement>(null)
 
+  // Refresh user data on mount to get up-to-date hasPassword
+  useEffect(() => {
+    if (!token) return
+    authApi.me().then(fresh => setAuth(token, fresh)).catch(() => {})
+  }, [])
+
   // ── Profile ────────────────────────────────────────────────
   const [name, setName]           = useState(user?.name ?? '')
+  const [expectedIncome, setExpectedIncome] = useState(
+    user?.expectedMonthlyIncome != null ? String(user.expectedMonthlyIncome) : '',
+  )
   const [savingProfile, setSaveP] = useState(false)
   const [profileOk, setProfileOk] = useState(false)
 
@@ -46,6 +60,45 @@ export default function Settings() {
   const [catColor, setCatColor] = useState('#6366f1')
   const [savingCat, setSavingCat] = useState(false)
 
+  // ── Password ───────────────────────────────────────────────
+  const [pwOpen, setPwOpen]           = useState(false)
+  const [currentPw, setCurrentPw]     = useState('')
+  const [newPw, setNewPw]             = useState('')
+  const [confirmPw, setConfirmPw]     = useState('')
+  const [showCurrentPw, setShowCurrentPw] = useState(false)
+  const [showNewPw, setShowNewPw]         = useState(false)
+  const [showConfirmPw, setShowConfirmPw] = useState(false)
+  const [pwSaving, setPwSaving]       = useState(false)
+  const [pwError, setPwError]         = useState('')
+  const [pwOk, setPwOk]               = useState(false)
+
+  const closePwModal = () => {
+    setPwOpen(false); setCurrentPw(''); setNewPw(''); setConfirmPw('')
+    setPwError(''); setPwOk(false); setShowCurrentPw(false); setShowNewPw(false); setShowConfirmPw(false)
+  }
+
+  const handleChangePassword = async () => {
+    setPwError('')
+    if (newPw !== confirmPw) { setPwError(t('password_mismatch')); return }
+    if (newPw.length < 8) { setPwError(t('min_chars')); return }
+    setPwSaving(true)
+    try {
+      const res = await authApi.changePassword({
+        ...(user?.hasPassword ? { currentPassword: currentPw } : {}),
+        newPassword: newPw,
+      })
+      // Backend rotates the token version on change (revoking other sessions),
+      // so adopt the fresh token it returns to keep this session alive.
+      if (res?.accessToken && res?.user) setAuth(res.accessToken, res.user)
+      setPwOk(true)
+      setTimeout(closePwModal, 1500)
+    } catch (err: any) {
+      const msg = err?.response?.data?.message
+      setPwError(typeof msg === 'string' ? msg : t('pw_wrong_current'))
+    } finally { setPwSaving(false) }
+  }
+
+  // ── Confirm ────────────────────────────────────────────────
   const [confirmState, setConfirmState] = useState<{
     open: boolean; message: string; onConfirm: () => void
   }>({ open: false, message: '', onConfirm: () => {} })
@@ -56,12 +109,20 @@ export default function Settings() {
 
   const filteredCats = categories?.filter(c => c.type === catType) ?? []
 
+  const profileDirty = name !== user?.name
+    || expectedIncome !== String(user?.expectedMonthlyIncome ?? '')
+
   const handleProfileSave = async (e: FormEvent) => {
     e.preventDefault()
     setSaveP(true)
     try {
-      const updated = await authApi.updateProfile({ name })
-      setAuth(useAuthStore.getState().token!, { ...user!, name: updated.name })
+      const updated = await authApi.updateProfile({
+        name,
+        ...(expectedIncome !== '' ? { expectedMonthlyIncome: Number(expectedIncome) } : {}),
+      })
+      setAuth(useAuthStore.getState().token!, {
+        ...user!, name: updated.name, expectedMonthlyIncome: updated.expectedMonthlyIncome,
+      })
       setProfileOk(true)
       setTimeout(() => setProfileOk(false), 2000)
     } finally { setSaveP(false) }
@@ -104,11 +165,19 @@ export default function Settings() {
   const iconPresets = catType === 'expense' ? PRESET_ICONS_EXPENSE : PRESET_ICONS_INCOME
 
   return (
-    <div className="px-4 pt-6 pb-6 space-y-5 animate-fade-in">
-      <h1 className="text-2xl font-extrabold text-base-theme tracking-tight">{t('settings')}</h1>
+    <div className="px-4 pt-6 pb-6 sm:px-6 lg:px-2 space-y-6 animate-fade-in">
+      <h1 className="page-heading">{t('settings')}</h1>
+      <nav aria-label={t('settings')} className="flex gap-2 flex-wrap">
+        {([['settings-profile', 'ux_profile'], ['settings-appearance', 'appearance'], ['settings-categories', 'categories'], ['settings-bank-mail', 'mail_nav']] as const).map(([id, key]) => (
+          <button key={id} className="secondary-action !text-xs !py-2" onClick={() => document.getElementById(id)?.scrollIntoView({ block: 'start' })}>{t(key)}</button>
+        ))}
+      </nav>
+
+      <InstallAppCard />
+      <BankMailSettings key={user?.id} categories={categories ?? []} />
 
       {/* ── Profile ── */}
-      <Card>
+      <Card id="settings-profile" className="scroll-mt-5">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-11 h-11 rounded-2xl bg-brand-100 dark:bg-brand-900/30 flex items-center justify-center">
             <Icon path={mdiAccount} size={0.9} color="#4f46e5" />
@@ -130,16 +199,49 @@ export default function Settings() {
                          focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
             />
           </div>
-          <button type="submit" disabled={savingProfile || name === user?.name}
-            className={clsx('w-full py-2.5 rounded-xl text-sm font-bold transition-all text-white',
+          <div>
+            <label className="text-xs font-semibold text-muted-theme block mb-1.5 uppercase tracking-wide">
+              {t('expected_monthly_income')}
+            </label>
+            <div className="relative">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-muted-theme">฿</span>
+              <input
+                type="number" inputMode="decimal" step="0.01" min={0} placeholder="0"
+                value={expectedIncome} onChange={e => setExpectedIncome(e.target.value)}
+                className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-theme bg-input
+                           text-sm font-medium text-base-theme outline-none
+                           focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
+              />
+            </div>
+            <p className="text-[11px] text-muted-theme mt-1.5">{t('expected_income_desc')}</p>
+          </div>
+          <button type="submit" disabled={savingProfile || !profileDirty}
+            className={clsx('w-full py-2.5 rounded-xl text-sm font-bold transition-all text-white flex items-center justify-center gap-1.5',
               profileOk ? 'bg-emerald-500' : 'bg-brand-600 disabled:opacity-40')}>
+            {profileOk && <Icon path={mdiCheck} size={0.6} aria-hidden="true" />}
             {profileOk ? t('saved_') : savingProfile ? t('saving_') : t('save_changes')}
           </button>
         </form>
       </Card>
 
-      {/* ── Appearance ── */}
+      {/* ── Security ── */}
       <Card>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Icon path={mdiLock} size={0.85} className="text-muted-theme" />
+            <span className="text-sm font-medium text-base-theme">{t('security')}</span>
+          </div>
+          <button
+            onClick={() => setPwOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-brand-50 dark:bg-brand-900/30
+                       text-xs font-semibold text-brand-600 transition-colors">
+            {user?.hasPassword ? t('change_password') : t('set_password')}
+          </button>
+        </div>
+      </Card>
+
+      {/* ── Appearance ── */}
+      <Card id="settings-appearance" className="scroll-mt-5">
         <p className="text-sm font-bold text-base-theme mb-4">{t('appearance')}</p>
 
         {/* Dark mode toggle */}
@@ -151,6 +253,9 @@ export default function Settings() {
           </div>
           <button
             onClick={toggleTheme}
+            role="switch"
+            aria-checked={theme === 'dark'}
+            aria-label={t('dark_mode')}
             className={clsx(
               'relative w-12 h-6 rounded-full transition-colors duration-200',
               theme === 'dark' ? 'bg-brand-600' : 'bg-slate-300 dark:bg-slate-600',
@@ -172,6 +277,7 @@ export default function Settings() {
           <div className="flex bg-slate-100 dark:bg-slate-700 rounded-xl p-1 gap-1">
             {(['th', 'en'] as const).map(l => (
               <button key={l} onClick={() => setLang(l)}
+                aria-pressed={lang === l}
                 className={clsx('px-3 py-1 rounded-lg text-xs font-bold transition-all uppercase',
                   lang === l ? 'bg-white dark:bg-slate-600 text-brand-600 shadow-sm' : 'text-muted-theme')}>
                 {l}
@@ -182,7 +288,7 @@ export default function Settings() {
       </Card>
 
       {/* ── Categories ── */}
-      <Card padding={false}>
+      <Card id="settings-categories" className="scroll-mt-5" padding={false}>
         <div ref={formRef} className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-theme">
           <h2 className="font-bold text-base-theme text-sm">{t('categories')}</h2>
           <button onClick={startAdd}
@@ -300,6 +406,92 @@ export default function Settings() {
         <span>{t('sign_out')}</span>
         <Icon path={mdiLogout} size={0.8} />
       </button>
+      {/* ── Password Modal ── */}
+      {pwOpen && (
+        <div className="fixed inset-0 z-[60] flex items-end lg:items-center justify-center px-4 pt-4 pb-sheet-gap lg:pb-4 bg-black/40"
+             onClick={closePwModal}>
+          <div className="w-full max-w-sm bg-card rounded-3xl p-6 space-y-4 animate-fade-up"
+               onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="font-bold text-base-theme">
+                {user?.hasPassword ? t('change_password') : t('set_password')}
+              </h2>
+              <button onClick={closePwModal} className="p-1 text-muted-theme">
+                <Icon path={mdiClose} size={0.9} />
+              </button>
+            </div>
+
+            {user?.hasPassword && (
+              <div className="relative">
+                <input
+                  type={showCurrentPw ? 'text' : 'password'}
+                  placeholder={t('current_password_label')}
+                  value={currentPw}
+                  onChange={e => setCurrentPw(e.target.value)}
+                  className="w-full px-4 py-3 pr-11 rounded-xl border border-theme bg-input
+                             text-sm text-base-theme outline-none focus:border-brand-400 transition-all"
+                />
+                <button type="button" onClick={() => setShowCurrentPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-theme">
+                  <Icon path={showCurrentPw ? mdiEyeOff : mdiEye} size={0.75} />
+                </button>
+              </div>
+            )}
+
+            <div className="relative">
+              <input
+                type={showNewPw ? 'text' : 'password'}
+                placeholder={`${t('new_password')} ${t('min_chars')}`}
+                value={newPw}
+                onChange={e => setNewPw(e.target.value)}
+                className="w-full px-4 py-3 pr-11 rounded-xl border border-theme bg-input
+                           text-sm text-base-theme outline-none focus:border-brand-400 transition-all"
+              />
+              <button type="button" onClick={() => setShowNewPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-theme">
+                <Icon path={showNewPw ? mdiEyeOff : mdiEye} size={0.75} />
+              </button>
+            </div>
+
+            <div className="relative">
+              <input
+                type={showConfirmPw ? 'text' : 'password'}
+                placeholder={t('confirm_password')}
+                value={confirmPw}
+                onChange={e => setConfirmPw(e.target.value)}
+                className="w-full px-4 py-3 pr-11 rounded-xl border border-theme bg-input
+                           text-sm text-base-theme outline-none focus:border-brand-400 transition-all"
+              />
+              <button type="button" onClick={() => setShowConfirmPw(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-theme">
+                <Icon path={showConfirmPw ? mdiEyeOff : mdiEye} size={0.75} />
+              </button>
+            </div>
+
+            {pwError && (
+              <p className="text-xs text-rose-500 font-medium">{pwError}</p>
+            )}
+
+            <button
+              onClick={handleChangePassword}
+              disabled={pwSaving || !newPw || !confirmPw || (!!user?.hasPassword && !currentPw)}
+              className={clsx(
+                'w-full py-3 rounded-2xl text-sm font-bold text-white transition-colors flex items-center justify-center gap-1.5',
+                pwOk ? 'bg-emerald-500' : 'bg-brand-600 disabled:opacity-40',
+              )}
+            >
+              {pwOk && <Icon path={mdiCheck} size={0.6} aria-hidden="true" />}
+              {pwOk ? t('pw_changed') : pwSaving ? t('saving_') : t('save_changes')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <ReminderSettings />
+
+      {/* Last on the page on purpose: nothing should be scrolled past on the way to it. */}
+      <DangerZone />
+
       <ConfirmModal
         open={confirmState.open}
         message={confirmState.message}

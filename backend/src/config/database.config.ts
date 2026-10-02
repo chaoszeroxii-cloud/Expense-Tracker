@@ -3,23 +3,52 @@ import { User } from '../modules/users/user.entity'
 import { Category } from '../modules/categories/category.entity'
 import { Expense } from '../modules/expenses/expense.entity'
 import { Allocation } from '../modules/allocations/allocation.entity'
+import { AllocationMovement } from '../modules/allocations/allocation-movement.entity'
+import { AllocationPlan } from '../modules/allocations/allocation-plan.entity'
 import { Budget } from '../modules/budgets/budget.entity'
 import { Loan, LoanPayment } from '../modules/loans/loan.entity'
 import { Investment, InvestmentTransaction } from '../modules/investments/investment.entity'
 import { TaxDeduction } from '../modules/tax/tax-deduction.entity'
 import { ChatMessage } from '../modules/chat/chat-message.entity'
+import { AiUsageLog } from '../modules/chat/ai-usage-log.entity'
+import { ProductEvent } from '../modules/telemetry/product-event.entity'
+import { MonthlySpendingPlan } from '../modules/budgets/monthly-spending-plan.entity'
+import { DailyCheckin } from '../modules/checkins/daily-checkin.entity'
+import { PushSubscription } from '../modules/notifications/push-subscription.entity'
+import { RecurringBill, BillOccurrence, BillPayment, SavingsGoal } from '../modules/planning/planning.entity'
+import { CaptureTemplate } from '../modules/capture/capture.entity'
+import { BankMailConnection, BankMailEntry } from '../modules/bank-mail/bank-mail.entity'
 
 export const databaseConfig = (): TypeOrmModuleOptions => {
   const base: Partial<TypeOrmModuleOptions> = {
     type: 'postgres',
-    entities: [User, Category, Expense, Allocation, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage],
-    synchronize: process.env.DB_SYNC === 'true' || process.env.NODE_ENV !== 'production',
+    entities: [User, Category, Expense, Allocation, AllocationMovement, AllocationPlan, Budget, Loan, LoanPayment, Investment, InvestmentTransaction, TaxDeduction, ChatMessage, AiUsageLog, ProductEvent, DailyCheckin, MonthlySpendingPlan, PushSubscription, RecurringBill, BillOccurrence, BillPayment, SavingsGoal, CaptureTemplate, BankMailConnection, BankMailEntry],
+
+    // Off everywhere. Migrations are the only schema owner.
+    //
+    // It used to be on for every non-production environment, and it had quietly
+    // destroyed things the entities cannot describe: every CHECK constraint in the
+    // database (including `expenses.amount > 0`), every hand-written index (including
+    // the one the daily-brief query scans on), and it had rewritten two varchar columns
+    // as native enums. The dev schema no longer resembled production, so passing tests
+    // there proved less than they appeared to.
+    //
+    // Do not make this environment-configurable: a stale DB_SYNC=true setting on a
+    // deployed service is enough for TypeORM to rewrite a live schema after migrations.
+    synchronize: false,
+
+    migrations: [__dirname + '/../migrations/*.{ts,js}'],
+    migrationsTableName: 'migrations',
+
     logging: process.env.NODE_ENV === 'development',
   }
 
-  // Render (and most cloud providers) supply a DATABASE_URL connection string
+  // Render (and most cloud providers) supply a DATABASE_URL connection string.
+  // Cert validation is opt-in via DB_SSL_REJECT_UNAUTHORIZED=true — set it once
+  // your provider serves a chain Node trusts, to defend against MITM.
   if (process.env.DATABASE_URL) {
-    return { ...base, type: 'postgres', url: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } }
+    const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED === 'true'
+    return { ...base, type: 'postgres', url: process.env.DATABASE_URL, ssl: { rejectUnauthorized } }
   }
 
   return {

@@ -1,0 +1,15 @@
+{
+  // The Vercel entry point, type-checked.
+  //
+  // It cannot join the main tsconfig because `rootDir: "./src"` would reject a file in
+  // `api/`, and widening rootDir moves every emitted path in `dist/`. A second config
+  // that only checks (never emits) gives the coverage without touching the build layout.
+  // `npm run typecheck` runs both.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["api/**/*.ts", "src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,16 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { adminApi } from '../../api'
-import type { AdminUser, AdminStats } from '../../types'
+import type { AdminUser, AdminStats, AiUsageStats } from '../../types'
 import Icon from '@mdi/react'
-import { mdiArrowLeft, mdiTrashCanOutline, mdiShieldAccountOutline, mdiAccountOutline, mdiChevronDown, mdiChevronUp, mdiMagnify } from '@mdi/js'
+import { mdiArrowLeft, mdiTrashCanOutline, mdiShieldAccountOutline, mdiAccountOutline, mdiChevronDown, mdiChevronUp, mdiMagnify, mdiRobotOutline } from '@mdi/js'
 
 function fmt(n: number) { return n.toLocaleString('th-TH') }
+function fmtThb(n: number) { return n === 0 ? '฿0.00' : n < 0.01 ? '<฿0.01' : `฿${n.toFixed(2)}` }
+function fmtTokens(n: number) { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n) }
 
 export default function AdminDashboard() {
   const navigate = useNavigate()
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [aiUsage, setAiUsage] = useState<AiUsageStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
@@ -18,9 +21,10 @@ export default function AdminDashboard() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, u] = await Promise.all([adminApi.getStats(), adminApi.getUsers()])
+    const [s, u, ai] = await Promise.all([adminApi.getStats(), adminApi.getUsers(), adminApi.getAiUsage()])
     setStats(s)
     setUsers(u)
+    setAiUsage(ai)
     setLoading(false)
   }, [])
 
@@ -45,7 +49,8 @@ export default function AdminDashboard() {
   )
 
   return (
-    <div className="min-h-dvh bg-app px-4 py-6 max-w-4xl mx-auto">
+    <div className="min-h-dvh bg-app">
+    <div className="max-w-4xl mx-auto px-4 py-6">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => navigate('/')} className="p-2 rounded-xl bg-card border border-[var(--border)] text-muted-theme">
@@ -73,6 +78,37 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {/* AI Usage */}
+      <div className="bg-card rounded-2xl border border-[var(--border)] p-4 mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <Icon path={mdiRobotOutline} size={0.85} className="text-brand-600" />
+          <h2 className="font-bold text-base-theme text-sm">AI Usage</h2>
+          <span className="ml-auto text-xs text-muted-theme">
+            รวม {fmtThb(aiUsage?.totalCostThb ?? 0)}
+          </span>
+        </div>
+        {loading ? (
+          <div className="skeleton h-12 rounded-xl" />
+        ) : !aiUsage || aiUsage.users.length === 0 ? (
+          <p className="text-xs text-muted-theme text-center py-3">ยังไม่มีการใช้งาน AI</p>
+        ) : (
+          <div className="space-y-2">
+            {aiUsage.users.map(u => (
+              <div key={u.userId} className="flex items-center gap-3 py-2 border-t border-[var(--border)] first:border-0 first:pt-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-base-theme truncate">{u.name}</p>
+                  <p className="text-[10px] text-muted-theme truncate">{u.email}</p>
+                </div>
+                <div className="text-right shrink-0 space-y-0.5">
+                  <p className="text-xs font-bold text-brand-600">{fmtThb(u.totalCostThb)}</p>
+                  <p className="text-[10px] text-muted-theme">{fmtTokens(u.totalTokens)} tokens · {u.callCount} ครั้ง</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Search */}
       <div className="relative mb-4">
         <Icon path={mdiMagnify} size={0.85} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-theme" />
@@ -86,7 +122,7 @@ export default function AdminDashboard() {
 
       {/* User list */}
       {loading ? (
-        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-16 bg-card rounded-2xl animate-pulse border border-[var(--border)]" />)}</div>
+        <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="skeleton h-16 rounded-2xl" />)}</div>
       ) : (
         <div className="space-y-2">
           {filtered.map(user => (
@@ -118,7 +154,7 @@ export default function AdminDashboard() {
               {expanded === user.id && (
                 <div className="border-t border-[var(--border)] p-4 space-y-3 animate-fade-in">
                   <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div><span className="text-muted-theme">Balance: </span><span className="font-semibold text-base-theme">฿{fmt(user.totalBalance)}</span></div>
+                    <div><span className="text-muted-theme">Balance: </span><span className="font-semibold text-base-theme">{fmtThb(user.totalBalance)}</span></div>
                     <div><span className="text-muted-theme">Currency: </span><span className="font-semibold text-base-theme">{user.currency}</span></div>
                     <div><span className="text-muted-theme">สมัคร: </span><span className="font-semibold text-base-theme">{new Date(user.createdAt).toLocaleDateString('th-TH')}</span></div>
                     <div><span className="text-muted-theme">Onboarding: </span><span className={`font-semibold ${user.onboardingCompleted ? 'text-emerald-500' : 'text-amber-500'}`}>{user.onboardingCompleted ? 'เสร็จแล้ว' : 'ยังไม่ทำ'}</span></div>
@@ -152,6 +188,7 @@ export default function AdminDashboard() {
           <p>ไม่พบ user ที่ตรงกับการค้นหา</p>
         </div>
       )}
+    </div>
     </div>
   )
 }

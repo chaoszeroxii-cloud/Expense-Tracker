@@ -2,9 +2,9 @@ import {
   mdiFood, mdiCar, mdiShopping, mdiPill, mdiGamepad, mdiLightbulb,
   mdiHome, mdiBook, mdiPackageVariant, mdiCoffee, mdiAirplane, mdiMusic,
   mdiPaw, mdiHairDryer, mdiBriefcase, mdiLaptop, mdiChartLine, mdiCash,
-  mdiGiftOpen, mdiTrophy, mdiGift, mdiEarth, mdiTrendingUp, mdiWallet,
-  mdiDumbbell, mdiChefHat, mdiFilm, mdiHeartPulse, mdiStethoscope,
-  mdiTools, mdiApple, mdiPalette,
+  mdiTrophy, mdiGift, mdiEarth, mdiWallet, mdiBank, mdiTarget, mdiPartyPopper,
+  mdiDumbbell, mdiChefHat, mdiFilm, mdiStethoscope,
+  mdiTools, mdiApple,
 } from '@mdi/js'
 
 // Legacy emoji to MDI mapping (for backward compatibility with existing data)
@@ -31,6 +31,14 @@ export const EMOJI_TO_MDI_MAP: Record<string, string> = {
   '🏆': mdiTrophy,
   '💎': mdiGift,
   '🌐': mdiEarth,
+  '🏦': mdiBank,
+  '🎯': mdiTarget,
+  '🍚': mdiFood,
+  '🎉': mdiPartyPopper,
+  '🏥': mdiStethoscope,
+  '🏋️': mdiDumbbell,
+  '🍽️': mdiChefHat,
+  '🎬': mdiFilm,
 }
 
 // MDI icons by name (primary mapping)
@@ -56,6 +64,7 @@ export const MDI_ICON_MAP: Record<string, string> = {
   medical: mdiStethoscope,
   tools: mdiTools,
   groceries: mdiApple,
+  gardening: mdiApple,
   // Income icons
   salary: mdiBriefcase,
   freelance: mdiLaptop,
@@ -66,6 +75,10 @@ export const MDI_ICON_MAP: Record<string, string> = {
   bonus: mdiTrophy,
   rewards: mdiGift,
   global: mdiEarth,
+  bank: mdiBank,
+  target: mdiTarget,
+  party: mdiPartyPopper,
+  wallet: mdiWallet,
 }
 
 export const MDI_ICON_CATEGORIES = {
@@ -103,6 +116,9 @@ export const MDI_ICON_CATEGORIES = {
 
 // Wallet/Allocation preset icons
 export const ALLOCATION_ICONS = [
+  { id: 'wallet', mdi: mdiWallet, label: 'Wallet' },
+  { id: 'bank', mdi: mdiBank, label: 'Emergency Fund' },
+  { id: 'target', mdi: mdiTarget, label: 'Savings Goal' },
   { id: 'salary', mdi: mdiBriefcase, label: 'Work' },
   { id: 'food', mdi: mdiFood, label: 'Food' },
   { id: 'housing', mdi: mdiHome, label: 'Housing' },
@@ -114,6 +130,7 @@ export const ALLOCATION_ICONS = [
   { id: 'pets', mdi: mdiPaw, label: 'Pets' },
   { id: 'coffee', mdi: mdiCoffee, label: 'Coffee' },
   { id: 'music', mdi: mdiMusic, label: 'Music' },
+  { id: 'party', mdi: mdiPartyPopper, label: 'Personal' },
   { id: 'gardening', mdi: mdiApple, label: 'Garden' },
   { id: 'shopping', mdi: mdiShopping, label: 'Shopping' },
   { id: 'cash', mdi: mdiCash, label: 'Cash' },

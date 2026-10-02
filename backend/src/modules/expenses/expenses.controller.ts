@@ -18,14 +18,25 @@ export class ExpensesController {
     return this.service.findAll(user.id, query)
   }
 
+  @Get('export')
+  exportAll(@Query() query: QueryExpenseDto, @CurrentUser() user: User) {
+    return this.service.exportAll(user.id, query)
+  }
+
+  @Get('page') page(@Query() query: QueryExpenseDto, @CurrentUser() user: User) {
+    return this.service.page(user.id, query)
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
     return this.service.findOne(id, user.id)
   }
 
+  // `createIdempotent`, not `create`: a `clientKey` in the body makes a replayed offline
+  // capture return the original transaction instead of writing a second one.
   @Post()
   create(@Body() dto: CreateExpenseDto, @CurrentUser() user: User) {
-    return this.service.create(dto, user.id)
+    return this.service.createIdempotent(dto, user.id)
   }
 
   @Patch(':id')

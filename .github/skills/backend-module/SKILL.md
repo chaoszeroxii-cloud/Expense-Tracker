@@ -207,4 +207,16 @@ import { NewFeatureModule } from './modules/new-feature/new-feature.module';
 
 ### DB migration (if needed)
 
-Add idempotent SQL to `database/init/` with the next number prefix. Use `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, and `CREATE INDEX IF NOT EXISTS`.
+```bash
+cd backend
+npm run build                                   # the CLI runs against compiled output
+npm run migration:generate -- src/migrations/AddNewFeature
+```
+
+Generation diffs entities against the connected database. It does **not** produce CHECK
+constraints, extra indexes, or data backfills — add those by hand
+(`1785163169615-SchemaGuarantees.ts` and `1785163169616-DataBackfills.ts` show the
+pattern). A new column whose default changes behaviour for existing rows needs a backfill
+in the same change, or every current user silently gets the default.
+
+`synchronize` is off in every environment; do not turn it on to skip this.

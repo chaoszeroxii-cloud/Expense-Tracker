@@ -1,0 +1,121 @@
+import { useState } from 'react'
+import Icon from '@mdi/react'
+import { mdiCheck, mdiMinus, mdiCurrencyUsdOff } from '@mdi/js'
+import clsx from 'clsx'
+import { checkInsApi } from '../../api'
+import { useT, useI18n } from '../../store/i18n.store'
+import { toast } from '../../store/toast.store'
+import { apiErrorMessage } from '../../utils/apiError'
+import { shiftDateLocal } from '../../utils/localDate'
+import type { Coverage } from '../../types'
+import DayReview from './DayReview'
+
+/**
+ * Seven days, and how many of them are accounted for.
+ *
+ * Explicitly not a streak. A streak resets to zero when you miss a day, which means a
+ * day with no spending — the behaviour the app is trying to encourage — would read as a
+ * failure unless you opened the app anyway. Here a no-spend day counts as covered once
+ * you say so, missing a day costs one square out of seven, and nothing ever resets.
+ *
+ * Yesterday can still be marked. Forgetting once should be recoverable.
+ */
+export default function CoverageStrip({ coverage, onChange }: {
+  coverage: Coverage
+  onChange: (next: Coverage) => void
+}) {
+  const t = useT()
+  const { lang } = useI18n()
+  const [busy, setBusy] = useState(false)
+
+  const mark = async (date: string) => {
+    setBusy(true)
+    try {
+      const next = await checkInsApi.markNoSpend(date)
+      onChange(next)
+      toast.success(t('cov_marked'), {
+        label: t('cov_undo'),
+        onPress: async () => {
+          try { onChange(await checkInsApi.undo(date)) }
+          catch (err) { toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline'))) }
+        },
+      })
+    } catch (err) {
+      toast.error(apiErrorMessage(err, t('err_generic'), t('err_offline')))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const weekday = (date: string) =>
+    new Date(`${date}T12:00:00`).toLocaleDateString(
+      lang === 'th' ? 'th-TH' : 'en-US', { weekday: 'short' },
+    )
+
+  const complete = coverage.covered === coverage.total
+
+  return (
+    <section className="surface p-5 sm:p-6 flex-1" aria-label={t('ux_habit_title')}>
+      <h2 className="section-title">{t('ux_habit_title')}</h2>
+      <p className="text-xs text-muted-theme mt-1.5 mb-5 leading-relaxed">{t('ux_habit_sub')}</p>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <span className="text-xs text-muted-theme">{t('cov_title')}</span>
+        <span className={clsx('text-xs font-bold tabular-nums',
+          complete ? 'text-emerald-500' : 'text-base-theme')}>
+          {coverage.covered}/{coverage.total} {t('cov_counted')}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1.5">
+        {coverage.days.map(day => (
+          <div key={day.date} className="habit-day" data-covered={day.covered} aria-current={day.isToday ? 'date' : undefined} aria-label={`${day.date}: ${day.reviewed ? t('dc_reviewed') : day.covered ? t(day.source === 'no_spend' ? 'ux_habit_no_spend' : 'ux_habit_recorded') : t('ux_habit_missing')}`}>
+            <div className={clsx(
+              'w-6 h-6 rounded-full flex items-center justify-center transition-colors',
+              day.covered
+                ? day.source === 'no_spend'
+                  ? 'bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400'
+                  : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                : 'bg-[var(--input)] text-muted-theme',
+              day.isToday && 'ring-2 ring-brand-500 ring-offset-1 ring-offset-[var(--bg-card)]',
+            )}>
+              <Icon
+                path={day.covered ? (day.source === 'no_spend' ? mdiCurrencyUsdOff : mdiCheck) : mdiMinus}
+                size={0.6}
+              />
+            </div>
+            <span className="text-[10px] font-medium">{weekday(day.date).replace(/\./g, '')}</span>
+            {day.reviewed && <span className="text-brand-600" aria-hidden="true">✓</span>}
+          </div>
+        ))}
+      </div>
+
+      {coverage.canMarkToday && (
+        <button
+          onClick={() => mark(coverage.days[coverage.days.length - 1].date)}
+          disabled={busy}
+          className="secondary-action w-full mt-4 !text-xs"
+        >
+          {t('cov_no_spend_cta')}
+        </button>
+      )}
+
+      {/* One day of grace, offered only once today is settled. */}
+      {!coverage.canMarkToday && coverage.canMarkYesterday && (
+        <button
+          onClick={() => mark(shiftDateLocal(coverage.days[coverage.days.length - 1].date, -1))}
+          disabled={busy}
+          className="secondary-action w-full mt-4 !text-xs"
+        >
+          {t('cov_no_spend_yesterday')}
+        </button>
+      )}
+
+      {complete && (
+        <p className="text-[11px] text-emerald-600 dark:text-emerald-400 text-center mt-2.5 font-medium">
+          {t('cov_all_done')}
+        </p>
+      )}
+      <DayReview coverage={coverage} onChange={onChange} />
+    </section>
+  )
+}

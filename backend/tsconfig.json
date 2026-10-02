@@ -11,9 +11,18 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": "./",
-    "incremental": true,
+    // Deliberately off. The incremental cache survives a deleted `dist/`, so the next
+    // build decides there is nothing to do and emits nothing — silently. Under the
+    // migration-on-start command that means no compiled migrations and a boot against
+    // an unmigrated database. The rebuild cost here is a few seconds.
+    "incremental": false,
     "skipLibCheck": true,
     "strictNullChecks": false
   },
+  // `api/` used to be excluded, so the Vercel entry point compiled against nothing and
+  // quietly drifted from src/main.ts — it was missing PUT from its CORS allow-list and
+  // capped request bodies at 100 kB while main.ts allowed 20 MB. It is type-checked now.
+  // `rootDir` stays ./src so `nest build` still emits dist/main.js at the same path;
+  // api/ is checked by `npm run typecheck`, which has no rootDir constraint.
   "exclude": ["node_modules", "dist", "api"]
 }

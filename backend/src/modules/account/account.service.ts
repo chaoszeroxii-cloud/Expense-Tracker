@@ -180,6 +180,7 @@ export class AccountService {
         trackingMode: 'plan',
         advancedMode: false,
         showWorkTime: true,
+        showCumulativeBalance: false,
         onboardingCompleted: false,
       })
     })

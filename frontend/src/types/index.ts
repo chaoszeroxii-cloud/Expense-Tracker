@@ -371,6 +371,8 @@ export interface DailyBrief {
   mode: TrackingMode
   spentToday: number
   monthSpent: number
+  /** Net of all recorded income/expenses; null when hidden in Settings. */
+  cumulativeBalance: number | null
   monthlyLimit: number | null
   /** A *planned* allowance, never a real cash balance. Label it as such in the UI. */
   safeToday: number | null
@@ -397,6 +399,7 @@ export interface UpdatePreferencesPayload {
   workHoursPerDay?: number
   workDaysPerMonth?: number
   showWorkTime?: boolean
+  showCumulativeBalance?: boolean
   advancedMode?: boolean
   expectedMonthlyIncome?: number
   /** `HH:MM` in the user's own timezone. */

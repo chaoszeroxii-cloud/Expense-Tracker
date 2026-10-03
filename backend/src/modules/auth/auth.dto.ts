@@ -1,9 +1,9 @@
 import {
   IsEmail, IsString, IsOptional, MinLength, MaxLength,
   IsNumber, Min, Max, IsIn, IsBoolean, IsInt, Matches,
-  IsArray, ArrayMaxSize,
+  IsArray, ArrayMaxSize, ValidateIf,
 } from 'class-validator'
-import { Type } from 'class-transformer'
+import { Type, Transform } from 'class-transformer'
 
 export class RegisterDto {
   @IsEmail()
@@ -113,6 +113,11 @@ export class UpdatePreferencesDto {
   @IsOptional()
   @IsBoolean()
   showWorkTime?: boolean
+
+  @ValidateIf((_object, value) => value !== undefined)
+  @Transform(({ obj }) => obj.showCumulativeBalance)
+  @IsBoolean()
+  showCumulativeBalance?: boolean
 
   @IsOptional()
   @IsBoolean()

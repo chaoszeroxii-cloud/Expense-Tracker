@@ -20,6 +20,7 @@ import DangerZone from '../../components/settings/DangerZone'
 import ReminderSettings from '../../components/settings/ReminderSettings'
 import InstallAppCard from '../../components/pwa/InstallAppCard'
 import BankMailSettings from '../../components/settings/BankMailSettings'
+import HomeBalanceSetting from '../../components/settings/HomeBalanceSetting'
 
 const PRESET_COLORS = [
   '#6366f1','#f97316','#3b82f6','#a855f7','#ef4444',
@@ -35,12 +36,18 @@ export default function Settings() {
   const { theme, toggle: toggleTheme } = useThemeStore()
   const { lang, setLang } = useI18n()
   const formRef = useRef<HTMLDivElement>(null)
+  const [loadingProfile, setLoadingProfile] = useState(true)
 
   // Refresh user data on mount to get up-to-date hasPassword
   useEffect(() => {
-    if (!token) return
-    authApi.me().then(fresh => setAuth(token, fresh)).catch(() => {})
-  }, [])
+    if (!token) { setLoadingProfile(false); return }
+    let active = true
+    setLoadingProfile(true)
+    authApi.me().then(fresh => {
+      if (active && useAuthStore.getState().token === token) setAuth(token, fresh)
+    }).catch(() => {}).finally(() => { if (active) setLoadingProfile(false) })
+    return () => { active = false }
+  }, [token, setAuth])
 
   // ── Profile ────────────────────────────────────────────────
   const [name, setName]           = useState(user?.name ?? '')
@@ -285,6 +292,7 @@ export default function Settings() {
             ))}
           </div>
         </div>
+        <HomeBalanceSetting key={user?.id} loading={loadingProfile} />
       </Card>
 
       {/* ── Categories ── */}

@@ -115,6 +115,8 @@ export interface DailyBrief {
   mode: 'plan' | 'track_only';
   spentToday: number;
   monthSpent: number;
+  /** All recorded income minus expenses; null when the display is disabled. */
+  cumulativeBalance: number | null;
   /** `null` when no plan is set — never 0, which would read as "spend nothing". */
   monthlyLimit: number | null;
   /** `null` when no plan is set. Always a *planned* allowance, never real cash. */
@@ -266,6 +268,7 @@ export class AnalyticsService {
         : { kind: 'month', from: month+'-01', to: `${month}-${daysInMonth}`, spent: monthSpent },
       spentToday,
       monthSpent,
+      cumulativeBalance: user.showCumulativeBalance ? round2(Number(user.totalBalance)) : null,
       monthlyLimit: hasPlan ? round2(limitRaw!) : null,
       safeToday,
       daysRemaining: activeCycle?.daysRemaining ?? daysRemaining,

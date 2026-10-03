@@ -92,6 +92,9 @@ export class User {
   @Column({ name: 'show_work_time', default: true })
   showWorkTime: boolean
 
+  @Column({ name: 'show_cumulative_balance', default: false })
+  showCumulativeBalance: boolean
+
   // Reveals envelope wallets, loans, investments and tax. Backfilled to true for
   // anyone who already had that data — see 07-spending-plan.sql.
   @Column({ name: 'advanced_mode', default: false })

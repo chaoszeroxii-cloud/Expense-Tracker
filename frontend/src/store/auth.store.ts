@@ -18,6 +18,7 @@ interface AuthUser {
   workHoursPerDay: number
   workDaysPerMonth: number
   showWorkTime: boolean
+  showCumulativeBalance: boolean
   // Reveals envelope wallets, loans, investments and tax.
   advancedMode: boolean
 }

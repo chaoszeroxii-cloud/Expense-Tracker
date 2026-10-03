@@ -190,7 +190,8 @@ async function run() {
       .replace('จำนวนเงิน :', 'จำนวนเงินที่ชำระ :')
       .replace('เลขบัญชี :', options.goods ? 'เลขที่บัญชี :' : 'เลขบัญชี :')
       .replace('EXAMPLE BILLER CO., LTD.', options.wallet ? 'เติมเงิน G-Wallet' : 'EXAMPLE BILLER CO., LTD.')
-    m.payload.body.data = Buffer.from(html).toString('base64url')
+    const memo = options.memo ? `<dd>บันทึกช่วยจำ : ${options.memo.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c])}</dd>` : ''
+    m.payload.body.data = Buffer.from(html + memo).toString('base64url')
     return m
   }
   const historicalBill = billMessage('c1', 10, { received: Date.now() - 30000 })
@@ -200,13 +201,14 @@ async function run() {
   assert.equal((await c.call('GET', '/bank-mail/entries')).rows[0].transaction.kind, 'bill_payment')
   await c.call('PUT', '/bank-mail/settings', c.settings)
   await db.query("UPDATE bank_mail_connections SET auto_import_since=now()-interval '10 seconds' WHERE user_id=$1", [c.user.id])
-  const newBill = billMessage('c2', 45, { goods: true }), feeBill = billMessage('c3', 20, { fee: '2.00' }), unknownBill = billMessage('c4', 30)
+  const newBill = billMessage('c2', 45, { goods: true, memo: 'ค่าเดินทาง <img src=x onerror=alert(1)>' }), feeBill = billMessage('c3', 20, { fee: '2.00', memo: 'ค่าบริการ' }), unknownBill = billMessage('c4', 30)
   unknownBill.payload.body.data = Buffer.from(Buffer.from(unknownBill.payload.body.data, 'base64url').toString().replace('XXX-X-XX111-1', 'XXX-X-XX555-5')).toString('base64url')
   mailboxes.set('charlie', [historicalBill, newBill, feeBill, unknownBill])
   const billResult = await c.call('POST', '/bank-mail/sync')
   assert.deepEqual(billResult.summary, { matched: 4, existing: 1, parsed: 3, skipped: 0, skipReasons: {} })
   const savedBills = (await c.call('GET', '/bank-mail/entries?status=saved')).rows
   assert.equal(savedBills.length, 1); assert.equal(savedBills[0].transaction.amount, 45)
+  assert.equal((await c.call('GET', `/expenses/${savedBills[0].expenseId}`)).note, 'ค่าเดินทาง <img src=x onerror=alert(1)>\nKTB • 1111 • Gmail')
   const reviewBills = (await c.call('GET', '/bank-mail/entries')).rows
   assert.equal(reviewBills.length, 3)
   for (const reason of ['review_required', 'fee_review', 'account_required']) assert.ok(reviewBills.some(row => row.reason === reason))
@@ -241,6 +243,20 @@ async function run() {
   mailboxes.set('charlie', []); clearThrottle()
   assert.deepEqual((await c.call('POST', '/bank-mail/sync')).summary, { matched: 0, existing: 0, parsed: 0, skipped: 0, skipReasons: {} })
   pass('sync distinguishes no matches, existing imports and rejected content without returning raw mail')
+  // Use a separate account so memo-review coverage does not change existing totals.
+  const memoUser = await account('memo'); await connect(memoUser, 'memo')
+  mailboxes.set('memo', [billMessage('d1', 11, { fee: '2.00', memo: 'ก'.repeat(600) })])
+  await memoUser.call('POST', '/bank-mail/sync')
+  const memoRow = (await memoUser.call('GET', '/bank-mail/entries')).rows[0]
+  assert.equal(memoRow.transaction.memo.length, 400)
+  const memoSaved = await memoUser.call('POST', `/bank-mail/entries/${memoRow.id}/save`, { categoryId: memoUser.settings.expenseCategoryId, type: 'expense' })
+  const memoExpense = await memoUser.call('GET', `/expenses/${memoSaved.expenseId}`)
+  assert.equal(memoExpense.note, 'ก'.repeat(400) + '\nKTB • 1111 • Gmail • fee 2.00')
+  assert.ok(memoExpense.note.length <= 500)
+  assert.equal(Number(memoExpense.amount), 13)
+  pass('bank memos persist in automatic and reviewed expense notes without losing fee/source metadata')
+  const homeBalance = require('./home-balance.cjs')
+  const balanceUser = await homeBalance.api({ account, db, clearThrottle, pass })
   if (process.argv.includes('--browser')) {
     process.chdir(path.join(ROOT, 'frontend')) // Tailwind resolves content/config relative to the app.
     const { createServer } = await import('vite')
@@ -313,6 +329,8 @@ async function run() {
     await billCard.getByRole('button', { name: 'บันทึกแล้ว', exact: true }).click()
     await expect(billCard.locator('article')).toHaveCount(2)
     await expect(billCard.getByText('จ่ายบิล', { exact: true })).toHaveCount(2)
+    await expect(billCard.getByText('บันทึกช่วยจำ: ค่าเดินทาง <img src=x onerror=alert(1)>', { exact: true })).toBeVisible()
+    await expect(billCard.locator('img[src="x"]')).toHaveCount(0)
     const normalRefresh = gmail.refresh
     gmail.refresh = async token => { if (token === 'refresh:charlie') throw new GmailFailure('reconnect_required'); return normalRefresh(token) }
     clearThrottle()
@@ -320,8 +338,12 @@ async function run() {
     await expect(billCard.getByRole('alert')).toHaveText('สิทธิ์ Google หมดอายุหรือถูกถอน กรุณาเชื่อม Gmail ใหม่')
     await expect(billCard.getByRole('button', { name: 'เชื่อม Gmail ใหม่', exact: true })).toBeVisible()
     gmail.refresh = normalRefresh
+    clearThrottle(); await billPage.goto(WEB + '/history')
+    await expect(billPage.getByText('ค่าเดินทาง <img src=x onerror=alert(1)>\nKTB • 1111 • Gmail', { exact: true })).toBeVisible()
+    await expect(billPage.locator('img[src="x"]')).toHaveCount(0)
     assert.deepEqual(billErrors, [])
     await billContext.close()
+    await homeBalance.browser({ browser, WEB, expect, user: balanceUser, clearThrottle, pass, output: out })
     pass('browser explains empty/rejected checks, allows skipping wallet funding, displays recorded bills and offers reconnect on expired access')
   }
   clearThrottle()

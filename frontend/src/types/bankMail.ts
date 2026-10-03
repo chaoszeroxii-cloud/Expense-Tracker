@@ -35,6 +35,7 @@ export interface BankMailEntry {
   transaction: {
     bank: 'ktb' | 'scb'
     kind?: 'bill_payment'
+    memo?: string
     type: 'expense' | 'income'
     amount: number
     fee: number

@@ -12,6 +12,7 @@ export interface BankMailTransaction {
   bank: 'ktb' | 'scb'
   // Absent on existing transfer imports. Bill payments identify a biller, not a bank account.
   kind?: 'bill_payment'
+  memo?: string
   type: 'expense' | 'income'
   amount: number
   fee: number
@@ -108,6 +109,15 @@ function namedDate(value: string): string {
 }
 const person = (name: string) => name.replace(/^(?:นาย|นางสาว|นาง|น\.ส\.|คุณ)\s*/, '').replace(/\s+/g, '')
 
+function bankMemo(text: string): string | undefined {
+  // A single labeled line only: never consume a following field or email footer.
+  const matches = [...text.matchAll(/^บันทึกช่วยจำ[^\S\r\n]*:[^\S\r\n]*([^\r\n]*)$/gm)]
+  if (matches.length > 1) throw new Error('ambiguous_template')
+  const memo = matches[0]?.[1].replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '').trim()
+    .slice(0, 400).replace(/[\uD800-\uDBFF]$/, '')
+  return memo || undefined
+}
+
 export function parseBankMail(message: GmailMessage): { transaction?: BankMailTransaction; reason?: string } {
   const part = message.payload, from = header(part, 'from'), subject = header(part, 'subject').replace(/\s+/g, ' ')
   const address = (from.match(/<([^<>]+)>$/)?.[1] ?? from).toLowerCase()
@@ -119,8 +129,10 @@ export function parseBankMail(message: GmailMessage): { transaction?: BankMailTr
     const receivedAt = new Date(Number(message.internalDate)).toISOString()
     let type: 'income' | 'expense' = 'expense', sum: number, fee = 0, occurredAt: string
     let kind: BankMailTransaction['kind']
+    let memo: string | undefined
     let accountSuffix = '', counterpartyBank = '', counterpartySuffix = '', possibleOwnTransfer = false, referenceHash: string = null
     if (bank === 'ktb') {
+      memo = bankMemo(text)
       const isBill = KTB_BILL_SUBJECTS.includes(subject)
       if (isBill) {
         single(text, /คุณได้จ่ายบิลผ่าน Krungthai NEXT สำเร็จ/)
@@ -170,7 +182,7 @@ export function parseBankMail(message: GmailMessage): { transaction?: BankMailTr
     if (!sum || !accountSuffix || Date.parse(occurredAt) > Date.parse(receivedAt) + 600_000) throw new Error('invalid_transaction')
     // Preserve the fingerprints of previously imported transfer templates.
     const fingerprint = digest(JSON.stringify([bank, type, sum, occurredAt, accountSuffix, counterpartyBank, counterpartySuffix, ...(kind ? [kind] : [])]))
-    return { transaction: { bank, ...(kind ? { kind } : {}), type, amount: sum, fee, occurredAt, receivedAt, accountSuffix,
+    return { transaction: { bank, ...(kind ? { kind } : {}), ...(memo ? { memo } : {}), type, amount: sum, fee, occurredAt, receivedAt, accountSuffix,
       counterpartyBank, counterpartySuffix, possibleOwnTransfer, referenceHash, fingerprint } }
   } catch (error) {
     const allowed = ['mail_too_large', 'ambiguous_template', 'invalid_amount', 'invalid_date', 'unsupported_template', 'invalid_transaction']

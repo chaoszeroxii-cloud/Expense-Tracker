@@ -276,6 +276,7 @@ export class AuthService {
     if (dto.workHoursPerDay !== undefined)  patch.workHoursPerDay = dto.workHoursPerDay
     if (dto.workDaysPerMonth !== undefined) patch.workDaysPerMonth = dto.workDaysPerMonth
     if (dto.showWorkTime !== undefined)     patch.showWorkTime = dto.showWorkTime
+    if (dto.showCumulativeBalance !== undefined) patch.showCumulativeBalance = dto.showCumulativeBalance
     if (dto.advancedMode !== undefined)     patch.advancedMode = dto.advancedMode
     if (dto.remindAt !== undefined)         patch.remindAt = dto.remindAt
     if (dto.expectedMonthlyIncome !== undefined) patch.expectedMonthlyIncome = dto.expectedMonthlyIncome
@@ -495,6 +496,7 @@ export class AuthService {
       workHoursPerDay: Number(user.workHoursPerDay),
       workDaysPerMonth: user.workDaysPerMonth,
       showWorkTime: user.showWorkTime,
+      showCumulativeBalance: user.showCumulativeBalance,
       // Reveals wallets, loans, investments and tax
       advancedMode: user.advancedMode,
       // Daily reminder

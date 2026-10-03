@@ -105,6 +105,30 @@ test('G-Wallet funding requires transfer review without storing the biller name'
     for (const privateValue of ['ผู้ทดสอบ', 'G-Wallet', 'SYNTHETICBILL']) assert.ok(!JSON.stringify(t).includes(privateValue))
   }
 })
+
+test('optional KTB memos are plain text and do not change transaction identity', () => {
+  for (const [body, subject] of [[ktb, 'แจ้งผลการโอนเงินสำเร็จ'], [bill, 'แจ้งผลการจ่ายบิลสำเร็จ'], [bill, 'แจ้งผลการชำระค่าสินค้าและบริการสำเร็จ']]) {
+    const original = parseBankMail(message('ktb', body, subject)).transaction
+    const withMemo = message('ktb', body + '<dd>บันทึกช่วยจำ : ค่าเดินทาง &amp; อาหาร</dd><p>Unrelated footer</p>', subject)
+    for (const mimeType of ['text/html', 'text/plain']) {
+      if (mimeType === 'text/plain') withMemo.payload.body.data = Buffer.from(mailText(withMemo.payload)).toString('base64url')
+      withMemo.payload.mimeType = mimeType
+      assert.deepEqual(parseBankMail(withMemo).transaction, { ...original, memo: 'ค่าเดินทาง & อาหาร' })
+    }
+    for (const optional of ['', '<dd>บันทึกช่วยจำ : </dd><p>Unrelated footer</p>']) {
+      assert.deepEqual(parseBankMail(message('ktb', body + optional, subject)).transaction, original)
+    }
+  }
+})
+
+test('memos are bounded, control-free and ambiguous fields fail closed', () => {
+  const parse = memo => parseBankMail(message('ktb', bill + memo, 'แจ้งผลการจ่ายบิลสำเร็จ'))
+  assert.equal(parse('<dd>บันทึกช่วยจำ : ' + 'ก'.repeat(600) + '</dd>').transaction.memo.length, 400)
+  assert.equal(parse('<dd>บันทึกช่วยจำ : ' + 'ก'.repeat(399) + '🙂</dd>').transaction.memo.length, 399)
+  assert.equal(parse('<dd>บันทึกช่วยจำ : ค่า\u0000เดินทาง</dd>').transaction.memo, 'ค่าเดินทาง')
+  assert.equal(parse('<dd>บันทึกช่วยจำ : &lt;img src=x onerror=alert(1)&gt;</dd>').transaction.memo, '<img src=x onerror=alert(1)>')
+  assert.equal(parse('<dd>บันทึกช่วยจำ : A</dd><dd>บันทึกช่วยจำ : B</dd>').reason, 'ambiguous_template')
+})
 test('SCB incoming uses transaction time even when email is two hours late', () => {
   const m = message('scb', incoming, ' SCB Easy App:  คุณได้รับเงินผ่านรายการพร้อมเพย์')
   const content = { mimeType: 'text/html', body: m.payload.body }

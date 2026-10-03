@@ -127,10 +127,11 @@ export class BankMailService {
   }
   private async saveEntry(em: EntityManager, row: BankMailEntry, categoryId: string, type: 'expense' | 'income') {
     const t = row.transaction
+    const source = `${t.bank.toUpperCase()} • ${t.accountSuffix} • Gmail${t.fee ? ` • fee ${t.fee.toFixed(2)}` : ''}`
     const expense = await this.expenses.createInTransaction({
       amount: Math.round((t.amount + t.fee) * 100) / 100, type, categoryId,
       occurredAt: t.occurredAt, clientKey: row.id,
-      note: `${t.bank.toUpperCase()} • ${t.accountSuffix} • Gmail${t.fee ? ` • fee ${t.fee.toFixed(2)}` : ''}`,
+      note: t.memo ? `${t.memo}\n${source}` : source,
     }, row.userId, em)
     row.expenseId = expense.id; row.status = 'saved'; row.reason = null
     // Keep the source fingerprint stable for deduplication while displaying the

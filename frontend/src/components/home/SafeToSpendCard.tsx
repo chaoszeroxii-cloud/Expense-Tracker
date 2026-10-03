@@ -18,6 +18,14 @@ export default function SafeToSpendCard({ brief }: { brief: DailyBrief }) {
       ? Math.min(100, Math.max(0, (periodSpent / brief.monthlyLimit!) * 100))
       : 0
   const overBy = hasPlan ? Math.max(0, periodSpent - brief.monthlyLimit!) : 0
+  const balanceRow = brief.cumulativeBalance != null && (
+    <div role="group" aria-label={t('home_cumulative_balance')}
+      className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1.5 py-4 border-t border-white/15 text-sm">
+      <span className="text-white/85">{t('home_cumulative_balance')}</span>
+      <span className="font-bold tabular-nums">฿{fmt(brief.cumulativeBalance)}</span>
+      <p className="w-full text-xs text-white/70 leading-relaxed">{t('home_cumulative_balance_hint')}</p>
+    </div>
+  )
   const status =
     brief.planStatus === 'over'
       ? t('home_status_over')
@@ -88,6 +96,7 @@ export default function SafeToSpendCard({ brief }: { brief: DailyBrief }) {
               <Icon path={mdiArrowTopRight} size={0.75} />
             </button>
           </div>
+          <div className={balanceRow ? 'mt-4' : ''}>{balanceRow}</div>
         </div>
       ) : (
         <div className="mt-auto">
@@ -95,6 +104,7 @@ export default function SafeToSpendCard({ brief }: { brief: DailyBrief }) {
             <span className="text-white/75">{t('ux_month_spent')}</span>
             <span className="font-bold tabular-nums">฿{fmtRound(brief.monthSpent)}</span>
           </div>
+          {balanceRow}
           <button
             onClick={() => navigate('/budget')}
             className="flex items-center justify-center gap-2 rounded-2xl bg-brand-100 text-brand-900 w-full px-4 py-3 text-sm font-bold"

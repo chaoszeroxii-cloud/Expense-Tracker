@@ -207,6 +207,7 @@ function Entry({ entry, categories, settings, busy, onSave, onSkip }: {
       <p className="font-bold">{data.type === 'expense' ? '−' : '+'}฿{fmt(data.amount + data.fee)}</p>
     </div>
     {data.kind === 'bill_payment' && <p className="text-xs text-muted-theme">{t('mail_bill_payment')}</p>}
+    {data.memo && <p className="text-sm text-base-theme whitespace-pre-wrap break-words">{t('mail_memo')}: {data.memo}</p>}
     {data.counterpartySuffix && <p className="text-xs text-muted-theme">{t('mail_counterparty')}: {data.counterpartyBank.toUpperCase()} • {data.counterpartySuffix}</p>}
     {data.fee > 0 && <p className="text-xs text-muted-theme">{t('mail_fee')}: ฿{fmt(data.fee)}</p>}
     {entry.status === 'saved' && !entry.expenseId && <p className="text-xs text-muted-theme">{t('mail_deleted_entry')}</p>}

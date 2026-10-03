@@ -119,10 +119,11 @@ The service does not accept a target user ID from request bodies.
 Google grants read-only access to the mailbox, not a special bank-only permission.
 The app narrows its queries to known bank senders and subjects and checks Gmail's
 DKIM/DMARC authentication results. It never modifies Gmail, follows email links,
-downloads attachments, renders email HTML or sends content to AI. Stored fields
+downloads attachments, renders email HTML or sends raw mail to AI. Stored fields
 are the connected email address, encrypted OAuth credentials, transaction amount,
-time, bank/account suffixes, review state, and hashes for source/reference matching.
-Raw bodies, full account numbers, names and raw bank references are not persisted.
+time, bank/account suffixes, review state, the optional bank memo, and hashes for
+source/reference matching. Raw bodies, full account fields, sender/recipient name
+fields and raw bank references are not persisted.
 Application logs contain bounded failure codes only. Configure gateway/request
 logging to redact OAuth callback query strings, completion request bodies, bearer
 tokens and cron headers; this code cannot control hosting-provider logs.
@@ -176,6 +177,17 @@ migration. Deploy the backend for parsing and the frontend for updated coverage
 text, then check mail again; verified G-Wallet funding appears in **To review**.
 As with the previous fix, the two-day overlap only recovers recently received mail.
 
+## Bank memos in notes
+
+New KTB imports also read the optional `บันทึกช่วยจำ` field as a single line of
+plain text (up to 400 UTF-16 units). It appears in import review and at the start
+of the recorded expense note, followed by the existing bank/account suffix/Gmail
+and fee metadata. HTML is never rendered. Empty/missing memos leave the previous
+source note unchanged; duplicated memo fields are rejected as ambiguous.
+Memos do not affect source/reference matching or transaction fingerprints.
+Previously imported emails are not fetched again, and saved notes are not
+overwritten; users can edit those existing notes from History.
+
 ## Endpoints
 
 `/api/bank-mail`: `GET status`, `POST connect`, `POST complete`,
@@ -200,11 +212,13 @@ replay and cross-account completion, ledger effects, duplicate handling, concurr
 sync/disconnect, dispatch order, account reset and Settings placeholders. Browser
 screenshots go under ignored `frontend/.smoke/ux-artifacts/bank-mail/`.
 
-Local validation on 2 October 2026: 14 parser/crypto tests, 17 real DB/API/browser
+Local validation on 3 October 2026: 16 parser/crypto tests, 20 real DB/API/browser
 scenarios, both workspace builds and backend API typechecking passed. Browser
 checks used Thai on a 390 px dark screen and a 1440 px light screen. Gmail calls
 were stubbed with synthetic messages, including goods/services payments and
-G-Wallet funding; private mail was not copied into fixtures.
+G-Wallet funding; private mail was not copied into fixtures. Coverage also includes
+memo import/review, safe memo rendering, the cumulative-balance preference, and
+positive, zero and negative balances across both home modes.
 
 Deployment acceptance still needs a real grant to the deployed OAuth client and
 a real bank email, followed by a scheduler invocation with the browser closed.

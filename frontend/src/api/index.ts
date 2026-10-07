@@ -180,10 +180,10 @@ export const categoriesApi = {
   list: () =>
     http.get<Category[]>('/categories').then(r => r.data),
 
-  create: (payload: Pick<Category, 'name' | 'icon' | 'color' | 'type'>) =>
+  create: (payload: Pick<Category, 'name' | 'icon' | 'color' | 'type' | 'memoCode'>) =>
     http.post<Category>('/categories', payload).then(r => r.data),
 
-  update: (id: string, payload: Partial<Pick<Category, 'name' | 'icon' | 'color'>>) =>
+  update: (id: string, payload: Partial<Pick<Category, 'name' | 'icon' | 'color' | 'memoCode'>>) =>
     http.patch<Category>(`/categories/${id}`, payload).then(r => r.data),
 
   remove: (id: string) =>

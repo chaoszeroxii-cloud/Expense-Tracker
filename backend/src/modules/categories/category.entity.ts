@@ -18,6 +18,9 @@ export class Category {
   @Column({ length: 100 })
   name: string;
 
+  @Column({ name: 'memo_code', type: 'varchar', length: 20, nullable: true })
+  memoCode: string | null;
+
   @Column({ length: 50, nullable: true })
   icon: string;
 

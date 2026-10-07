@@ -10,25 +10,25 @@ import clsx from 'clsx'
 import { authApi, categoriesApi } from '../../api'
 import { useAuthStore } from '../../store/auth.store'
 import { useThemeStore } from '../../store/theme.store'
-import { useI18n, useT } from '../../store/i18n.store'
+import { useI18n, useT, type TKey } from '../../store/i18n.store'
 import { useCategories } from '../../hooks'
 import { Card, Skeleton, ConfirmModal } from '../../components/ui'
 import IconDisplay from '../../components/ui/IconDisplay'
-import { MDI_ICON_CATEGORIES } from '../../utils/iconMap'
+import { getPresetIconPath } from '../../utils/iconMap'
 import type { Category, EntryType } from '../../types'
 import DangerZone from '../../components/settings/DangerZone'
 import ReminderSettings from '../../components/settings/ReminderSettings'
 import InstallAppCard from '../../components/pwa/InstallAppCard'
 import BankMailSettings from '../../components/settings/BankMailSettings'
 import HomeBalanceSetting from '../../components/settings/HomeBalanceSetting'
+import { normalizeMemoCode, validMemoCode } from '../../utils/memoCode'
+import CategoryIconPicker from '../../components/settings/CategoryIconPicker'
 
 const PRESET_COLORS = [
   '#6366f1','#f97316','#3b82f6','#a855f7','#ef4444',
   '#ec4899','#eab308','#14b8a6','#22c55e','#10b981',
   '#06b6d4','#84cc16','#94a3b8','#64748b',
 ]
-const PRESET_ICONS_EXPENSE = MDI_ICON_CATEGORIES.expense
-const PRESET_ICONS_INCOME  = MDI_ICON_CATEGORIES.income
 
 export default function Settings() {
   const t = useT()
@@ -64,7 +64,10 @@ export default function Settings() {
   const [showAdd, setShowAdd] = useState(false)
   const [catName, setCatName] = useState('')
   const [catIcon, setCatIcon] = useState('food')
+  const [catIconReady, setCatIconReady] = useState(true)
   const [catColor, setCatColor] = useState('#6366f1')
+  const [catMemoCode, setCatMemoCode] = useState('')
+  const [catError, setCatError] = useState<TKey | null>(null)
   const [savingCat, setSavingCat] = useState(false)
 
   // ── Password ───────────────────────────────────────────────
@@ -137,27 +140,40 @@ export default function Settings() {
 
   const startEdit = (cat: Category) => {
     setEditId(cat.id); setShowAdd(false)
-    setCatName(cat.name); setCatIcon(cat.icon); setCatColor(cat.color)
+    setCatName(cat.name); setCatIcon(cat.icon || 'other'); setCatColor(cat.color || '#6366f1')
+    setCatIconReady(!!getPresetIconPath(cat.icon))
+    setCatMemoCode(cat.memoCode ?? ''); setCatError(null)
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
   const startAdd = () => {
     setEditId(null)
     setCatName(''); setCatIcon(catType === 'expense' ? 'food' : 'salary'); setCatColor('#6366f1')
+    setCatIconReady(true)
+    setCatMemoCode(''); setCatError(null)
     setShowAdd(true)
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0)
   }
   const cancelForm = () => { setEditId(null); setShowAdd(false) }
 
   const handleCatSave = async () => {
-    if (!catName.trim()) return
+    if (!catName.trim() || savingCat || !catIconReady) return
+    const memoCode = normalizeMemoCode(catMemoCode)
+    if (!validMemoCode(memoCode)) { setCatError('memo_code_invalid'); return }
+    if (memoCode && categories?.some(c => c.id !== editId && c.memoCode === memoCode)) {
+      setCatError('memo_code_taken'); return
+    }
+    setCatError(null)
     setSavingCat(true)
     try {
       if (editId) {
-        await categoriesApi.update(editId, { name: catName, icon: catIcon, color: catColor })
+        await categoriesApi.update(editId, { name: catName, icon: catIcon, color: catColor, memoCode })
       } else {
-        await categoriesApi.create({ name: catName, icon: catIcon, color: catColor, type: catType })
+        await categoriesApi.create({ name: catName, icon: catIcon, color: catColor, type: catType, memoCode })
       }
       cancelForm(); refetch()
+    } catch (err) {
+      const message = (err as { response?: { data?: { message?: unknown } } }).response?.data?.message
+      setCatError(message === 'memo_code_taken' ? 'memo_code_taken' : message === 'icon_invalid' ? 'cat_icon_invalid' : 'err_generic')
     } finally { setSavingCat(false) }
   }
 
@@ -169,7 +185,6 @@ export default function Settings() {
     })
   }
 
-  const iconPresets = catType === 'expense' ? PRESET_ICONS_EXPENSE : PRESET_ICONS_INCOME
 
   return (
     <div className="px-4 pt-6 pb-6 sm:px-6 lg:px-2 space-y-6 animate-fade-in">
@@ -299,17 +314,18 @@ export default function Settings() {
       <Card id="settings-categories" className="scroll-mt-5" padding={false}>
         <div ref={formRef} className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-theme">
           <h2 className="font-bold text-base-theme text-sm">{t('categories')}</h2>
-          <button onClick={startAdd}
+          <button onClick={startAdd} disabled={savingCat}
             className="flex items-center gap-1.5 text-xs font-semibold text-brand-600
                        bg-brand-50 dark:bg-brand-900/30 px-3 py-1.5 rounded-full transition-colors">
             <Icon path={mdiPlus} size={0.6} /> {t('add')}
           </button>
         </div>
 
+        <p className="px-5 pt-4 text-xs text-muted-theme leading-relaxed">{t('memo_code_intro')}</p>
         {/* Type toggle */}
         <div className="flex gap-1 mx-5 mt-4 mb-3 bg-slate-100 dark:bg-slate-700 rounded-xl p-1">
           {(['expense', 'income'] as EntryType[]).map(tp => (
-            <button key={tp} onClick={() => { setCatType(tp); cancelForm() }}
+            <button key={tp} disabled={savingCat} onClick={() => { setCatType(tp); cancelForm() }}
               className={clsx('flex-1 py-2 rounded-lg text-xs font-semibold transition-all capitalize flex items-center justify-center gap-1',
                 catType === tp ? 'bg-white dark:bg-slate-600 text-base-theme shadow-sm' : 'text-muted-theme')}>
               <Icon path={tp === 'expense' ? mdiWallet : mdiCash} size={0.5} />
@@ -320,7 +336,7 @@ export default function Settings() {
 
         {/* Add/Edit form */}
         {(showAdd || editId) && (
-          <div className="mx-5 mb-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl space-y-3 animate-fade-up">
+          <fieldset disabled={savingCat} className="mx-5 mb-4 p-4 bg-slate-50 dark:bg-slate-700/50 rounded-2xl space-y-3 animate-fade-up">
             <p className="text-xs font-bold text-muted-theme uppercase tracking-wide">
               {editId ? t('edit_category') : t('new_category')}
             </p>
@@ -328,19 +344,20 @@ export default function Settings() {
               placeholder={t('cat_name_ph')} maxLength={50}
               className="w-full px-3 py-2 rounded-xl border border-theme bg-input
                          text-sm font-medium text-base-theme outline-none focus:border-brand-400 transition-all" />
-            <div>
-              <p className="text-[10px] font-semibold text-muted-theme mb-2 uppercase tracking-wide">{t('icon')}</p>
-              <div className="flex flex-wrap gap-2">
-                {iconPresets.map(ic => (
-                  <button key={ic.id} type="button" onClick={() => setCatIcon(ic.id)}
-                    className={clsx('w-9 h-9 rounded-xl flex items-center justify-center transition-all',
-                      catIcon === ic.id ? 'bg-brand-100 dark:bg-brand-900/40 ring-2 ring-brand-400' : 'bg-white dark:bg-slate-700 hover:bg-slate-100 dark:hover:bg-slate-600')}
-                    title={ic.label}>
-                    <Icon path={ic.mdi} size={0.6} color="#666" />
-                  </button>
-                ))}
-              </div>
+            <div className="space-y-1.5">
+              <label htmlFor="category-memo-code" className="block text-xs font-semibold text-base-theme">{t('memo_code_label')}</label>
+              <input id="category-memo-code" type="text" value={catMemoCode}
+                onChange={e => { setCatMemoCode(e.target.value); setCatError(null) }}
+                placeholder={lang === 'th' ? 'เช่น กิน หรือ 1' : 'e.g. food or 1'} maxLength={21}
+                autoCapitalize="none" autoComplete="off" spellCheck={false} aria-describedby="category-memo-hint"
+                className="w-full px-3 py-2.5 rounded-xl border border-theme bg-input text-sm text-base-theme" />
+              <p id="category-memo-hint" className="text-xs text-muted-theme leading-relaxed">{t('memo_code_hint')}</p>
+              {normalizeMemoCode(catMemoCode) && validMemoCode(normalizeMemoCode(catMemoCode)) &&
+                <p className="text-xs text-brand-600 dark:text-brand-300 break-words">{t('memo_code_example')}: <strong>#{normalizeMemoCode(catMemoCode)}</strong> → {catName || t('preview')}</p>}
             </div>
+            {catError && <p role="alert" className="text-xs text-rose-600 dark:text-rose-300">{t(catError)}</p>}
+            <CategoryIconPicker key={editId ?? `new-${catType}`} value={catIcon} type={catType} color={catColor}
+              onChange={setCatIcon} onValidityChange={setCatIconReady} />
             <div>
               <p className="text-[10px] font-semibold text-muted-theme mb-2 uppercase tracking-wide">{t('color')}</p>
               <div className="flex flex-wrap gap-2">
@@ -359,16 +376,16 @@ export default function Settings() {
               <span className="flex-1 text-sm font-semibold text-base-theme truncate">
                 {catName || t('preview')}
               </span>
-              <button onClick={cancelForm}
+              <button onClick={cancelForm} aria-label={t('action_cancel')}
                 className="p-2 rounded-xl bg-slate-200 dark:bg-slate-600 text-muted-theme transition-colors">
                 <Icon path={mdiClose} size={0.7} />
               </button>
-              <button onClick={handleCatSave} disabled={savingCat || !catName.trim()}
+              <button onClick={handleCatSave} aria-label={t('save')} disabled={savingCat || !catName.trim() || !catIconReady}
                 className="p-2 rounded-xl bg-brand-600 text-white disabled:opacity-40 transition-colors">
                 <Icon path={mdiCheck} size={0.7} />
               </button>
             </div>
-          </div>
+          </fieldset>
         )}
 
         {/* Category list */}
@@ -387,15 +404,18 @@ export default function Settings() {
                     style={{ backgroundColor: (cat.color ?? '#e2e8f0') + '22' }}>
                     <IconDisplay icon={cat.icon} color={cat.color} size="md" />
                   </div>
-                  <span className="flex-1 text-sm font-semibold text-base-theme truncate">{cat.name}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-base-theme truncate">{cat.name}</p>
+                    {cat.memoCode && <p className="text-xs text-brand-600 dark:text-brand-300 break-words mt-0.5">#{cat.memoCode}</p>}
+                  </div>
                   {cat.isDefault && (
                     <span className="text-[10px] text-muted-theme font-medium">{t('default_label')}</span>
                   )}
-                  <button onClick={() => startEdit(cat)}
+                  <button onClick={() => startEdit(cat)} disabled={savingCat} aria-label={`${t('edit_category')} ${cat.name}`}
                     className="p-1.5 rounded-lg text-muted-theme hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 transition-colors">
                     <Icon path={mdiPencil} size={0.6} />
                   </button>
-                  <button onClick={() => handleDeleteCat(cat.id)}
+                  <button onClick={() => handleDeleteCat(cat.id)} disabled={savingCat}
                     className="p-1.5 rounded-lg text-muted-theme hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors">
                     <Icon path={mdiTrashCan} size={0.6} />
                   </button>

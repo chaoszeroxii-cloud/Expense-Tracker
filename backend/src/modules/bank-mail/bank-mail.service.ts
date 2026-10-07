@@ -9,6 +9,7 @@ import { GmailFailure, GmailProvider } from './gmail.provider'
 import { Category } from '../categories/category.entity'
 import { ExpensesService } from '../expenses/expenses.service'
 import { lockLedger } from '../../common/ledger-lock.util'
+import { matchMemoCategory } from '../../common/memo-code.util'
 
 @Injectable()
 export class BankMailService {
@@ -106,11 +107,16 @@ export class BankMailService {
       where: { userId, status: query.status ?? 'pending' }, take: 20, skip: query.offset ?? 0,
       order: { createdAt: 'DESC', id: 'DESC' },
     })
-    return { rows: rows.map(row => this.entryView(row)), total }
+    const categories = rows.some(row => row.status === 'pending' && row.transaction.memo)
+      ? await this.db.getRepository(Category).find({ where: { userId }, select: ['id', 'type', 'memoCode'] }) : []
+    return { rows: rows.map(row => this.entryView(row, categories)), total }
   }
-  private entryView(row: BankMailEntry) {
+  private entryView(row: BankMailEntry, categories: Category[] = []) {
     const { referenceHash: _reference, fingerprint: _fingerprint, ...transaction } = row.transaction
-    return { id: row.id, transaction, status: row.status, reason: row.reason, expenseId: row.expenseId }
+    const categoryHint = row.status === 'pending' ? matchMemoCategory(transaction.memo, transaction.type, categories) : null
+    // A pending item's code may have been added, renamed or removed since ingestion.
+    const reason = row.reason?.startsWith('memo_code_') ? categoryHint?.issue ?? 'review_required' : row.reason
+    return { id: row.id, transaction, status: row.status, reason, expenseId: row.expenseId, categoryHint }
   }
   private async duplicate(em: EntityManager, userId: string, t: BankMailTransaction, excludeId?: string) {
     const previous = await em.findOne(BankMailEntry, { where: {
@@ -174,11 +180,13 @@ export class BankMailService {
         const [bank, tail] = value.split(':')
         return tail === t.counterpartySuffix && (!t.counterpartyBank || ['promptpay', 'other', t.counterpartyBank].includes(bank))
       })
-      const categoryId = connection.settings[t.type + 'CategoryId']
+      const categories = t.memo ? await em.find(Category, { where: { userId }, select: ['id', 'type', 'memoCode'] }) : []
+      const hint = matchMemoCategory(t.memo, t.type, categories)
+      const categoryId = hint ? hint.categoryId : connection.settings[t.type + 'CategoryId']
       let reason = own ? 'possible_transfer' : t.fee ? 'fee_review'
         : (!t.counterpartySuffix && t.kind !== 'bill_payment') || !connection.settings.ownAccounts.includes(`${t.bank}:${t.accountSuffix}`) ? 'account_required'
         : await this.duplicate(em, userId, t) ? 'possible_duplicate'
-        : !connection.autoImportSince || Date.parse(t.receivedAt) < connection.autoImportSince.getTime() ? 'review_required' : null
+        : !connection.autoImportSince || Date.parse(t.receivedAt) < connection.autoImportSince.getTime() ? 'review_required' : hint?.issue ?? null
       const categoryValid = categoryId && await em.exists(Category, { where: { id: categoryId, userId, type: t.type } })
       if (!categoryValid && !reason) reason = 'category_required'
       const row = await em.save(BankMailEntry, em.create(BankMailEntry, {

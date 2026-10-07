@@ -58,6 +58,18 @@ registerRoute(
 )
 
 registerRoute(
+  // Public, generated icon data only. Authenticated API responses remain uncached.
+  ({ url }) => url.origin === self.location.origin && /^\/assets\/mdi-[a-z]-[\w-]+\.json$/.test(url.pathname),
+  new CacheFirst({
+    cacheName: 'moneyflow-mdi-v1',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [200] }),
+      new ExpirationPlugin({ maxEntries: 26, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
+    ],
+  }),
+)
+
+registerRoute(
   ({ url }) => /^https:\/\/fonts\.(googleapis|gstatic)\.com/.test(url.href),
   new CacheFirst({
     cacheName: 'google-fonts',

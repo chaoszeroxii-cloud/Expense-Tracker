@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Category } from './category.entity';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
-import { normalizeMdiIconId } from '../../common/icon.util';
+import { resolveMdiIconId } from '../../common/icon.util';
 import { lockLedger } from '../../common/ledger-lock.util';
 
 @Injectable()
@@ -26,24 +26,45 @@ export class CategoriesService {
     return category;
   }
 
-  create(dto: CreateCategoryDto, userId: string): Promise<Category> {
-    const category = this.repo.create({
-      ...dto,
-      icon: normalizeMdiIconId(dto.icon, 'other'),
-      userId,
-    });
-    return this.repo.save(category);
+  async create(dto: CreateCategoryDto, userId: string): Promise<Category> {
+    try {
+      return await this.repo.manager.transaction(async em => {
+        await lockLedger(em, userId);
+        return em.save(Category, em.create(Category, {
+          ...dto, icon: this.categoryIcon(dto.icon), userId,
+        }));
+      });
+    } catch (error) { this.rethrowCodeConflict(error); }
   }
 
   async update(id: string, dto: UpdateCategoryDto, userId: string): Promise<Category> {
-    const category = await this.findOne(id, userId);
-    Object.assign(category, {
-      ...dto,
-      ...(dto.icon !== undefined
-        ? { icon: normalizeMdiIconId(dto.icon, 'other') }
-        : {}),
-    });
-    return this.repo.save(category);
+    try {
+      return await this.repo.manager.transaction(async em => {
+        await lockLedger(em, userId);
+        const category = await em.findOneBy(Category, { id, userId });
+        if (!category) throw new NotFoundException(`Category ${id} not found`);
+        Object.assign(category, {
+          ...dto,
+          ...(dto.icon !== undefined ? { icon: this.categoryIcon(dto.icon) } : {}),
+        });
+        return em.save(category);
+      });
+    } catch (error) { this.rethrowCodeConflict(error); }
+  }
+
+  private rethrowCodeConflict(error: unknown): never {
+    const pg = error as { code?: string; constraint?: string };
+    if (pg.code === '23505' && pg.constraint === 'uq_categories_user_memo_code') {
+      throw new ConflictException('memo_code_taken');
+    }
+    throw error;
+  }
+
+  private categoryIcon(icon: string | null | undefined): string {
+    if (icon == null || icon.trim() === '') return 'other';
+    const resolved = resolveMdiIconId(icon);
+    if (!resolved) throw new BadRequestException('icon_invalid');
+    return resolved;
   }
 
   /**

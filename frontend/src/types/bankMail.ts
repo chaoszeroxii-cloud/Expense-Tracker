@@ -32,6 +32,11 @@ export interface BankMailEntry {
   status: 'pending' | 'saved' | 'ignored'
   reason: string | null
   expenseId: string | null
+  categoryHint?: {
+    categoryId: string | null
+    code: string | null
+    issue: 'memo_code_unknown' | 'memo_code_multiple' | 'memo_code_type_mismatch' | null
+  } | null
   transaction: {
     bank: 'ktb' | 'scb'
     kind?: 'bill_payment'

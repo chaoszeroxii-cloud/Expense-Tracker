@@ -7,6 +7,7 @@ export interface Category {
   color: string
   type: EntryType
   isDefault: boolean
+  memoCode?: string | null
 }
 
 export interface Expense {

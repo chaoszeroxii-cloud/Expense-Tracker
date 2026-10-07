@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useCallback } from 'react'
 import { companionEn, companionTh } from './companion.i18n'
 import { bankMailEn, bankMailTh } from './bankMail.i18n'
+import { categoryIconsEn, categoryIconsTh } from './categoryIcons.i18n'
 
 export type Lang = 'en' | 'th'
 
@@ -12,6 +13,7 @@ const dict = {
   en: {
     ...companionEn,
     ...bankMailEn,
+    ...categoryIconsEn,
     install_title: 'MoneyFlow, one tap away',
     install_hint: 'Add an icon to your home screen for your daily check-in.',
     install_button: 'Install MoneyFlow',
@@ -769,6 +771,7 @@ const dict = {
   th: {
     ...companionTh,
     ...bankMailTh,
+    ...categoryIconsTh,
     install_title: 'เปิด MoneyFlow ได้ในแตะเดียว',
     install_hint: 'เพิ่มไอคอนไว้บนหน้าจอโฮม แวะมาจดเงินได้ทุกวัน',
     install_button: 'ติดตั้ง MoneyFlow',

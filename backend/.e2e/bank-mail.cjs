@@ -257,6 +257,10 @@ async function run() {
   pass('bank memos persist in automatic and reviewed expense notes without losing fee/source metadata')
   const homeBalance = require('./home-balance.cjs')
   const balanceUser = await homeBalance.api({ account, db, clearThrottle, pass })
+  const memoCodes = require('./memo-codes.cjs')
+  const codeFixture = await memoCodes.api({ account, connect, db, clearThrottle, pass, mailboxes, billMessage, API })
+  const categoryIcons = require('./category-icons.cjs')
+  const iconFixture = await categoryIcons.api({ account, clearThrottle, pass })
   if (process.argv.includes('--browser')) {
     process.chdir(path.join(ROOT, 'frontend')) // Tailwind resolves content/config relative to the app.
     const { createServer } = await import('vite')
@@ -344,6 +348,9 @@ async function run() {
     assert.deepEqual(billErrors, [])
     await billContext.close()
     await homeBalance.browser({ browser, WEB, expect, user: balanceUser, clearThrottle, pass, output: out })
+    await memoCodes.browser({ browser, WEB, expect, fixture: codeFixture, clearThrottle, pass, output: out })
+    await categoryIcons.browser({ browser, WEB, expect, fixture: iconFixture, clearThrottle, pass, output: out })
+    await categoryIcons.production({ browser, expect, fixture: iconFixture, API, ROOT, clearThrottle, pass })
     pass('browser explains empty/rejected checks, allows skipping wallet funding, displays recorded bills and offers reconnect on expired access')
   }
   clearThrottle()

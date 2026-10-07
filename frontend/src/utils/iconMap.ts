@@ -138,7 +138,13 @@ export const ALLOCATION_ICONS = [
 
 export function getMdiIconPath(iconId: string): string {
   // Support both new format (icon names) and old format (emojis)
-  return MDI_ICON_MAP[iconId] || EMOJI_TO_MDI_MAP[iconId] || mdiPackageVariant
+  return getPresetIconPath(iconId) ?? mdiPackageVariant
+}
+
+export function getPresetIconPath(iconId: string): string | null {
+  if (Object.prototype.hasOwnProperty.call(MDI_ICON_MAP, iconId)) return MDI_ICON_MAP[iconId]
+  if (Object.prototype.hasOwnProperty.call(EMOJI_TO_MDI_MAP, iconId)) return EMOJI_TO_MDI_MAP[iconId]
+  return null
 }
 
 export function getIconLabel(iconId: string): string {

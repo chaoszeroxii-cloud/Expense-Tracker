@@ -2,6 +2,52 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { parseBankMail, mailText, BANK_MAIL_QUERY } = require('../dist/modules/bank-mail/bank-mail.parser')
 const { sealMailSecret, openMailSecret } = require('../dist/modules/bank-mail/bank-mail.crypto')
+const { normalizeMemoCode, matchMemoCategory } = require('../dist/common/memo-code.util')
+
+const codeCategories = [
+  { id: 'food', type: 'expense', memoCode: 'กิน' },
+  { id: 'travel', type: 'expense', memoCode: 'go' },
+  { id: 'salary', type: 'income', memoCode: 'pay' },
+  { id: 'number', type: 'expense', memoCode: '1' },
+  { id: 'accent', type: 'expense', memoCode: 'café' },
+]
+test('memo codes normalize optional hashes, case and canonical Unicode without coercing JSON values', () => {
+  assert.equal(normalizeMemoCode(' #GO '), 'go')
+  assert.equal(normalizeMemoCode('Cafe\u0301'), 'café')
+  assert.equal(normalizeMemoCode(''), null)
+  assert.equal(normalizeMemoCode(null), null)
+  assert.equal(normalizeMemoCode(1), 1)
+  assert.equal(normalizeMemoCode(false), false)
+})
+test('memo codes select whole Thai, English, numeric and normalized tokens; repeated tokens agree', () => {
+  for (const [memo, id] of [['ข้าว #กิน', 'food'], ['(#GO), ไปทำงาน', 'travel'], ['#1', 'number'], ['#กิน #กิน', 'food'], ['#Cafe\u0301', 'accent']]) {
+    const hint = matchMemoCategory(memo, 'expense', codeCategories)
+    assert.equal(hint.categoryId, id); assert.equal(hint.issue, null)
+  }
+  assert.equal(matchMemoCategory('#PAY', 'income', codeCategories).categoryId, 'salary')
+})
+test('memos without explicit codes keep defaults; prefixes and unknown codes never guess a category', () => {
+  for (const memo of [undefined, '', 'อาหาร', 'กิน', 'https://example.test/#กิน', 'text#กิน']) {
+    assert.equal(matchMemoCategory(memo, 'expense', codeCategories), null)
+  }
+  for (const memo of ['#กินเพิ่ม', '#go-extra', '#missing', '#กิน#go', '#<script>', '#' + 'a'.repeat(21)]) {
+    assert.equal(matchMemoCategory(memo, 'expense', codeCategories).issue, 'memo_code_unknown')
+  }
+  assert.equal(matchMemoCategory('#กิน', 'expense', []).issue, 'memo_code_unknown')
+})
+test('multiple codes and wrong transaction types require review without changing direction', () => {
+  assert.equal(matchMemoCategory('#กิน #go', 'expense', codeCategories).issue, 'memo_code_multiple')
+  assert.equal(matchMemoCategory('#กิน #unknown', 'expense', codeCategories).issue, 'memo_code_multiple')
+  const hint = matchMemoCategory('#pay', 'expense', codeCategories)
+  assert.equal(hint.issue, 'memo_code_type_mismatch'); assert.equal(hint.categoryId, null)
+})
+test('memos at the storage limit cannot match a partial code or hide conflicting codes', () => {
+  const memo = 'x'.repeat(395) + ' #กิน'
+  assert.equal(memo.length, 400)
+  assert.equal(matchMemoCategory(memo, 'expense', codeCategories).issue, 'memo_code_unknown')
+  assert.equal(matchMemoCategory('#กิน ' + 'x'.repeat(395), 'expense', codeCategories).issue, 'memo_code_unknown')
+  assert.equal(matchMemoCategory('#กิน ' + 'x'.repeat(394), 'expense', codeCategories).issue, 'memo_code_unknown')
+})
 
 // Entirely synthetic templates: never copy private mail into the repository.
 const ktb = `<p>คุณได้ทำรายการโอนเงินผ่าน Krungthai NEXT สำเร็จ</p>

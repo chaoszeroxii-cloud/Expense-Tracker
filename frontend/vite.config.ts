@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { mdiCatalogPlugin } from './scripts/mdi-catalog-plugin'
 
 // Stamped into the bundle so telemetry can attribute an event to a release without
 // the client having to guess or the server having to infer it.
@@ -14,6 +15,7 @@ export default defineConfig({
   },
 
   plugins: [
+    mdiCatalogPlugin(),
     react(),
     VitePWA({
       // injectManifest, not generateSW: a generated worker cannot carry a `push`

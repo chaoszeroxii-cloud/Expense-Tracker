@@ -1,5 +1,7 @@
 import Icon from '@mdi/react'
-import { getMdiIconPath } from '../../utils/iconMap'
+import { useEffect, useState } from 'react'
+import { getMdiIconPath, getPresetIconPath } from '../../utils/iconMap'
+import { cachedMdiPath, loadMdiPath } from '../../utils/customIcons'
 
 interface IconDisplayProps {
   icon: string
@@ -9,7 +11,17 @@ interface IconDisplayProps {
 }
 
 export default function IconDisplay({ icon, color, size = 'md', className }: IconDisplayProps) {
-  const iconPath = getMdiIconPath(icon)
+  const preset = getPresetIconPath(icon)
+  const [resolved, setResolved] = useState<{ icon: string; path: string | null } | null>(null)
+  useEffect(() => {
+    if (preset || !icon) return
+    let active = true
+    const load = () => { loadMdiPath(icon).then(path => { if (active) setResolved({ icon, path }) }).catch(() => {}) }
+    load()
+    window.addEventListener('online', load)
+    return () => { active = false; window.removeEventListener('online', load) }
+  }, [icon, preset])
+  const iconPath = preset || (icon && cachedMdiPath(icon)) || (resolved?.icon === icon ? resolved.path : null) || getMdiIconPath('other')
   
   const sizeMap = {
     sm: 0.6,
@@ -23,8 +35,8 @@ export default function IconDisplay({ icon, color, size = 'md', className }: Ico
     <Icon
       path={iconPath}
       size={sizeValue}
-      color={color}
-      className={className}
+      color={color || 'currentColor'}
+      className={`${!color ? 'text-base-theme ' : ''}${className ?? ''}`}
     />
   )
 }

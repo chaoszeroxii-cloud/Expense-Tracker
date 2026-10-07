@@ -13,6 +13,8 @@ const reasons: Record<string, TKey> = {
   possible_transfer: 'mail_possible_transfer', possible_duplicate: 'mail_possible_duplicate',
   fee_review: 'mail_fee_review', category_required: 'mail_category_required', review_required: 'mail_review_required',
   account_required: 'mail_account_required',
+  memo_code_unknown: 'memo_code_unknown', memo_code_multiple: 'memo_code_multiple',
+  memo_code_type_mismatch: 'memo_code_type_mismatch',
 }
 const defaults = (): Settings => ({ autoImport: false, expenseCategoryId: null, incomeCategoryId: null, ownAccounts: [] })
 const banks = ['ktb', 'scb', 'promptpay', 'other'] as const
@@ -44,6 +46,7 @@ export default function BankMailSettings({ categories }: { categories: Category[
   const [error, setError] = useState<TKey | null>(null), [notice, setNotice] = useState<TKey | null>(null)
   const [syncSummary, setSyncSummary] = useState<BankMailSyncSummary | null>(null)
   const [bank, setBank] = useState<string>('ktb'), [tail, setTail] = useState('')
+  const categoryCodes = categories.map(c => `${c.id}:${c.type}:${c.memoCode ?? ''}`).join('|')
   const alive = useRef(true), initialized = useRef(false), completing = useRef<Promise<void> | null>(null)
   useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
   useEffect(() => {
@@ -69,7 +72,7 @@ export default function BankMailSettings({ categories }: { categories: Category[
       if (!initialized.current) { setSettings(s.settings); initialized.current = true }
     }).catch(() => { if (active) setError('mail_sync_error') }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [filter, offset])
+  }, [filter, offset, categoryCodes])
   const refresh = async () => {
     const [s, entries] = await Promise.all([bankMailApi.status(), bankMailApi.entries(filter, offset)])
     if (alive.current) {
@@ -116,6 +119,11 @@ export default function BankMailSettings({ categories }: { categories: Category[
         <p className="text-sm text-muted-theme mt-1">{t('mail_intro')}</p></div>
     </div>
     <p className="text-xs text-muted-theme leading-relaxed">{t('mail_privacy')}</p>
+    <div className="rounded-xl bg-input p-3 space-y-2">
+      <p className="text-xs text-muted-theme leading-relaxed">{t('memo_code_intro')}</p>
+      <button type="button" className="text-xs font-semibold text-brand-600 dark:text-brand-300 py-1"
+        onClick={() => document.getElementById('settings-categories')?.scrollIntoView({ block: 'start' })}>{t('memo_code_manage')}</button>
+    </div>
     <details className="text-xs text-muted-theme leading-relaxed"><summary className="cursor-pointer font-semibold">{t('mail_supported')}</summary>
       <p className="mt-2">{t('mail_coverage')}</p></details>
     {error && <p role="alert" className="text-sm text-rose-600 dark:text-rose-300">{t(error)}</p>}
@@ -198,7 +206,10 @@ function Entry({ entry, categories, settings, busy, onSave, onSkip }: {
 }) {
   const t = useT(), { lang } = useI18n(), data = entry.transaction
   const [type, setType] = useState(data.type)
-  const [category, setCategory] = useState(settings[`${data.type}CategoryId`] ?? '')
+  const [chosenCategory, setCategory] = useState<string | null>(null)
+  const hint = type === data.type ? entry.categoryHint : null
+  const category = chosenCategory ?? (hint ? hint.categoryId ?? '' : settings[`${type}CategoryId`] ?? '')
+  const hintedCategory = categories.find(c => c.id === hint?.categoryId && c.type === type)
   const [allowDuplicate, setAllowDuplicate] = useState(false)
   const valid = categories.some(c => c.id === category && c.type === type)
   return <article className="rounded-xl border border-theme p-3 space-y-3">
@@ -213,8 +224,10 @@ function Entry({ entry, categories, settings, busy, onSave, onSkip }: {
     {entry.status === 'saved' && !entry.expenseId && <p className="text-xs text-muted-theme">{t('mail_deleted_entry')}</p>}
     {entry.status === 'pending' && <>
       <p className="text-xs text-amber-700 dark:text-amber-300">{t(reasons[entry.reason ?? ''] ?? 'mail_review_required')}</p>
+      {hint?.issue && entry.reason !== hint.issue && <p className="text-xs text-amber-700 dark:text-amber-300">{t(hint.issue)}</p>}
+      {hintedCategory && <p className="text-xs text-brand-600 dark:text-brand-300 break-words">{t('memo_code_match')}: #{hint?.code} → {hintedCategory.name}</p>}
       <div className="grid grid-cols-2 gap-2">
-        <select aria-label={t('dc_type')} className={field} disabled={busy} value={type} onChange={e => { const next = e.target.value as 'expense' | 'income'; setType(next); setCategory(settings[`${next}CategoryId`] ?? ''); setAllowDuplicate(false) }}>
+        <select aria-label={t('dc_type')} className={field} disabled={busy} value={type} onChange={e => { const next = e.target.value as 'expense' | 'income'; setType(next); setCategory(null); setAllowDuplicate(false) }}>
           <option value="expense">{t('expense')}</option><option value="income">{t('income')}</option>
         </select>
         <select aria-label={t('mail_choose')} className={field} disabled={busy} value={valid ? category : ''} onChange={e => setCategory(e.target.value)}><option value="">{t('mail_choose')}</option>{categories.filter(c => c.type === type).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>

@@ -23,6 +23,7 @@
     "test:bank-mail:e2e": "npm run build && node .e2e/bank-mail.cjs --browser"
   },
   "dependencies": {
+    "@mdi/js": "7.4.47",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.0.0",
     "@nestjs/core": "^10.0.0",

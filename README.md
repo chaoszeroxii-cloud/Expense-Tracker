@@ -7,6 +7,9 @@ self-reported savings goals. Unpaid bills are reserved before calculating today'
 allowance; paying or linking a bill records it once. Envelope tools remain optional.
 See [everyday UX](docs/everyday-ux.md) and [planning architecture](docs/adr/0002-daily-money-and-life-planning.md).
 
+Category settings also accept [custom MDI icon names](docs/category-icons.md)
+and [personal category codes in bank memos](docs/gmail-bank-import.md).
+
 ## Quick Start (Development)
 
 ```bash

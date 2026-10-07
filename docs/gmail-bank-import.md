@@ -177,6 +177,32 @@ migration. Deploy the backend for parsing and the frontend for updated coverage
 text, then check mail again; verified G-Wallet funding appears in **To review**.
 As with the previous fix, the two-day overlap only recovers recently received mail.
 
+## รหัสหมวดหมู่ในบันทึกช่วยจำ
+
+ตั้งรหัสของตัวเองได้ที่ **ตั้งค่า → หมวดหมู่ → แก้ไขหมวดหมู่** ในช่อง
+**รหัสหมวดในบันทึกช่วยจำ** เช่น หมวดอาหารใช้ `กิน` หรือ `1` หมวดเดินทางใช้ `go`
+แล้วพิมพ์ `ข้าวกลางวัน #กิน`, `#1` หรือ `ไปทำงาน #go` ในบันทึกช่วยจำของธนาคาร
+เมื่อเมลที่รองรับเข้ามา MoneyFlow จะเลือกหมวดนั้นก่อนใช้หมวดเริ่มต้นของ Gmail
+ในหน้ารอตรวจทานจะแสดงหมวดที่เลือกจากรหัส และยังเปลี่ยนหมวดเองก่อนบันทึกได้
+
+- ตั้งได้หนึ่งรหัสต่อหมวด ใช้ตัวอักษรหรือตัวเลข 1–20 ตัว รวม `_` และ `-` ได้
+  แต่ต้องเริ่มด้วยตัวอักษรหรือตัวเลขและห้ามเว้นวรรค รหัสอังกฤษไม่แยกตัวพิมพ์เล็กใหญ่
+  ใส่ `#` ในช่องตั้งค่าหรือไม่ก็ได้ แต่ตอนพิมพ์บันทึกช่วยจำต้องใส่ `#`
+  ไว้ต้นข้อความหรือหลังเว้นวรรค เช่น `ข้าว #กิน` ระบบไม่จับคำธรรมดาหรือส่วนหนึ่งของ URL
+- รหัสห้ามซ้ำกันระหว่างหมวดรายรับและรายจ่ายในบัญชีเดียวกัน ผู้ใช้คนอื่นใช้รหัสเดียวกันได้
+  ล้างช่องแล้วบันทึกเพื่อนำรหัสออก การลบหมวดจะนำรหัสของหมวดนั้นออกด้วย
+- ไม่ใส่รหัส: ใช้หมวดเริ่มต้นตามเดิม พบหลายรหัส รหัสที่ยังไม่ได้ตั้ง หรือรหัสคนละประเภท
+  รายรับรายจ่าย: ส่งให้ตรวจทานและเลือกหมวดเอง ไม่เดาหมวดหรือเปลี่ยนประเภทรายการ
+- รหัสไม่ข้ามการตรวจรายการซ้ำ โอนเงินตัวเอง ค่าธรรมเนียม และเงื่อนไขบันทึกอัตโนมัติเดิม
+  ตัวอย่างที่ใช้ได้ตอนนี้คือช่อง `บันทึกช่วยจำ` ในเมล KTB ที่ระบบอ่านอยู่แล้ว
+  เมลที่ไม่มีช่องนี้จะใช้หมวดเริ่มต้นตามเดิม
+- เก็บบันทึกช่วยจำพร้อมรหัสในหมายเหตุเหมือนเดิม การแก้รหัสมีผลกับเมลใหม่และคำแนะนำ
+  ในรายการรอตรวจทาน ไม่แก้หมวดรายการที่บันทึกแล้ว และไม่ดึงเมลเก่ามาซ้ำ
+
+ก่อนดีพลอยให้ build backend และรัน `npm run migration:run` ใน `backend/`
+เพื่อเพิ่ม `categories.memo_code` กับ unique index แยกตามผู้ใช้
+(`1785420000000-CategoryMemoCodes`) ไม่ต้องเพิ่ม env หรือขอสิทธิ์ Gmail เพิ่ม
+
 ## Bank memos in notes
 
 New KTB imports also read the optional `บันทึกช่วยจำ` field as a single line of
@@ -200,6 +226,7 @@ Only `GET gmail/callback` and cron-secret-protected `POST dispatch` are public.
 
 ```powershell
 npm run test:bank-mail --workspace backend
+npm run build --workspace frontend
 docker run -d --name moneyflow_mail_db -p 127.0.0.1:15436:5432 -e POSTGRES_DB=moneyflow_mail_test -e POSTGRES_USER=expense_user -e POSTGRES_PASSWORD=mail-local-only postgres:16-alpine
 npm run test:bank-mail:e2e --workspace backend
 ```
@@ -212,13 +239,19 @@ replay and cross-account completion, ledger effects, duplicate handling, concurr
 sync/disconnect, dispatch order, account reset and Settings placeholders. Browser
 screenshots go under ignored `frontend/.smoke/ux-artifacts/bank-mail/`.
 
-Local validation on 3 October 2026: 16 parser/crypto tests, 20 real DB/API/browser
+Local validation on 7 October 2026: 21 parser/crypto/memo-code tests, 6 icon tests
+(including every installed MDI export), and 28 real DB/API/browser
 scenarios, both workspace builds and backend API typechecking passed. Browser
 checks used Thai on a 390 px dark screen and a 1440 px light screen. Gmail calls
 were stubbed with synthetic messages, including goods/services payments and
 G-Wallet funding; private mail was not copied into fixtures. Coverage also includes
 memo import/review, safe memo rendering, the cumulative-balance preference, and
-positive, zero and negative balances across both home modes.
+positive, zero and negative balances across both home modes. Category-code checks
+cover migration defaults, strict input validation, concurrent uniqueness, user
+isolation, linked-wallet debits, review safeguards, explicit category overrides,
+renamed/deleted codes, and browser validation/retry/reload in both themes. Custom
+icon checks also cover catalog validation, persistence, History rendering, retry
+after network failure, stale previews, lazy production assets and offline caching.
 
 Deployment acceptance still needs a real grant to the deployed OAuth client and
 a real bank email, followed by a scheduler invocation with the browser closed.
